@@ -12,7 +12,8 @@
     "preview": "vite preview --host 0.0.0.0 --port 3000",
     "lint": "tsc --noEmit",
     "deploy": "node scripts/deploy.js",
-    "deploy:main": "node scripts/deploy.js"
+    "deploy:main": "node scripts/deploy.js",
+    "deploy:cf": "vite build && npx wrangler deploy"
   },
   "dependencies": {
     "@types/jsbarcode": "^3.11.4",

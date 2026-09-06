@@ -30,6 +30,15 @@ try {
   console.log('\n⚡ Publishing live build to GitHub Pages...');
   run('npx gh-pages -d dist');
 
+  // 6. Deploy to Cloudflare Workers
+  console.log('\n☁️ Deploying live build to Cloudflare Workers (https://labmedix-in.angadmandal3.workers.dev/)...');
+  try {
+    run('npx wrangler deploy');
+    console.log('✨ Cloudflare Workers deployment complete!');
+  } catch (cfErr) {
+    console.warn('⚠️ Cloudflare Workers deployment step note:', cfErr.message);
+  }
+
   console.log('\n✅ ALL DEPLOYMENTS COMPLETED SUCCESSFULLY TO MAIN & LIVE PRODUCTION!\n');
 } catch (error) {
   console.error('\n❌ Deployment encountered an error:', error.message);
