@@ -41,7 +41,8 @@ import {
   ArrowRight,
   Eye,
   CheckSquare,
-  Square
+  Square,
+  Copy
 } from 'lucide-react';
 import { formatDate } from '../../utils/formatters';
 
@@ -64,6 +65,7 @@ export const CardPrintingDispatchPage: React.FC = () => {
 
   // Modals
   const [activeLabelRecord, setActiveLabelRecord] = useState<CardDispatchRecord | null>(null);
+  const [activeLabelRecords, setActiveLabelRecords] = useState<CardDispatchRecord[]>([]);
   const [activeDetailsRecord, setActiveDetailsRecord] = useState<CardDispatchRecord | null>(null);
   const [activeQcRecord, setActiveQcRecord] = useState<CardDispatchRecord | null>(null);
   const [isBatchManifestOpen, setIsBatchManifestOpen] = useState(false);
@@ -107,6 +109,21 @@ export const CardPrintingDispatchPage: React.FC = () => {
     const urgent = records.filter(r => r.priority === 'urgent' || r.priority === 'high').length;
 
     return { total, pendingPrint, printed, qcPassed, inTransit, delivered, urgent };
+  }, [records]);
+
+  // Courier counts for carrier pills
+  const courierCounts = useMemo(() => {
+    const counts: Record<string, number> = {
+      speed_post: 0,
+      bluedart: 0,
+      delhivery: 0,
+      dtdc: 0,
+      executive_hand: 0
+    };
+    records.forEach(r => {
+      counts[r.courierPartner] = (counts[r.courierPartner] || 0) + 1;
+    });
+    return counts;
   }, [records]);
 
   // District list for filter
@@ -201,11 +218,21 @@ export const CardPrintingDispatchPage: React.FC = () => {
       navigate('/cards/print-sheet');
       return;
     }
+    if (rec.id === 'rec-speed-post-labels' && rec.recordIds.length > 0) {
+      const recs = records.filter(r => rec.recordIds.includes(r.id));
+      if (recs.length > 0) {
+        setActiveLabelRecord(recs[0]);
+        setActiveLabelRecords(recs);
+        showToast('info', 'Speed Post Batch Ready', `Loaded ${recs.length} India Post Speed Post labels ready to print.`);
+        return;
+      }
+    }
     if (rec.filterParam) {
       if (rec.filterParam.printStatus) setSelectedPrintStatus(rec.filterParam.printStatus);
       if (rec.filterParam.dispatchStatus) setSelectedDispatchStatus(rec.filterParam.dispatchStatus);
       if (rec.filterParam.priority) setSelectedPriority(rec.filterParam.priority);
       if (rec.filterParam.district) setSelectedDistrict(rec.filterParam.district);
+      if (rec.filterParam.courier) setSelectedCourier(rec.filterParam.courier);
     }
     if (rec.recordIds.length > 0) {
       setSelectedIds(new Set(rec.recordIds));
@@ -427,6 +454,70 @@ export const CardPrintingDispatchPage: React.FC = () => {
 
       {/* Main Table Card */}
       <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-xs overflow-hidden">
+        {/* Quick Courier Partner Filter Pills */}
+        <div className="p-3 border-b border-slate-100 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-950/80 flex items-center gap-2 overflow-x-auto text-xs scrollbar-none">
+          <span className="text-[11px] font-black uppercase text-slate-400 pl-2 shrink-0">Carrier:</span>
+          <button
+            type="button"
+            onClick={() => setSelectedCourier('all')}
+            className={`px-3 py-1 rounded-xl whitespace-nowrap font-bold transition-all ${
+              selectedCourier === 'all'
+                ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900 shadow-xs'
+                : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200'
+            }`}
+          >
+            All Carriers ({records.length})
+          </button>
+          <button
+            type="button"
+            onClick={() => setSelectedCourier('speed_post')}
+            className={`px-3 py-1 rounded-xl whitespace-nowrap font-bold transition-all flex items-center gap-1.5 ${
+              selectedCourier === 'speed_post'
+                ? 'bg-red-600 text-white shadow-xs'
+                : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200'
+            }`}
+          >
+            <span className="w-2 h-2 rounded-full bg-red-400"></span>
+            <span>India Post Speed Post (EMS) ({courierCounts.speed_post || 0})</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setSelectedCourier('bluedart')}
+            className={`px-3 py-1 rounded-xl whitespace-nowrap font-bold transition-all flex items-center gap-1.5 ${
+              selectedCourier === 'bluedart'
+                ? 'bg-blue-600 text-white shadow-xs'
+                : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200'
+            }`}
+          >
+            <span className="w-2 h-2 rounded-full bg-blue-400"></span>
+            <span>Blue Dart ({courierCounts.bluedart || 0})</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setSelectedCourier('delhivery')}
+            className={`px-3 py-1 rounded-xl whitespace-nowrap font-bold transition-all flex items-center gap-1.5 ${
+              selectedCourier === 'delhivery'
+                ? 'bg-emerald-600 text-white shadow-xs'
+                : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200'
+            }`}
+          >
+            <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+            <span>Delhivery ({courierCounts.delhivery || 0})</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setSelectedCourier('dtdc')}
+            className={`px-3 py-1 rounded-xl whitespace-nowrap font-bold transition-all flex items-center gap-1.5 ${
+              selectedCourier === 'dtdc'
+                ? 'bg-amber-600 text-white shadow-xs'
+                : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200'
+            }`}
+          >
+            <span className="w-2 h-2 rounded-full bg-amber-400"></span>
+            <span>DTDC ({courierCounts.dtdc || 0})</span>
+          </button>
+        </div>
+
         {/* Filter Controls Bar */}
         <div className="p-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/50 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
           {/* Search Input */}
@@ -513,31 +604,45 @@ export const CardPrintingDispatchPage: React.FC = () => {
 
         {/* Batch Selection Action Bar */}
         {selectedIds.size > 0 && (
-          <div className="px-6 py-3 bg-brand-blue/10 dark:bg-brand-blue/20 border-b border-brand-blue/20 flex flex-wrap items-center justify-between gap-3 text-xs">
+          <div className="px-6 py-3 bg-blue-50 dark:bg-blue-950/40 border-b border-blue-200 dark:border-blue-800 flex flex-wrap items-center justify-between gap-3 text-xs animate-in fade-in duration-200">
             <div className="flex items-center gap-2">
               <CheckSquare className="w-4 h-4 text-brand-blue" />
               <span className="font-bold text-slate-900 dark:text-white">
                 {selectedIds.size} cards selected
               </span>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() => {
+                  if (selectedRecordsList.length > 0) {
+                    setActiveLabelRecord(selectedRecordsList[0]);
+                    setActiveLabelRecords(selectedRecordsList);
+                  }
+                }}
+                className="gap-1.5 shadow-sm bg-blue-600 hover:bg-blue-700 text-white font-bold"
+              >
+                <Printer className="w-3.5 h-3.5" />
+                Print Shipping Labels ({selectedIds.size})
+              </Button>
               <Button
                 variant="outline"
                 size="sm"
                 onClick={handleBatchPrint}
-                className="gap-1.5"
+                className="gap-1.5 font-bold"
               >
-                <Printer className="w-3.5 h-3.5" />
+                <Layers className="w-3.5 h-3.5" />
                 Batch Mark Printed
               </Button>
               <Button
-                variant="primary"
+                variant="secondary"
                 size="sm"
                 onClick={() => setIsBatchManifestOpen(true)}
-                className="gap-1.5 shadow-xs"
+                className="gap-1.5 font-bold"
               >
                 <FileSpreadsheet className="w-3.5 h-3.5" />
-                Create Courier Manifest ({selectedIds.size})
+                Create Handover Manifest ({selectedIds.size})
               </Button>
               <Button
                 variant="secondary"
@@ -661,12 +766,28 @@ export const CardPrintingDispatchPage: React.FC = () => {
 
                       {/* Consignment */}
                       <td className="py-4 px-3">
-                        <div className="font-mono font-bold text-slate-900 dark:text-white text-xs">
-                          {record.consignmentNo}
+                        <div className="flex items-center gap-1.5 font-mono font-black text-slate-900 dark:text-white text-xs select-all">
+                          <span>{record.consignmentNo}</span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              navigator.clipboard.writeText(record.consignmentNo);
+                              showToast('info', 'AWB Copied', `${record.consignmentNo} copied to clipboard`);
+                            }}
+                            className="p-1 rounded text-slate-400 hover:text-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                            title="Copy AWB Consignment Number"
+                          >
+                            <Copy className="w-3.5 h-3.5" />
+                          </button>
                         </div>
-                        <div className="text-[11px] font-bold text-slate-500 uppercase mt-0.5 flex items-center gap-1">
+                        <div className="text-[11px] font-bold text-slate-500 uppercase mt-0.5 flex items-center gap-1.5">
                           <Truck className="w-3 h-3 text-slate-400 shrink-0" />
                           <span>{record.courierPartner.replace('_', ' ')}</span>
+                          {record.courierPartner === 'speed_post' && (
+                            <span className="text-[9px] bg-red-100 text-red-700 dark:bg-red-950/50 dark:text-red-300 font-mono px-1 rounded font-black">
+                              EMS
+                            </span>
+                          )}
                         </div>
                       </td>
 
@@ -685,9 +806,12 @@ export const CardPrintingDispatchPage: React.FC = () => {
                         <div className="flex items-center justify-end gap-1.5">
                           {/* Label Sticker */}
                           <button
-                            onClick={() => setActiveLabelRecord(record)}
-                            title="Print Postal Shipping Label"
-                            className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 transition-colors"
+                            onClick={() => {
+                              setActiveLabelRecord(record);
+                              setActiveLabelRecords([record]);
+                            }}
+                            title="Print Postal Shipping Label & Envelope Sticker"
+                            className="p-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/40 dark:hover:bg-blue-900/50 text-brand-blue dark:text-blue-300 transition-colors"
                           >
                             <Printer className="w-4 h-4" />
                           </button>
@@ -734,9 +858,13 @@ export const CardPrintingDispatchPage: React.FC = () => {
 
       {/* Modals */}
       <CardShippingLabelModal
-        isOpen={!!activeLabelRecord}
-        onClose={() => setActiveLabelRecord(null)}
+        isOpen={!!activeLabelRecord || activeLabelRecords.length > 0}
+        onClose={() => {
+          setActiveLabelRecord(null);
+          setActiveLabelRecords([]);
+        }}
         record={activeLabelRecord}
+        records={activeLabelRecords}
       />
 
       <CardDispatchDetailsModal

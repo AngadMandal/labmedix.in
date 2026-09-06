@@ -63,6 +63,33 @@ export const CardBatchManifestModal: React.FC<CardBatchManifestModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs">
+      {/* Scoped print styles to ensure only manifest prints */}
+      <style>{`
+        @media print {
+          body * {
+            visibility: hidden !important;
+          }
+          #print-manifest-root, #print-manifest-root * {
+            visibility: visible !important;
+          }
+          #print-manifest-root {
+            position: fixed !important;
+            left: 0 !important;
+            top: 0 !important;
+            width: 100% !important;
+            height: auto !important;
+            margin: 0 !important;
+            padding: 8mm !important;
+            background: #ffffff !important;
+            z-index: 999999 !important;
+          }
+          @page {
+            size: A4 portrait;
+            margin: 6mm;
+          }
+        }
+      `}</style>
+
       <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 w-full max-w-4xl overflow-hidden flex flex-col max-h-[92vh]">
         {/* Header */}
         <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-slate-50 dark:bg-slate-950/50 print:hidden">
@@ -179,7 +206,7 @@ export const CardBatchManifestModal: React.FC<CardBatchManifestModalProps> = ({
               </div>
             </div>
           ) : (
-            <div ref={printRef} className="bg-white text-slate-950 p-6 rounded-2xl border border-slate-300 shadow-sm print:border-none print:shadow-none print:p-0">
+            <div id="print-manifest-root" ref={printRef} className="bg-white text-slate-950 p-6 rounded-2xl border border-slate-300 shadow-sm print:border-none print:shadow-none print:p-0">
               {/* Printable Header */}
               <div className="flex items-start justify-between border-b-2 border-slate-950 pb-4 mb-4">
                 <div>

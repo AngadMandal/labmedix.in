@@ -1,17 +1,26 @@
 import JsBarcode from 'jsbarcode';
 
-export function generateBarcodeDataUrl(text: string): string {
+export function generateBarcodeDataUrl(
+  text: string,
+  options?: {
+    width?: number;
+    height?: number;
+    fontSize?: number;
+    displayValue?: boolean;
+    margin?: number;
+  }
+): string {
   if (!text) return '';
   try {
     const canvas = document.createElement('canvas');
     JsBarcode(canvas, text, {
       format: 'CODE128',
-      width: 2,
-      height: 45,
-      displayValue: true,
-      fontSize: 11,
+      width: options?.width ?? 2,
+      height: options?.height ?? 45,
+      displayValue: options?.displayValue ?? true,
+      fontSize: options?.fontSize ?? 11,
       fontOptions: 'bold',
-      margin: 4,
+      margin: options?.margin ?? 4,
       background: '#ffffff',
       lineColor: '#000000'
     });

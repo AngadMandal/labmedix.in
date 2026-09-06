@@ -28,6 +28,7 @@ export interface DispatchRecommendation {
     dispatchStatus?: CardDispatchStatus;
     priority?: CardDispatchPriority;
     district?: string;
+    courier?: CardCourierPartner;
   };
 }
 
@@ -745,6 +746,22 @@ export class CardDispatchService {
         actionLabel: 'Create Handover Manifest',
         recordIds: packagedReady.map(r => r.id),
         filterParam: { dispatchStatus: 'packaged' }
+      });
+    }
+
+    // 4b. India Post Speed Post Labels & Envelope Stickers Ready
+    const speedPostQueue = dispatches.filter(d => d.courierPartner === 'speed_post' && d.dispatchStatus !== 'delivered' && d.dispatchStatus !== 'returned');
+    if (speedPostQueue.length > 0) {
+      recommendations.push({
+        id: 'rec-speed-post-labels',
+        type: 'courier_manifest_ready',
+        title: `${speedPostQueue.length} India Post Speed Post Labels (AWB) Ready to Print`,
+        description: 'High-contrast AWB consignment labels with barcode (EK...IN), routing PIN codes, and scannable QR delivery proof.',
+        count: speedPostQueue.length,
+        priority: 'high',
+        actionLabel: 'Print Speed Post Labels',
+        recordIds: speedPostQueue.map(r => r.id),
+        filterParam: { courier: 'speed_post' }
       });
     }
 
