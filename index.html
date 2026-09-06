@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/jpeg" href="/labmedix.in/logo.jpg" />
+    <link rel="icon" type="image/jpeg" href="./logo.jpg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>LabMedix - Smart Digital Health Card System</title>
     <meta name="description" content="Enterprise healthcare management platform with automatic digital health cards, EMR, family vault, and instant billing." />
@@ -12,9 +12,9 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&family=Outfit:wght@400;500;600;700;800;900&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Poppins:wght@500;600;700;800&display=swap" rel="stylesheet">
     <script type="text/javascript">
-      // SPA HashRouter path normalization & GitHub Pages redirect
+      // Adaptive SPA HashRouter path normalization (works for root domains and GitHub Pages subpath)
       (function(l) {
-        var base = '/labmedix.in';
+        var base = l.pathname.startsWith('/labmedix.in') ? '/labmedix.in' : '';
         if (l.search[1] === '/') {
           var decoded = l.search.slice(1).split('&').map(function(s) {
             return s.replace(/~and~/g, '&');
@@ -27,22 +27,23 @@
           l.pathname !== base + '/' &&
           l.pathname !== base + '/index.html' &&
           !l.pathname.match(/\.[a-zA-Z0-9]+$/) &&
-          l.pathname.indexOf(base) === 0
+          (base === '' || l.pathname.indexOf(base) === 0)
         ) {
-          var routePath = l.pathname.replace(base, '').replace(/^\//, '');
+          var routePath = (base ? l.pathname.replace(base, '') : l.pathname).replace(/^\//, '');
           if (routePath) {
-            window.location.replace(l.origin + base + '/' + l.search + '#/' + routePath + l.hash);
+            window.location.replace(l.origin + (base ? base : '') + '/' + l.search + '#/' + routePath + l.hash);
           }
         }
       }(window.location))
     </script>
-    <script type="module" crossorigin src="/labmedix.in/assets/index-BUd8CKrb.js"></script>
-    <link rel="modulepreload" crossorigin href="/labmedix.in/assets/vendor-react-COKHZYSw.js">
-    <link rel="modulepreload" crossorigin href="/labmedix.in/assets/vendor-motion-tNnu1ZvP.js">
-    <link rel="modulepreload" crossorigin href="/labmedix.in/assets/vendor-icons-BA5vyIpb.js">
-    <link rel="modulepreload" crossorigin href="/labmedix.in/assets/vendor-export-Bxpo10dq.js">
-    <link rel="modulepreload" crossorigin href="/labmedix.in/assets/vendor-charts-BZYYNSPp.js">
-    <link rel="stylesheet" crossorigin href="/labmedix.in/assets/index-CDMX1CL1.css">
+    <script type="module" crossorigin src="./assets/index-W6sL60NE.js"></script>
+    <link rel="modulepreload" crossorigin href="./assets/vendor-react-iWyn9LBO.js">
+    <link rel="modulepreload" crossorigin href="./assets/vendor-motion-t-KEQA1G.js">
+    <link rel="modulepreload" crossorigin href="./assets/vendor-export-DWvg7hiq.js">
+    <link rel="modulepreload" crossorigin href="./assets/vendor-firebase-Du3h2Qh5.js">
+    <link rel="modulepreload" crossorigin href="./assets/vendor-icons-ob1DDEQa.js">
+    <link rel="modulepreload" crossorigin href="./assets/vendor-charts-Dtrg0o3j.js">
+    <link rel="stylesheet" crossorigin href="./assets/index-D64tcwfA.css">
   </head>
   <body class="bg-slate-50 dark:bg-[#070d1e] text-slate-900 dark:text-slate-100 antialiased selection:bg-blue-600 selection:text-white transition-colors duration-150">
     <div id="root"></div>
