@@ -110,6 +110,18 @@ export interface MedicalInfo {
   bloodGroup: string;
 }
 
+export type BloodGroupStatus = 'verified' | 'unverified' | 'unknown' | 'not_tested';
+
+export interface BloodGroupHistoryEntry {
+  id: string;
+  bloodGroup: string;
+  status: BloodGroupStatus;
+  updatedAt: string;
+  updatedBy: string;
+  verifiedByDoctorOrLab?: string;
+  notes?: string;
+}
+
 export interface Patient {
   id: string; // e.g. LMDX-2026-000001
   fullName: string;
@@ -120,6 +132,8 @@ export interface Patient {
   whatsapp?: string;
   email?: string;
   bloodGroup: string;
+  bloodGroupStatus?: BloodGroupStatus;
+  bloodGroupHistory?: BloodGroupHistoryEntry[];
   photoUrl: string;
   address: Address;
   emergencyContact: EmergencyContact;
@@ -143,6 +157,8 @@ export interface Patient {
     pulse?: number;
     rbs?: string;
     spo2?: number;
+    temperature?: string;
+    respiratoryRate?: number;
     weight?: number;
     height?: number;
     bmi?: number;
@@ -468,6 +484,46 @@ export interface CompanyProfile {
   zohoPayments?: ZohoPaymentConfig;
   nfcSettings?: NFCSettings;
   upiSettings?: UpiMerchantSettings;
+  registrationSettings?: ClinicRegistrationSettings;
+}
+
+export interface ClinicRegistrationSettings {
+  enableClinicalTriageDefault: boolean; // default: false (OFF)
+  maxIncludedFamilyMembers: number; // default: 5
+  additionalMemberFee: number; // default: 299 (in INR)
+  cardIssuanceDefault: boolean; // default: false (OFF)
+}
+
+export interface PatientBill {
+  id: string; // e.g. BILL-2026-000001
+  billNumber: string;
+  date: string;
+  patientId: string;
+  patientName: string;
+  patientMobile: string;
+  patientAddress?: string;
+  healthCardId?: string;
+  healthCardNumber?: string;
+  membershipName?: string;
+  isCardIssued: boolean;
+  familyMemberCount: number;
+  includedMembers: number;
+  additionalMembers: number;
+  baseCardCharge: number;
+  additionalMemberCharge: number;
+  discountAmount: number;
+  netPayable: number;
+  paidAmount: number;
+  paymentStatus: 'paid' | 'pending' | 'waived';
+  paymentMethod: 'cash' | 'upi' | 'card' | 'netbanking' | 'wallet';
+  transactionId?: string;
+  authorizedStaff: {
+    id: string;
+    name: string;
+    role: string;
+  };
+  notes?: string;
+  createdAt: string;
 }
 
 export interface UpiMerchantSettings {

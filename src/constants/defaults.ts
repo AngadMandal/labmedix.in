@@ -1,4 +1,4 @@
-import { CompanyProfile, CardDesignConfig } from '../types';
+import { CompanyProfile, CardDesignConfig, ClinicRegistrationSettings } from '../types';
 
 export const DEFAULT_COMPANY_PROFILE: CompanyProfile = {
   companyId: 'LABMEDIX-MAIN-CLINIC',
@@ -105,8 +105,39 @@ export const DEFAULT_COMPANY_PROFILE: CompanyProfile = {
     autoWriteOnIssue: true,
     securityKey: 'A0B1C2D3E4F5',
     enableWebNfcApi: true
+  },
+  registrationSettings: {
+    enableClinicalTriageDefault: false,
+    maxIncludedFamilyMembers: 5,
+    additionalMemberFee: 299,
+    cardIssuanceDefault: false
   }
 };
+
+export const DEFAULT_CLINIC_REGISTRATION_SETTINGS: ClinicRegistrationSettings = {
+  enableClinicalTriageDefault: false,
+  maxIncludedFamilyMembers: 5,
+  additionalMemberFee: 299,
+  cardIssuanceDefault: false
+};
+
+export const BLOOD_GROUP_OPTIONS: Array<{
+  value: string;
+  label: string;
+  badge: string;
+  status: 'verified' | 'unverified' | 'unknown' | 'not_tested';
+}> = [
+  { value: 'Unknown / Not Known', label: 'Unknown / Not Known (Can update later)', badge: 'Unknown', status: 'unknown' },
+  { value: 'Not Tested', label: 'Not Tested (Laboratory testing pending)', badge: 'Pending Lab', status: 'not_tested' },
+  { value: 'A+', label: 'A Positive (A+)', badge: 'A+', status: 'unverified' },
+  { value: 'A-', label: 'A Negative (A-)', badge: 'A-', status: 'unverified' },
+  { value: 'B+', label: 'B Positive (B+)', badge: 'B+', status: 'unverified' },
+  { value: 'B-', label: 'B Negative (B-)', badge: 'B-', status: 'unverified' },
+  { value: 'AB+', label: 'AB Positive (AB+)', badge: 'AB+', status: 'unverified' },
+  { value: 'AB-', label: 'AB Negative (AB-)', badge: 'AB-', status: 'unverified' },
+  { value: 'O+', label: 'O Positive (O+)', badge: 'O+', status: 'unverified' },
+  { value: 'O-', label: 'O Negative (O-)', badge: 'O-', status: 'unverified' }
+];
 
 export const DEFAULT_CARD_DESIGN: CardDesignConfig = {
   preset: 'executive_navy',

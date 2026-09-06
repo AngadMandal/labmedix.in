@@ -185,7 +185,8 @@ export class FamilyService {
         allergies: 'None recorded',
         importantNotes: `Covered under ${family.familyName} Family Shield`
       },
-      membershipId
+      membershipId,
+      issueHealthCard: true
     });
 
     // Link into Family
@@ -196,7 +197,7 @@ export class FamilyService {
     const updatedFamily = StorageService.getFamilies().find(f => f.id === familyId)!;
     return {
       patient: result.patient,
-      card: result.card,
+      card: result.card!,
       family: updatedFamily
     };
   }

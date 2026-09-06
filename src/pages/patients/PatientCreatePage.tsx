@@ -1,9 +1,10 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { PatientService, CreateFamilyMemberInput, CreatePatientResult } from '../../services/patientService';
 import { StorageService } from '../../services/storage';
 import { MembershipTierService } from '../../services/membershipTierService';
 import { DoctorMasterService, DoctorMasterItem } from '../../services/doctorMasterService';
+import { BillService } from '../../services/billService';
 import { useToast } from '../../context/ToastContext';
 import { Button } from '../../components/common/Button';
 import { Input } from '../../components/common/Input';
@@ -13,11 +14,14 @@ import { PhotoUploaderWebcam } from '../../components/common/PhotoUploaderWebcam
 import { AddressAutoPopupModal } from '../../components/common/AddressAutoPopupModal';
 import { AddressLookupService } from '../../services/addressLookupService';
 import { CR80CardFront } from '../../components/card/CR80CardFront';
+import { DuplicatePatientWarningModal } from '../../components/patients/DuplicatePatientWarningModal';
+import { PatientRegistrationBillSlipModal } from '../../components/patients/PatientRegistrationBillSlipModal';
+import { useKeyboardFormNavigation } from '../../hooks/useKeyboardFormNavigation';
 import { calculateAge, formatCurrency, formatDate } from '../../utils/formatters';
 import { triggerCelebrationFireworks } from '../../utils/confetti';
-import { generatePatientId, generateCardNumber, generateVerificationCode, generateCardCvv } from '../../utils/idGenerator';
-import { DEFAULT_CARD_DESIGN } from '../../constants/defaults';
-import { HealthCard, Patient, CardThemePreset, Membership } from '../../types';
+import { generatePatientId, generateCardNumber } from '../../utils/idGenerator';
+import { DEFAULT_CARD_DESIGN, BLOOD_GROUP_OPTIONS } from '../../constants/defaults';
+import { HealthCard, Patient, CardThemePreset, Membership, CompanyProfile, BloodGroupStatus } from '../../types';
 import {
   UserPlus,
   ArrowLeft,
@@ -30,24 +34,21 @@ import {
   Users,
   Plus,
   Trash2,
-  CheckSquare,
-  Square,
   CreditCard,
   Printer,
-  Eye,
   CheckCircle2,
   Stethoscope,
   Building,
   UserCheck,
   Award,
-  Layers,
   Activity,
-  FileBadge,
-  Sliders,
-  Share2,
-  ExternalLink,
   ChevronRight,
-  Star
+  AlertTriangle,
+  FileText,
+  HelpCircle,
+  Clock,
+  Zap,
+  Info
 } from 'lucide-react';
 
 interface FamilyMemberFormState extends CreateFamilyMemberInput {
@@ -57,11 +58,18 @@ interface FamilyMemberFormState extends CreateFamilyMemberInput {
 export const PatientCreatePage: React.FC = () => {
   const navigate = useNavigate();
   const { showToast } = useToast();
-  
+
+  const company: CompanyProfile = StorageService.getCompanyProfile();
+  const regSettings = company.registrationSettings || {
+    enableClinicalTriageDefault: false,
+    maxIncludedFamilyMembers: 5,
+    additionalMemberFee: 299,
+    cardIssuanceDefault: false
+  };
+
   const [memberships, setMemberships] = useState<Membership[]>(() => StorageService.getActiveMemberships());
   const existingPatients = StorageService.getPatients();
   const existingCards = StorageService.getCards();
-  const company = StorageService.getCompanyProfile();
   const doctors = DoctorMasterService.getAllDoctors().filter((d: DoctorMasterItem) => d.status === 'active');
 
   useEffect(() => {
@@ -74,7 +82,10 @@ export const PatientCreatePage: React.FC = () => {
   const previewNextPatientId = useMemo(() => generatePatientId(existingPatients.map(p => p.id)), [existingPatients]);
   const previewNextCardNumber = useMemo(() => generateCardNumber(existingCards.map(c => c.cardNumber)), [existingCards]);
 
-  // Section 1: Primary Personal Details
+  // Keyboard navigation hook
+  const { formContainerRef, handleKeyDown } = useKeyboardFormNavigation();
+
+  // SECTION 1: Personal Identity
   const [fullName, setFullName] = useState('');
   const [dob, setDob] = useState('');
   const [age, setAge] = useState<number>(32);
@@ -82,24 +93,24 @@ export const PatientCreatePage: React.FC = () => {
   const [mobile, setMobile] = useState('');
   const [whatsapp, setWhatsapp] = useState('');
   const [email, setEmail] = useState('');
-  const [bloodGroup, setBloodGroup] = useState('B+');
+  const [bloodGroup, setBloodGroup] = useState('Unknown / Not Known');
   const [photoUrl, setPhotoUrl] = useState('');
   const [maritalStatus, setMaritalStatus] = useState('Married');
   const [occupation, setOccupation] = useState('Professional / Business');
   const [governmentIdType, setGovernmentIdType] = useState('Aadhaar Card');
   const [governmentIdNumber, setGovernmentIdNumber] = useState('');
 
-  // Section 2: Address
+  // SECTION 2: Address
   const [villageArea, setVillageArea] = useState('Medical Square Area');
   const [postOffice, setPostOffice] = useState('Central P.O.');
   const [policeStation, setPoliceStation] = useState('South P.S.');
-  const [district, setDistrict] = useState('Kolkata');
+  const [district, setDistrict] = useState('Malda');
   const [stateVal, setStateVal] = useState('West Bengal');
-  const [pinCode, setPinCode] = useState('700001');
+  const [pinCode, setPinCode] = useState('732142');
   const [fullAddress, setFullAddress] = useState('');
   const [isAddressPopupOpen, setIsAddressPopupOpen] = useState(false);
 
-  // Instant PIN Code Auto-Resolve
+  // Address PIN Code Auto-Resolve
   const handlePinCodeChange = (newPin: string) => {
     setPinCode(newPin);
     const clean = newPin.trim();
@@ -129,23 +140,27 @@ export const PatientCreatePage: React.FC = () => {
     }
   };
 
-  // Section 3: Emergency Contact
+  // SECTION 3: Emergency Contact
   const [emergencyName, setEmergencyName] = useState('');
   const [emergencyRelation, setEmergencyRelation] = useState('Spouse');
   const [emergencyMobile, setEmergencyMobile] = useState('');
 
-  // Section 4: Clinical Triage & Measurements
-  const [allergies, setAllergies] = useState('None');
-  const [chronicConditions, setChronicConditions] = useState('None');
-  const [portalPassword, setPortalPassword] = useState('');
-  const [importantNotes, setImportantNotes] = useState('');
+  // SECTION 4: Clinical Triage & Measurements (Configurable ON/OFF)
+  const [enableClinicalTriage, setEnableClinicalTriage] = useState<boolean>(() => {
+    return regSettings.enableClinicalTriageDefault;
+  });
   const [bpSystolic, setBpSystolic] = useState('120');
   const [bpDiastolic, setBpDiastolic] = useState('80');
   const [pulse, setPulse] = useState('74');
-  const [rbs, setRbs] = useState('105');
   const [spo2, setSpo2] = useState('99');
+  const [temperature, setTemperature] = useState('98.4');
+  const [respiratoryRate, setRespiratoryRate] = useState('16');
   const [weightKg, setWeightKg] = useState('68');
   const [heightCm, setHeightCm] = useState('172');
+  const [rbs, setRbs] = useState('105');
+  const [allergies, setAllergies] = useState('None');
+  const [chronicConditions, setChronicConditions] = useState('None');
+  const [importantNotes, setImportantNotes] = useState('');
 
   // BMI Calculation
   const bmiData = useMemo(() => {
@@ -170,7 +185,7 @@ export const PatientCreatePage: React.FC = () => {
     return null;
   }, [weightKg, heightCm]);
 
-  // Section 5: "Others Recommend" / Referral Details
+  // SECTION 5: Referral Details
   const [referralSource, setReferralSource] = useState<'none' | 'doctor' | 'existing_cardholder' | 'staff' | 'camp' | 'agent' | 'other'>('none');
   const [selectedDoctorId, setSelectedDoctorId] = useState('');
   const [customDoctorName, setCustomDoctorName] = useState('');
@@ -182,20 +197,37 @@ export const PatientCreatePage: React.FC = () => {
   const [referralAgentId, setReferralAgentId] = useState('');
   const [referralNotes, setReferralNotes] = useState('');
 
-  // Section 6: Family Shield & Multi-Family Member Additions
-  const [enableFamilyShield, setEnableFamilyShield] = useState(false);
-  const [familyName, setFamilyName] = useState('');
+  // SECTION 6: Family Health Shield & Dependents
   const [familyMembers, setFamilyMembers] = useState<FamilyMemberFormState[]>([]);
+  const [familyName, setFamilyName] = useState('');
 
-  // Section 7: Card Plan, Design & Wallet
+  const maxIncludedMembers = regSettings.maxIncludedFamilyMembers || 5;
+  const additionalMemberFee = regSettings.additionalMemberFee || 299;
+
+  // SECTION 7: Smart Health Card Issuance (OFF by default)
+  const [issueHealthCard, setIssueHealthCard] = useState<boolean>(() => {
+    return regSettings.cardIssuanceDefault;
+  });
   const [membershipId, setMembershipId] = useState(() => StorageService.getRecommendedMembership()?.id || StorageService.getActiveMemberships()[0]?.id || 'mem_gold_03');
   const [cardPreset, setCardPreset] = useState<CardThemePreset>('royal_gold');
   const [cardMaterial, setCardMaterial] = useState<'gloss' | 'matte' | 'metallic' | 'hologram'>('metallic');
-  const [initialDeposit, setInitialDeposit] = useState('500');
+  const [initialDeposit, setInitialDeposit] = useState('0');
+
+  // Billing & Payment Configuration
+  const [discountAmount, setDiscountAmount] = useState<number>(0);
+  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'upi' | 'card' | 'netbanking' | 'wallet'>('cash');
+  const [portalPassword, setPortalPassword] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Success Modal State
+  // Success Modal & Result State
   const [createdResult, setCreatedResult] = useState<CreatePatientResult | null>(null);
+  const [isSuccessModalOpen, setIsSuccessModalOpen] = useState(false);
+
+  // Duplicate Protection State
+  const [duplicateWarningOpen, setDuplicateWarningOpen] = useState(false);
+  const [matchedDuplicatePatient, setMatchedDuplicatePatient] = useState<Patient | null>(null);
+  const [matchedDuplicateCard, setMatchedDuplicateCard] = useState<HealthCard | undefined>(undefined);
+  const [duplicateBypassConfirmed, setDuplicateBypassConfirmed] = useState(false);
 
   // Auto-sync fallback if membershipId was deactivated
   useEffect(() => {
@@ -205,10 +237,34 @@ export const PatientCreatePage: React.FC = () => {
     }
   }, [memberships, membershipId]);
 
-  // Auto-set card preset based on selected membership
   const selectedMembership = useMemo(() => {
     return memberships.find(m => m.id === membershipId) || memberships[0];
   }, [memberships, membershipId]);
+
+  // Real-time calculation of billing breakdown
+  const billCalculation = useMemo(() => {
+    return BillService.calculateCharges({
+      isCardIssued: issueHealthCard,
+      membershipPrice: selectedMembership?.registrationFee || 0,
+      familyMembersCount: familyMembers.length,
+      maxIncludedMembers,
+      additionalMemberFee,
+      discountAmount
+    });
+  }, [issueHealthCard, selectedMembership, familyMembers.length, maxIncludedMembers, additionalMemberFee, discountAmount]);
+
+  // Check for duplicate mobile number in real time
+  const detectedDuplicate = useMemo(() => {
+    const cleanMobile = mobile.trim();
+    if (cleanMobile.length >= 10 && !duplicateBypassConfirmed) {
+      const match = existingPatients.find(p => p.mobile === cleanMobile && !p.isDeleted);
+      if (match) {
+        const cardMatch = existingCards.find(c => c.patientId === match.id && c.status === 'active');
+        return { patient: match, card: cardMatch };
+      }
+    }
+    return null;
+  }, [mobile, existingPatients, existingCards, duplicateBypassConfirmed]);
 
   const handleMembershipChange = (newMemId: string) => {
     setMembershipId(newMemId);
@@ -250,12 +306,12 @@ export const PatientCreatePage: React.FC = () => {
         dob: '1995-01-01',
         age: 28,
         gender: 'female',
-        bloodGroup: 'O+',
+        bloodGroup: 'Unknown / Not Known',
         mobile: '',
         photoUrl: '',
         allergies: 'None',
         chronicConditions: 'None',
-        issueCard: true // Default checked to issue individual Health Card!
+        issueCard: issueHealthCard
       }
     ]);
   };
@@ -270,7 +326,25 @@ export const PatientCreatePage: React.FC = () => {
     setFamilyMembers(prev => prev.filter(m => m.id !== id));
   };
 
-  // Mock Card Object for Live Preview
+  // Reset form for "Register Next Patient"
+  const handleRegisterAnother = () => {
+    setFullName('');
+    setDob('');
+    setAge(30);
+    setGender('male');
+    setMobile('');
+    setWhatsapp('');
+    setEmail('');
+    setBloodGroup('Unknown / Not Known');
+    setPhotoUrl('');
+    setFamilyMembers([]);
+    setDiscountAmount(0);
+    setDuplicateBypassConfirmed(false);
+    setCreatedResult(null);
+    setIsSuccessModalOpen(false);
+  };
+
+  // Primary live preview card
   const livePreviewCard: HealthCard = useMemo(() => {
     const now = new Date();
     const expiry = new Date();
@@ -290,25 +364,25 @@ export const PatientCreatePage: React.FC = () => {
         ...DEFAULT_CARD_DESIGN,
         preset: cardPreset,
         material: cardMaterial,
-        showFamilyBadge: enableFamilyShield || familyMembers.length > 0
+        showFamilyBadge: familyMembers.length > 0
       },
       statusHistory: [],
       renewedCount: 0,
       createdAt: now.toISOString(),
       updatedAt: now.toISOString()
     };
-  }, [previewNextCardNumber, previewNextPatientId, selectedMembership, cardPreset, cardMaterial, enableFamilyShield, familyMembers.length]);
+  }, [previewNextCardNumber, previewNextPatientId, selectedMembership, cardPreset, cardMaterial, familyMembers.length]);
 
   const livePreviewPatient: Patient = useMemo(() => {
     return {
       id: previewNextPatientId,
-      fullName: fullName || 'Patient Name',
+      fullName: fullName || 'Patient Full Name',
       dob: dob || '1992-05-15',
       age: age || 34,
       gender,
       mobile: mobile || '9830012345',
       whatsapp: whatsapp || mobile,
-      bloodGroup: bloodGroup || 'B+',
+      bloodGroup: bloodGroup || 'Unknown / Not Known',
       photoUrl: photoUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400&auto=format&fit=crop&q=80',
       address: {
         villageArea,
@@ -340,20 +414,29 @@ export const PatientCreatePage: React.FC = () => {
   }, [
     previewNextPatientId, fullName, dob, age, gender, mobile, whatsapp, bloodGroup, photoUrl,
     villageArea, postOffice, policeStation, district, stateVal, pinCode, fullAddress,
-    emergencyName, emergencyRelation, emergencyMobile, allergies, chronicConditions, importantNotes
+    emergencyName, emergencyRelation, emergencyMobile, allergies, chronicConditions, importantNotes, portalPassword
   ]);
 
   // Form Submit Handler
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+
     if (!fullName.trim() || !mobile.trim()) {
       showToast('error', 'Required Fields Missing', 'Please enter primary patient full name and mobile number.');
       return;
     }
 
+    // Duplicate Check Warning
+    if (detectedDuplicate && !duplicateBypassConfirmed) {
+      setMatchedDuplicatePatient(detectedDuplicate.patient);
+      setMatchedDuplicateCard(detectedDuplicate.card);
+      setDuplicateWarningOpen(true);
+      return;
+    }
+
     setIsSubmitting(true);
     try {
-      // Build Referral Details
+      // Build Referral Payload
       let refPayload: any = { source: referralSource };
       if (referralSource === 'doctor') {
         const doc = doctors.find((d: DoctorMasterItem) => d.id === selectedDoctorId);
@@ -376,21 +459,29 @@ export const PatientCreatePage: React.FC = () => {
         refPayload.notes = referralNotes;
       }
 
-      // Build Clinical Vitals
-      const vitalsPayload = {
-        bp: bpSystolic && bpDiastolic ? `${bpSystolic}/${bpDiastolic} mmHg` : undefined,
-        pulse: parseInt(pulse, 10) || undefined,
-        rbs: rbs ? `${rbs} mg/dL` : undefined,
-        spo2: parseInt(spo2, 10) || undefined,
-        weight: parseFloat(weightKg) || undefined,
-        height: parseFloat(heightCm) || undefined,
-        bmi: bmiData?.val
-      };
+      // Build Clinical Vitals (only if triage enabled)
+      const vitalsPayload = enableClinicalTriage
+        ? {
+            bp: bpSystolic && bpDiastolic ? `${bpSystolic}/${bpDiastolic} mmHg` : undefined,
+            pulse: parseInt(pulse, 10) || undefined,
+            spo2: parseInt(spo2, 10) || undefined,
+            temperature: temperature ? `${temperature} °F` : undefined,
+            respiratoryRate: parseInt(respiratoryRate, 10) || undefined,
+            weight: parseFloat(weightKg) || undefined,
+            height: parseFloat(heightCm) || undefined,
+            bmi: bmiData?.val,
+            rbs: rbs ? `${rbs} mg/dL` : undefined
+          }
+        : undefined;
 
-      // Filter family members with valid names
-      const validFamilyMembers = (enableFamilyShield || familyMembers.length > 0)
-        ? familyMembers.filter(m => m.fullName.trim().length > 0)
-        : [];
+      // Filter valid family members
+      const validFamilyMembers = familyMembers.filter(m => m.fullName.trim().length > 0);
+
+      const bloodStatus: BloodGroupStatus = bloodGroup.toLowerCase().includes('unknown')
+        ? 'unknown'
+        : bloodGroup.toLowerCase().includes('not tested')
+        ? 'not_tested'
+        : 'unverified';
 
       const result = PatientService.createPatient({
         fullName: fullName.trim(),
@@ -401,6 +492,7 @@ export const PatientCreatePage: React.FC = () => {
         whatsapp: whatsapp.trim() || mobile.trim(),
         email: email.trim(),
         bloodGroup,
+        bloodGroupStatus: bloodStatus,
         photoUrl: photoUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400&auto=format&fit=crop&q=80',
         address: {
           villageArea,
@@ -417,8 +509,8 @@ export const PatientCreatePage: React.FC = () => {
           mobile: emergencyMobile.trim() || mobile.trim()
         },
         medicalInfo: {
-          allergies,
-          chronicConditions,
+          allergies: enableClinicalTriage ? allergies : 'None',
+          chronicConditions: enableClinicalTriage ? chronicConditions : 'None',
           importantNotes,
           emergencyNotes: '',
           bloodGroup
@@ -429,20 +521,27 @@ export const PatientCreatePage: React.FC = () => {
         governmentIdNumber,
         referral: referralSource !== 'none' ? refPayload : undefined,
         vitalsAtReg: vitalsPayload,
-        membershipId,
+        issueHealthCard,
+        membershipId: issueHealthCard ? membershipId : undefined,
         initialDeposit: parseFloat(initialDeposit) || 0,
+        discountAmount: billCalculation.discountAmount,
+        paidAmount: billCalculation.netPayable,
+        paymentMethod,
         cardDesignPreset: cardPreset,
         cardMaterial,
-        familyName: familyName.trim() || `${fullName.trim()}'s Family Health Shield`,
+        familyName: familyName.trim() || `${fullName.trim()}'s Family Shield`,
         familyMembers: validFamilyMembers
       });
 
       triggerCelebrationFireworks();
       setCreatedResult(result);
+      setIsSuccessModalOpen(true);
+
+      const cardMsg = result.card ? `Health Card ${result.card.cardNumber} issued.` : 'Registered without Health Card.';
       showToast(
         'success',
-        'Registration & Issuance Successful!',
-        `Patient ${result.patient.fullName} (${result.patient.id}) registered with Health Card ${result.card.cardNumber}. ${result.issuedFamilyCards.length > 0 ? `+${result.issuedFamilyCards.length} Family Members enrolled.` : ''}`
+        'Registration & Enrollment Successful!',
+        `Patient ${result.patient.fullName} (${result.patient.id}) registered. ${cardMsg} Bill ${result.bill.billNumber} created.`
       );
     } catch (err: any) {
       showToast('error', 'Registration Failed', err.message || 'An error occurred during registration.');
@@ -453,73 +552,106 @@ export const PatientCreatePage: React.FC = () => {
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-16">
-      {/* Top Breadcrumb & Status Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
-        <button
-          onClick={() => navigate('/patients')}
-          className="flex items-center gap-2 text-xs font-bold text-slate-600 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
-        >
-          <ArrowLeft className="w-4 h-4" /> Back to Patient Directory
-        </button>
+      {/* Top Header & Breadcrumb */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 dark:border-slate-800 pb-5">
+        <div className="space-y-1">
+          <div className="flex items-center gap-2 text-xs font-semibold text-slate-500 dark:text-slate-400">
+            <button
+              type="button"
+              onClick={() => navigate('/patients')}
+              className="hover:text-blue-600 flex items-center gap-1 transition-colors"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" /> Patients Directory
+            </button>
+            <span>/</span>
+            <span className="text-slate-700 dark:text-slate-200 font-bold">New Registration & Health Card</span>
+          </div>
+          <h1 className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white tracking-tight flex items-center gap-3">
+            <span>New Patient Registration & Smart Health Card Enrollment</span>
+          </h1>
+          <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400">
+            Fast, keyboard-first registration with smart blood group tracking, Family Health Shield, and instant printable bill/slip.
+          </p>
+        </div>
 
-        <div className="flex items-center gap-3">
-          <div className="text-right">
-            <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Next Auto Patient ID</span>
-            <div className="text-xs font-mono font-black text-blue-600 dark:text-blue-400">
-              {previewNextPatientId}
-            </div>
+        {/* Keyboard Navigation Tip Badge */}
+        <div className="flex items-center gap-2">
+          <div className="hidden lg:flex items-center gap-2 px-3 py-1.5 rounded-2xl bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900/60 text-blue-700 dark:text-blue-300 text-xs font-bold">
+            <Zap className="w-3.5 h-3.5" />
+            <span>Keyboard-First: Press <strong>Enter ↵</strong> to jump fields</span>
           </div>
-          <div className="h-6 w-px bg-slate-200 dark:bg-slate-700 hidden sm:block" />
-          <div className="text-right">
-            <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">CR80 Health Card Serial</span>
-            <div className="text-xs font-mono font-black text-emerald-600 dark:text-emerald-400">
-              {previewNextCardNumber}
-            </div>
-          </div>
+
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => navigate('/offline-form')}
+            className="text-xs"
+          >
+            Offline / Camp Form
+          </Button>
         </div>
       </div>
 
-      {/* Main Grid: Form + Live Interactive Card Preview */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-        {/* Left Column: Comprehensive Registration Form */}
-        <form onSubmit={handleSubmit} className="lg:col-span-8 space-y-6">
-          
-          {/* Main Title Banner */}
-          <div className="bg-gradient-to-r from-blue-900 via-indigo-900 to-slate-900 text-white rounded-3xl p-6 sm:p-8 shadow-xl relative overflow-hidden flex flex-col md:flex-row md:items-center md:justify-between gap-6">
-            <div className="absolute -right-10 -bottom-10 opacity-10 pointer-events-none">
-              <CreditCard className="w-64 h-64 text-white" />
+      {/* Real-time Inline Duplicate Warning Banner */}
+      {detectedDuplicate && (
+        <div className="p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/50 border-2 border-amber-400 dark:border-amber-500/60 text-amber-900 dark:text-amber-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-md animate-in slide-in-from-top-2">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0 border border-amber-500/40">
+              <AlertTriangle className="w-5 h-5" />
             </div>
-            <div className="relative z-10 space-y-2 max-w-xl">
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/20 text-blue-300 text-xs font-bold border border-blue-400/30">
-                <Sparkles className="w-3.5 h-3.5" /> High-Security Auto Issuance Engine
-              </div>
-              <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
-                New Patient Registration & Smart Health Card
-              </h1>
-              <p className="text-xs text-blue-200/80 leading-relaxed">
-                Enroll primary patient, attach multiple family dependents, configure referral channels, and instantly auto-issue encrypted CR80 Health Cards with QR & NFC verification.
+            <div>
+              <h4 className="text-xs font-black uppercase tracking-wider text-amber-800 dark:text-amber-300">
+                Possible Duplicate Patient Match Found
+              </h4>
+              <p className="text-xs text-slate-700 dark:text-amber-200/90">
+                Mobile number <strong className="font-mono">{mobile}</strong> is already registered to{' '}
+                <strong className="text-slate-900 dark:text-white">{detectedDuplicate.patient.fullName}</strong> (ID:{' '}
+                <span className="font-mono">{detectedDuplicate.patient.id}</span>
+                {detectedDuplicate.card ? ` • Card: ${detectedDuplicate.card.cardNumber}` : ''}).
               </p>
-            </div>
-
-            <div className="relative z-10 flex flex-col sm:flex-row gap-2 shrink-0">
-              <button
-                type="button"
-                onClick={() => navigate('/offline-form')}
-                className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-2xl bg-white/10 hover:bg-white/20 border border-white/20 text-white text-xs font-bold transition-all shadow-md backdrop-blur-md"
-              >
-                <span>📝 Switch to Offline / Camp Form</span>
-              </button>
             </div>
           </div>
 
-          {/* SECTION 1: Personal Details & Photo */}
+          <div className="flex items-center gap-2 shrink-0 w-full sm:w-auto">
+            <button
+              type="button"
+              onClick={() => {
+                setMatchedDuplicatePatient(detectedDuplicate.patient);
+                setMatchedDuplicateCard(detectedDuplicate.card);
+                setDuplicateWarningOpen(true);
+              }}
+              className="px-3 py-1.5 rounded-xl bg-amber-200/70 hover:bg-amber-200 dark:bg-amber-900/60 dark:hover:bg-amber-900 text-amber-900 dark:text-amber-200 text-xs font-bold transition-all border border-amber-300 dark:border-amber-700"
+            >
+              Review Existing Record
+            </button>
+            <button
+              type="button"
+              onClick={() => setDuplicateBypassConfirmed(true)}
+              className="px-3 py-1.5 rounded-xl bg-white dark:bg-slate-900 hover:bg-slate-50 text-slate-700 dark:text-slate-200 text-xs font-semibold transition-all border border-slate-300 dark:border-slate-700"
+            >
+              Same Family (Dismiss)
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Main Registration Layout: Left Form + Right Preview */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        {/* LEFT COLUMN: Input Form */}
+        <form
+          ref={formContainerRef as any}
+          onKeyDown={handleKeyDown}
+          onSubmit={handleSubmit}
+          className="lg:col-span-8 space-y-6"
+        >
+          {/* 1. PRIMARY PATIENT IDENTITY */}
           <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 sm:p-8 border border-slate-200 dark:border-slate-800 shadow-sm space-y-6">
             <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
               <h3 className="text-sm font-black uppercase tracking-wider text-slate-800 dark:text-white flex items-center gap-2">
                 <span className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/50 text-blue-600 dark:text-blue-400 text-xs font-black flex items-center justify-center">1</span>
-                <span>Personal Identity & Photo Capture</span>
+                <span>Primary Patient Registration</span>
               </h3>
-              <Badge variant="blue">Primary Member</Badge>
+              <Badge variant="blue">Primary Holder</Badge>
             </div>
 
             <div className="flex flex-col md:flex-row gap-6 items-center md:items-start">
@@ -530,11 +662,12 @@ export const PatientCreatePage: React.FC = () => {
 
               <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-4 w-full">
                 <Input
-                  label="Full Patient Name *"
+                  label="Patient Name *"
                   placeholder="e.g. Rajesh Mukherjee"
                   value={fullName}
                   onChange={(e) => setFullName(e.target.value)}
                   required
+                  autoFocus
                 />
 
                 <div className="grid grid-cols-2 gap-2">
@@ -565,24 +698,26 @@ export const PatientCreatePage: React.FC = () => {
                   ]}
                 />
 
-                <Select
-                  label="Blood Group *"
-                  value={bloodGroup}
-                  onChange={(e) => setBloodGroup(e.target.value)}
-                  options={[
-                    { value: 'A+', label: 'A+ (Positive)' },
-                    { value: 'A-', label: 'A- (Negative)' },
-                    { value: 'B+', label: 'B+ (Positive)' },
-                    { value: 'B-', label: 'B- (Negative)' },
-                    { value: 'O+', label: 'O+ (Positive)' },
-                    { value: 'O-', label: 'O- (Negative)' },
-                    { value: 'AB+', label: 'AB+ (Positive)' },
-                    { value: 'AB-', label: 'AB- (Negative)' }
-                  ]}
-                />
+                {/* Smart Blood Group Selector (Non-mandatory, Unknown allowed) */}
+                <div>
+                  <Select
+                    label="Blood Group (Optional)"
+                    value={bloodGroup}
+                    onChange={(e) => setBloodGroup(e.target.value)}
+                    options={BLOOD_GROUP_OPTIONS.map(opt => ({
+                      value: opt.value,
+                      label: opt.label
+                    }))}
+                  />
+                  <span className="text-[10px] text-slate-400 dark:text-slate-500 mt-1 block">
+                    {bloodGroup.includes('Unknown') || bloodGroup.includes('Not Tested')
+                      ? '✓ Not forced. Can be verified & updated after laboratory testing.'
+                      : '✓ Selected blood group will be stored with verification audit trail.'}
+                  </span>
+                </div>
 
                 <Input
-                  label="Primary Mobile (10-Digits) *"
+                  label="Primary Mobile Number *"
                   placeholder="e.g. 9830012345"
                   value={mobile}
                   onChange={(e) => setMobile(e.target.value)}
@@ -590,11 +725,11 @@ export const PatientCreatePage: React.FC = () => {
                 />
 
                 <Input
-                  label="WhatsApp Number"
+                  label="WhatsApp Number (Optional)"
                   placeholder="e.g. 9830012345"
                   value={whatsapp}
                   onChange={(e) => setWhatsapp(e.target.value)}
-                  helperText="Used for digital health card delivery"
+                  helperText="For digital card & report delivery"
                 />
 
                 <Input
@@ -611,764 +746,899 @@ export const PatientCreatePage: React.FC = () => {
                   onChange={(e) => setMaritalStatus(e.target.value)}
                   options={[
                     { value: 'Married', label: 'Married' },
-                    { value: 'Single', label: 'Single / Unmarried' },
-                    { value: 'Widowed', label: 'Widowed' },
-                    { value: 'Divorced', label: 'Divorced' }
+                    { value: 'Single', label: 'Single' },
+                    { value: 'Divorced', label: 'Divorced' },
+                    { value: 'Widowed', label: 'Widowed' }
                   ]}
                 />
 
-                <div className="grid grid-cols-2 gap-2 sm:col-span-2">
+                <div className="grid grid-cols-2 gap-2">
                   <Select
-                    label="Govt ID Document"
+                    label="Govt ID Type"
                     value={governmentIdType}
                     onChange={(e) => setGovernmentIdType(e.target.value)}
                     options={[
                       { value: 'Aadhaar Card', label: 'Aadhaar Card' },
-                      { value: 'Voter ID', label: 'Voter ID (EPIC)' },
+                      { value: 'Voter ID', label: 'Voter ID' },
                       { value: 'PAN Card', label: 'PAN Card' },
-                      { value: 'ABHA Health ID', label: 'ABHA (NDHM) ID' },
+                      { value: 'Driving License', label: 'Driving License' },
                       { value: 'Passport', label: 'Passport' },
-                      { value: 'Ration Card', label: 'Digital Ration Card' }
+                      { value: 'Ration Card', label: 'Ration Card' },
+                      { value: 'None', label: 'None' }
                     ]}
                   />
                   <Input
-                    label="Government ID / ABHA Number"
-                    placeholder="e.g. 4589 1234 5678"
+                    label="Govt ID Number"
+                    placeholder="XXXX-XXXX-XXXX"
                     value={governmentIdNumber}
                     onChange={(e) => setGovernmentIdNumber(e.target.value)}
                   />
                 </div>
+
+                <Input
+                  label="Occupation"
+                  placeholder="e.g. Business / Service"
+                  value={occupation}
+                  onChange={(e) => setOccupation(e.target.value)}
+                />
               </div>
             </div>
           </div>
 
-          {/* SECTION 2: Address & Emergency Contact */}
+          {/* 2. POSTAL ADDRESS */}
           <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 sm:p-8 border border-slate-200 dark:border-slate-800 shadow-sm space-y-6">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 dark:border-slate-800 pb-3">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
               <h3 className="text-sm font-black uppercase tracking-wider text-slate-800 dark:text-white flex items-center gap-2">
-                <span className="w-6 h-6 rounded-full bg-emerald-100 dark:bg-emerald-900/50 text-emerald-600 dark:text-emerald-400 text-xs font-black flex items-center justify-center">2</span>
-                <span>Address & Emergency Guardianship</span>
+                <span className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/50 text-blue-600 dark:text-blue-400 text-xs font-black flex items-center justify-center">2</span>
+                <span>Permanent Address Details</span>
               </h3>
-              
               <button
                 type="button"
-                id="admin-auto-popup-address-btn"
                 onClick={() => setIsAddressPopupOpen(true)}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 text-white font-bold text-xs shadow-md shadow-blue-500/20 hover:scale-105 transition-all"
+                className="text-xs font-bold text-blue-600 hover:text-blue-500 flex items-center gap-1"
               >
-                <MapPin className="w-3.5 h-3.5" />
-                <span>📍 Auto Popup Address / PIN Lookup</span>
-                <Sparkles className="w-3 h-3 text-amber-300" />
+                <MapPin className="w-3.5 h-3.5" /> PIN Auto-Lookup
               </button>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <Input label="Village / Area / Street *" value={villageArea} onChange={(e) => setVillageArea(e.target.value)} required />
-              <Input label="Post Office *" value={postOffice} onChange={(e) => setPostOffice(e.target.value)} required />
-              <Input label="Police Station *" value={policeStation} onChange={(e) => setPoliceStation(e.target.value)} required />
-              <Input label="District *" value={district} onChange={(e) => setDistrict(e.target.value)} required />
-              <Input label="State *" value={stateVal} onChange={(e) => setStateVal(e.target.value)} required />
-              <div>
-                <Input
-                  label="PIN Code (Auto-Resolves) *"
-                  placeholder="e.g. 700001"
-                  value={pinCode}
-                  onChange={(e) => handlePinCodeChange(e.target.value)}
-                  required
-                />
-                <span className="text-[10.5px] text-blue-600 dark:text-blue-400 font-semibold block mt-0.5">
-                  💡 Type 6-digit PIN for instant auto-fill
-                </span>
-              </div>
-
+              <Input
+                label="PIN Code *"
+                placeholder="e.g. 732142"
+                value={pinCode}
+                onChange={(e) => handlePinCodeChange(e.target.value)}
+                helperText="Auto-populates district and state"
+                required
+              />
+              <Input
+                label="Village / City / Area"
+                value={villageArea}
+                onChange={(e) => setVillageArea(e.target.value)}
+              />
+              <Input
+                label="Post Office"
+                value={postOffice}
+                onChange={(e) => setPostOffice(e.target.value)}
+              />
+              <Input
+                label="Police Station"
+                value={policeStation}
+                onChange={(e) => setPoliceStation(e.target.value)}
+              />
+              <Input
+                label="District *"
+                value={district}
+                onChange={(e) => setDistrict(e.target.value)}
+                required
+              />
+              <Input
+                label="State *"
+                value={stateVal}
+                onChange={(e) => setStateVal(e.target.value)}
+                required
+              />
               <div className="sm:col-span-3">
                 <Input
-                  label="Complete Residential Address"
-                  placeholder="House No, Landmark, Sector, Building..."
+                  label="Street / House No / Full Address Line"
+                  placeholder="e.g. Holding No. 42, Medical Expressway, Ward No. 7"
                   value={fullAddress}
                   onChange={(e) => setFullAddress(e.target.value)}
                 />
               </div>
             </div>
-
-            <div className="pt-4 border-t border-slate-100 dark:border-slate-800">
-              <span className="text-xs font-bold uppercase text-slate-500 block mb-3 flex items-center gap-1.5">
-                <PhoneCall className="w-3.5 h-3.5 text-rose-500" /> Emergency Contact
-              </span>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <Input label="Contact Person Name" placeholder="e.g. Anjali Mukherjee" value={emergencyName} onChange={(e) => setEmergencyName(e.target.value)} />
-                <Input label="Relationship" placeholder="e.g. Spouse / Father / Mother" value={emergencyRelation} onChange={(e) => setEmergencyRelation(e.target.value)} />
-                <Input label="Emergency Phone Number" placeholder="e.g. 9830099999" value={emergencyMobile} onChange={(e) => setEmergencyMobile(e.target.value)} />
-              </div>
-            </div>
           </div>
 
-          {/* SECTION 3: Clinical Triage & Physical Measurements */}
-          <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 sm:p-8 border border-slate-200 dark:border-slate-800 shadow-sm space-y-6">
+          {/* 3. EMERGENCY CONTACT */}
+          <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 sm:p-8 border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
             <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
               <h3 className="text-sm font-black uppercase tracking-wider text-slate-800 dark:text-white flex items-center gap-2">
-                <span className="w-6 h-6 rounded-full bg-rose-100 dark:bg-rose-900/50 text-rose-600 dark:text-rose-400 text-xs font-black flex items-center justify-center">3</span>
-                <span>Clinical Triage & Physical Measurements</span>
+                <span className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/50 text-blue-600 dark:text-blue-400 text-xs font-black flex items-center justify-center">3</span>
+                <span>Emergency Contact Person</span>
               </h3>
-              <Badge variant="purple">Card Back Medical Profile</Badge>
+              <Badge variant="neutral">SOS Contact</Badge>
             </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-slate-50 dark:bg-slate-800/40 p-4 rounded-2xl border border-slate-200/60 dark:border-slate-700/60">
-              <div>
-                <label className="text-[11px] font-bold text-slate-500 uppercase">Blood Pressure</label>
-                <div className="flex items-center gap-1 mt-1">
-                  <input
-                    type="number"
-                    placeholder="120"
-                    value={bpSystolic}
-                    onChange={(e) => setBpSystolic(e.target.value)}
-                    className="w-full text-xs font-bold p-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700"
-                  />
-                  <span className="text-slate-400">/</span>
-                  <input
-                    type="number"
-                    placeholder="80"
-                    value={bpDiastolic}
-                    onChange={(e) => setBpDiastolic(e.target.value)}
-                    className="w-full text-xs font-bold p-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="text-[11px] font-bold text-slate-500 uppercase">Pulse (BPM)</label>
-                <input
-                  type="number"
-                  placeholder="72"
-                  value={pulse}
-                  onChange={(e) => setPulse(e.target.value)}
-                  className="w-full text-xs font-bold p-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 mt-1"
-                />
-              </div>
-
-              <div>
-                <label className="text-[11px] font-bold text-slate-500 uppercase">Random Blood Sugar</label>
-                <input
-                  type="number"
-                  placeholder="mg/dL"
-                  value={rbs}
-                  onChange={(e) => setRbs(e.target.value)}
-                  className="w-full text-xs font-bold p-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 mt-1"
-                />
-              </div>
-
-              <div>
-                <label className="text-[11px] font-bold text-slate-500 uppercase">Oxygen (SpO2 %)</label>
-                <input
-                  type="number"
-                  placeholder="98"
-                  value={spo2}
-                  onChange={(e) => setSpo2(e.target.value)}
-                  className="w-full text-xs font-bold p-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 mt-1"
-                />
-              </div>
-
-              <div>
-                <label className="text-[11px] font-bold text-slate-500 uppercase">Weight (kg)</label>
-                <input
-                  type="number"
-                  placeholder="65"
-                  value={weightKg}
-                  onChange={(e) => setWeightKg(e.target.value)}
-                  className="w-full text-xs font-bold p-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 mt-1"
-                />
-              </div>
-
-              <div>
-                <label className="text-[11px] font-bold text-slate-500 uppercase">Height (cm)</label>
-                <input
-                  type="number"
-                  placeholder="170"
-                  value={heightCm}
-                  onChange={(e) => setHeightCm(e.target.value)}
-                  className="w-full text-xs font-bold p-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 mt-1"
-                />
-              </div>
-
-              <div className="col-span-2 flex items-center justify-between p-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700">
-                <span className="text-xs font-bold text-slate-500">Auto Computed BMI</span>
-                {bmiData ? (
-                  <span className={`text-xs font-black px-2.5 py-1 rounded-lg border ${bmiData.color}`}>
-                    {bmiData.val} kg/m² • {bmiData.category}
-                  </span>
-                ) : (
-                  <span className="text-xs text-slate-400">Enter Wt & Ht</span>
-                )}
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <Input label="Known Drug Allergies" placeholder="e.g. Penicillin, Sulfa, None" value={allergies} onChange={(e) => setAllergies(e.target.value)} />
-              <Input label="Chronic Medical Conditions" placeholder="e.g. Hypertension, Type-2 Diabetes, Asthma" value={chronicConditions} onChange={(e) => setChronicConditions(e.target.value)} />
-              <div className="sm:col-span-2">
-                <Input label="Special Physician / Clinical Follow-up Notes" placeholder="Special patient instructions or priority clinical notes..." value={importantNotes} onChange={(e) => setImportantNotes(e.target.value)} />
-              </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <Input
+                label="Contact Name"
+                placeholder="e.g. Sunita Mukherjee"
+                value={emergencyName}
+                onChange={(e) => setEmergencyName(e.target.value)}
+              />
+              <Select
+                label="Relationship"
+                value={emergencyRelation}
+                onChange={(e) => setEmergencyRelation(e.target.value)}
+                options={[
+                  { value: 'Spouse', label: 'Spouse' },
+                  { value: 'Parent', label: 'Parent' },
+                  { value: 'Son', label: 'Son' },
+                  { value: 'Daughter', label: 'Daughter' },
+                  { value: 'Brother', label: 'Brother' },
+                  { value: 'Sister', label: 'Sister' },
+                  { value: 'Relative', label: 'Relative' },
+                  { value: 'Friend', label: 'Friend' }
+                ]}
+              />
+              <Input
+                label="Emergency Mobile"
+                placeholder="e.g. 9830012345"
+                value={emergencyMobile}
+                onChange={(e) => setEmergencyMobile(e.target.value)}
+              />
             </div>
           </div>
 
-          {/* SECTION 4: "Others Recommend" / Referral Details (USER EXPLICIT REQUEST) */}
-          <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 sm:p-8 border border-slate-200 dark:border-slate-800 shadow-sm space-y-6">
+          {/* 4. CLINICAL TRIAGE & PHYSICAL MEASUREMENTS (Configurable ON/OFF) */}
+          <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 sm:p-8 border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
             <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
-              <h3 className="text-sm font-black uppercase tracking-wider text-slate-800 dark:text-white flex items-center gap-2">
-                <span className="w-6 h-6 rounded-full bg-amber-100 dark:bg-amber-900/50 text-amber-600 dark:text-amber-400 text-xs font-black flex items-center justify-center">4</span>
-                <span>Referral Channel & "Others Recommend"</span>
-              </h3>
-              <Badge variant="warning">Referral Tracking</Badge>
-            </div>
-
-            <div className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <Select
-                  label="Referred By / Channel Source"
-                  value={referralSource}
-                  onChange={(e) => setReferralSource(e.target.value as any)}
-                  options={[
-                    { value: 'none', label: 'Direct Walk-in (Self Registered)' },
-                    { value: 'doctor', label: 'Doctor Recommendation / Specialist' },
-                    { value: 'existing_cardholder', label: 'Existing Cardholder / Family Referral' },
-                    { value: 'staff', label: 'Hospital Staff / Reception Desk' },
-                    { value: 'camp', label: 'Free Health Camp / Village Outreach' },
-                    { value: 'agent', label: 'Health Advisor / Field Agent' },
-                    { value: 'other', label: 'Other Recommend / Corporate / NGO' }
-                  ]}
-                />
-
-                {referralSource === 'doctor' && (
-                  <Select
-                    label="Select Registered Doctor"
-                    value={selectedDoctorId}
-                    onChange={(e) => setSelectedDoctorId(e.target.value)}
-                    options={[
-                      { value: '', label: '-- Choose Doctor or Type Below --' },
-                      ...doctors.map((d: DoctorMasterItem) => ({
-                        value: d.id,
-                        label: `Dr. ${d.name} (${d.speciality} • ${d.department})`
-                      }))
-                    ]}
-                  />
-                )}
-
-                {referralSource === 'existing_cardholder' && (
-                  <Input
-                    label="Referrer Health Card / Patient ID"
-                    placeholder="e.g. LHC-2026-000001 or LMDX-2026-000001"
-                    value={referralCardNumber}
-                    onChange={(e) => setReferralCardNumber(e.target.value)}
-                    helperText="Enters referrer patient ID for referral rewards"
-                  />
-                )}
-
-                {referralSource === 'camp' && (
-                  <Input
-                    label="Health Camp Name & Code"
-                    placeholder="e.g. Sonarpur Free Mega Camp (Code: CAMP-2026-04)"
-                    value={referralCampName}
-                    onChange={(e) => setReferralCampName(e.target.value)}
-                  />
-                )}
-
-                {referralSource === 'agent' && (
-                  <Input
-                    label="Field Agent Code / ID"
-                    placeholder="e.g. AGENT-KOL-88"
-                    value={referralAgentId}
-                    onChange={(e) => setReferralAgentId(e.target.value)}
-                  />
-                )}
-              </div>
-
-              {/* Dynamic secondary fields */}
-              {referralSource !== 'none' && (
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2 bg-amber-50/40 dark:bg-amber-950/20 p-4 rounded-2xl border border-amber-200/50 dark:border-amber-900/50">
-                  <Input
-                    label="Recommender / Person Name"
-                    placeholder={referralSource === 'doctor' ? 'Doctor Name (if not in list)' : 'Name of person who recommended'}
-                    value={referralSource === 'doctor' && !selectedDoctorId ? customDoctorName : referralPersonName}
-                    onChange={(e) => {
-                      if (referralSource === 'doctor' && !selectedDoctorId) setCustomDoctorName(e.target.value);
-                      else setReferralPersonName(e.target.value);
-                    }}
-                  />
-                  <Input
-                    label="Recommender Contact Phone"
-                    placeholder="e.g. 9830088888"
-                    value={referralContact}
-                    onChange={(e) => setReferralContact(e.target.value)}
-                  />
-                  <Input
-                    label="Clinic / Remarks / Notes"
-                    placeholder="e.g. Care Polyclinic / Community club"
-                    value={referralSource === 'doctor' ? doctorClinic : referralNotes}
-                    onChange={(e) => {
-                      if (referralSource === 'doctor') setDoctorClinic(e.target.value);
-                      else setReferralNotes(e.target.value);
-                    }}
-                  />
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* SECTION 5: Multi-Family Shield & Dependent Card Issuance (USER EXPLICIT REQUEST) */}
-          <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 sm:p-8 border border-slate-200 dark:border-slate-800 shadow-sm space-y-6">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800 pb-3">
-              <div>
+              <div className="flex items-center gap-2">
+                <span className="w-6 h-6 rounded-full bg-teal-100 dark:bg-teal-900/50 text-teal-600 dark:text-teal-400 text-xs font-black flex items-center justify-center">4</span>
                 <h3 className="text-sm font-black uppercase tracking-wider text-slate-800 dark:text-white flex items-center gap-2">
-                  <span className="w-6 h-6 rounded-full bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400 text-xs font-black flex items-center justify-center">5</span>
-                  <span>Family Health Shield & Dependent Card Issuance</span>
+                  <span>Clinical Triage & Physical Measurements</span>
                 </h3>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                  Add multiple family members under a single card account. Check the box to auto-issue cards!
-                </p>
               </div>
 
-              <button
-                type="button"
-                onClick={() => {
-                  setEnableFamilyShield(!enableFamilyShield);
-                  if (!enableFamilyShield && familyMembers.length === 0) {
-                    addFamilyMemberRow();
-                  }
-                }}
-                className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
-                  enableFamilyShield
-                    ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20'
-                    : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200'
-                }`}
-              >
-                <Users className="w-4 h-4" />
-                {enableFamilyShield ? 'Family Shield Active' : '+ Enable Family Shield'}
-              </button>
+              {/* Central / In-Form ON/OFF Switch */}
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-slate-500 font-bold">
+                  {enableClinicalTriage ? 'Section: ON' : 'Section: OFF (Default)'}
+                </span>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={enableClinicalTriage}
+                    onChange={(e) => setEnableClinicalTriage(e.target.checked)}
+                    className="sr-only peer"
+                  />
+                  <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-800 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-slate-600 peer-checked:bg-teal-600"></div>
+                </label>
+              </div>
             </div>
 
-            {enableFamilyShield && (
-              <div className="space-y-6">
-                {/* Family Group Name */}
-                <div className="bg-indigo-50/50 dark:bg-indigo-950/30 p-4 rounded-2xl border border-indigo-200/60 dark:border-indigo-900/60">
-                  <Input
-                    label="Family Shield / Group Account Name"
-                    placeholder={`e.g. ${fullName ? `${fullName}'s Family Health Shield` : 'Mukherjee Family Health Shield'}`}
-                    value={familyName}
-                    onChange={(e) => setFamilyName(e.target.value)}
-                    helperText="Primary member will be designated as Head of Family. All issued cards share family tier discounts."
-                  />
-                </div>
-
-                {/* Family Members Dynamic List */}
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                      Family Members List ({familyMembers.length})
-                    </span>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      onClick={addFamilyMemberRow}
-                      leftIcon={<Plus className="w-3.5 h-3.5" />}
-                    >
-                      Add Another Member
-                    </Button>
+            {enableClinicalTriage ? (
+              <div className="space-y-4 pt-2">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                  <div>
+                    <label className="block text-xs font-semibold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-1.5">
+                      Blood Pressure (mmHg)
+                    </label>
+                    <div className="flex items-center gap-1.5">
+                      <Input
+                        placeholder="Sys"
+                        value={bpSystolic}
+                        onChange={(e) => setBpSystolic(e.target.value)}
+                      />
+                      <span className="text-slate-400 font-bold">/</span>
+                      <Input
+                        placeholder="Dia"
+                        value={bpDiastolic}
+                        onChange={(e) => setBpDiastolic(e.target.value)}
+                      />
+                    </div>
                   </div>
 
-                  {familyMembers.length === 0 ? (
-                    <div className="text-center py-6 border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-2xl">
-                      <Users className="w-8 h-8 text-slate-400 mx-auto mb-2" />
-                      <p className="text-xs text-slate-500">No family dependents added yet.</p>
-                      <button
-                        type="button"
-                        onClick={addFamilyMemberRow}
-                        className="text-xs font-bold text-blue-600 hover:underline mt-1"
-                      >
-                        + Click here to add spouse, children or parents
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="space-y-4">
-                      {familyMembers.map((member, idx) => (
-                        <div
-                          key={member.id}
-                          className="bg-slate-50 dark:bg-slate-800/60 p-5 rounded-2xl border border-slate-200 dark:border-slate-700 space-y-4 relative"
-                        >
-                          <div className="flex items-center justify-between">
-                            <span className="text-xs font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-wider flex items-center gap-1.5">
-                              <Users className="w-3.5 h-3.5" /> Member #{idx + 1}
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() => removeFamilyMember(member.id)}
-                              className="text-rose-500 hover:text-rose-700 p-1 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </div>
+                  <Input
+                    label="Pulse (bpm)"
+                    type="number"
+                    placeholder="72"
+                    value={pulse}
+                    onChange={(e) => setPulse(e.target.value)}
+                  />
 
-                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                            <Input
-                              label="Member Full Name *"
-                              placeholder="e.g. Suman Mukherjee"
-                              value={member.fullName}
-                              onChange={(e) => updateFamilyMember(member.id, 'fullName', e.target.value)}
-                              required
-                            />
+                  <Input
+                    label="SpO₂ (%)"
+                    type="number"
+                    placeholder="99"
+                    value={spo2}
+                    onChange={(e) => setSpo2(e.target.value)}
+                  />
 
-                            <Select
-                              label="Relationship to Head *"
-                              value={member.relationship}
-                              onChange={(e) => updateFamilyMember(member.id, 'relationship', e.target.value)}
-                              options={[
-                                { value: 'Spouse', label: 'Spouse / Wife / Husband' },
-                                { value: 'Son', label: 'Son' },
-                                { value: 'Daughter', label: 'Daughter' },
-                                { value: 'Father', label: 'Father' },
-                                { value: 'Mother', label: 'Mother' },
-                                { value: 'Brother', label: 'Brother' },
-                                { value: 'Sister', label: 'Sister' },
-                                { value: 'Grandfather', label: 'Grandfather' },
-                                { value: 'Grandmother', label: 'Grandmother' },
-                                { value: 'Father-in-law', label: 'Father-in-law' },
-                                { value: 'Mother-in-law', label: 'Mother-in-law' },
-                                { value: 'Dependent', label: 'Dependent' },
-                                { value: 'Other', label: 'Other' }
-                              ]}
-                            />
+                  <Input
+                    label="Temperature (°F)"
+                    placeholder="98.4"
+                    value={temperature}
+                    onChange={(e) => setTemperature(e.target.value)}
+                  />
 
-                            <div className="grid grid-cols-2 gap-2">
-                              <Input
-                                label="Age"
-                                type="number"
-                                value={member.age || ''}
-                                onChange={(e) => updateFamilyMember(member.id, 'age', parseInt(e.target.value, 10) || 0)}
-                              />
-                              <Select
-                                label="Gender"
-                                value={member.gender}
-                                onChange={(e) => updateFamilyMember(member.id, 'gender', e.target.value as any)}
-                                options={[
-                                  { value: 'female', label: 'Female' },
-                                  { value: 'male', label: 'Male' },
-                                  { value: 'other', label: 'Other' }
-                                ]}
-                              />
-                            </div>
+                  <Input
+                    label="Respiratory Rate (/min)"
+                    type="number"
+                    placeholder="16"
+                    value={respiratoryRate}
+                    onChange={(e) => setRespiratoryRate(e.target.value)}
+                  />
 
-                            <Select
-                              label="Blood Group"
-                              value={member.bloodGroup}
-                              onChange={(e) => updateFamilyMember(member.id, 'bloodGroup', e.target.value)}
-                              options={[
-                                { value: 'A+', label: 'A+' },
-                                { value: 'A-', label: 'A-' },
-                                { value: 'B+', label: 'B+' },
-                                { value: 'B-', label: 'B-' },
-                                { value: 'O+', label: 'O+' },
-                                { value: 'O-', label: 'O-' },
-                                { value: 'AB+', label: 'AB+' },
-                                { value: 'AB-', label: 'AB-' }
-                              ]}
-                            />
+                  <Input
+                    label="Height (cm)"
+                    type="number"
+                    placeholder="172"
+                    value={heightCm}
+                    onChange={(e) => setHeightCm(e.target.value)}
+                  />
 
-                            <Input
-                              label="Mobile Number"
-                              placeholder="Optional or same as head"
-                              value={member.mobile || ''}
-                              onChange={(e) => updateFamilyMember(member.id, 'mobile', e.target.value)}
-                            />
+                  <Input
+                    label="Weight (kg)"
+                    type="number"
+                    placeholder="68"
+                    value={weightKg}
+                    onChange={(e) => setWeightKg(e.target.value)}
+                  />
 
-                            <Input
-                              label="Allergies / Conditions"
-                              placeholder="e.g. Penicillin / None"
-                              value={member.allergies || ''}
-                              onChange={(e) => updateFamilyMember(member.id, 'allergies', e.target.value)}
-                            />
-                          </div>
-
-                          {/* KEY CHECKBOX: Card Issuance for this member (USER REQUIREMENT) */}
-                          <div className="pt-2 border-t border-slate-200/60 dark:border-slate-700/60 flex items-center justify-between bg-white dark:bg-slate-900 p-3 rounded-xl">
-                            <label className="flex items-center gap-2.5 cursor-pointer select-none">
-                              <input
-                                type="checkbox"
-                                checked={member.issueCard}
-                                onChange={(e) => updateFamilyMember(member.id, 'issueCard', e.target.checked)}
-                                className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-slate-300 dark:border-slate-600"
-                              />
-                              <div>
-                                <span className="text-xs font-black text-slate-800 dark:text-white flex items-center gap-1.5">
-                                  <CreditCard className="w-3.5 h-3.5 text-blue-600" />
-                                  Issue Individual CR80 Health Card for {member.fullName || 'this member'}
-                                </span>
-                                <span className="text-[10px] text-slate-500 block">
-                                  Generates a dedicated card number, QR code & smart verification credentials under this family account.
-                                </span>
-                              </div>
-                            </label>
-
-                            <Badge variant={member.issueCard ? 'success' : 'neutral'}>
-                              {member.issueCard ? 'Card Will Be Issued' : 'Dependent Only (No Card)'}
-                            </Badge>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
+                  <Input
+                    label="RBS (mg/dL)"
+                    placeholder="105"
+                    value={rbs}
+                    onChange={(e) => setRbs(e.target.value)}
+                  />
                 </div>
+
+                {bmiData && (
+                  <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700 flex items-center justify-between text-xs">
+                    <span className="text-slate-500 font-medium">Calculated Body Mass Index (BMI):</span>
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono font-bold text-slate-900 dark:text-white text-sm">
+                        {bmiData.val} kg/m²
+                      </span>
+                      <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${bmiData.color}`}>
+                        {bmiData.category}
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <Input
+                    label="Known Drug / Environmental Allergies"
+                    placeholder="None or list allergies"
+                    value={allergies}
+                    onChange={(e) => setAllergies(e.target.value)}
+                  />
+                  <Input
+                    label="Known Chronic Medical Conditions"
+                    placeholder="None or e.g. Diabetes, Hypertension"
+                    value={chronicConditions}
+                    onChange={(e) => setChronicConditions(e.target.value)}
+                  />
+                </div>
+              </div>
+            ) : (
+              <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-dashed border-slate-200 dark:border-slate-700/60 text-center text-xs text-slate-500 space-y-1">
+                <p className="font-medium text-slate-700 dark:text-slate-300">
+                  Clinical Measurements Section is currently <strong>OFF</strong>.
+                </p>
+                <p className="text-[11px] text-slate-400">
+                  Staff is not required to take clinical vitals. Patient registration and Health Card enrollment will proceed normally.
+                </p>
               </div>
             )}
           </div>
 
-          {/* SECTION 6: Health Card Membership Plan & Customization */}
-          <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 sm:p-8 border border-slate-200 dark:border-slate-800 shadow-sm space-y-6">
+          {/* 5. REFERRAL DETAILS */}
+          <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 sm:p-8 border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
             <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
               <h3 className="text-sm font-black uppercase tracking-wider text-slate-800 dark:text-white flex items-center gap-2">
-                <span className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/50 text-blue-600 dark:text-blue-400 text-xs font-black flex items-center justify-center">6</span>
-                <span>Health Card Tier, Styling & Wallet Deposit</span>
+                <span className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/50 text-blue-600 dark:text-blue-400 text-xs font-black flex items-center justify-center">5</span>
+                <span>Referral Channel & Recommending Entity</span>
               </h3>
-              <Badge variant="success">Live Config</Badge>
+              <Badge variant="neutral">Outreach Attribution</Badge>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
+              <Select
+                label="Referral Source"
+                value={referralSource}
+                onChange={(e) => setReferralSource(e.target.value as any)}
+                options={[
+                  { value: 'none', label: 'Direct / Walk-in Patient' },
+                  { value: 'doctor', label: 'Registered Doctor / Medical Practitioner' },
+                  { value: 'existing_cardholder', label: 'Existing Health Cardholder Referral' },
+                  { value: 'camp', label: 'Community Health Camp Outreach' },
+                  { value: 'agent', label: 'Healthcare Field Agent / Partner' },
+                  { value: 'staff', label: 'LABMEDIX Staff Referral' },
+                  { value: 'other', label: 'Other Social / Digital Channel' }
+                ]}
+              />
+
+              {referralSource === 'doctor' && (
                 <Select
-                  label="Select Membership Plan *"
-                  value={membershipId}
-                  onChange={(e) => handleMembershipChange(e.target.value)}
-                  options={memberships.map((m) => ({
-                    value: m.id,
-                    label: `${m.isRecommended ? '⭐ ' : ''}${m.name} (Reg Fee: ₹${m.registrationFee} • OPD ${m.opdDiscount}% | Lab ${m.labDiscount}%)${m.isRecommended ? ' — [RECOMMENDED]' : ''}`
-                  }))}
+                  label="Select Registered Doctor"
+                  value={selectedDoctorId}
+                  onChange={(e) => setSelectedDoctorId(e.target.value)}
+                  options={[
+                    { value: '', label: '-- Choose from Doctor Master --' },
+                    ...doctors.map(d => ({
+                      value: d.id,
+                      label: `Dr. ${d.name} (${d.speciality || 'General'})`
+                    }))
+                  ]}
                 />
-                {selectedMembership?.isRecommended && (
-                  <div className="mt-2.5 flex items-center justify-between gap-2 px-3 py-2 rounded-xl bg-black text-white border-2 border-black dark:border-slate-700 shadow-md">
-                    <div className="flex items-center gap-2">
-                      <span className="px-2 py-0.5 rounded-md bg-white text-black font-black text-[10px] tracking-wider uppercase flex items-center gap-1 shadow-xs shrink-0">
-                        <Star className="w-3 h-3 fill-black text-black shrink-0" />
-                        RECOMMENDED
-                      </span>
-                      <span className="text-xs font-black text-white tracking-tight">
-                        System Recommended Tier: Centralized Standard Healthcare Package
+              )}
+
+              {referralSource === 'existing_cardholder' && (
+                <>
+                  <Input
+                    label="Referrer Card Number"
+                    placeholder="LHC-2026-XXXXXX"
+                    value={referralCardNumber}
+                    onChange={(e) => setReferralCardNumber(e.target.value)}
+                  />
+                  <Input
+                    label="Referrer Full Name"
+                    placeholder="e.g. Amitava Sen"
+                    value={referralPersonName}
+                    onChange={(e) => setReferralPersonName(e.target.value)}
+                  />
+                </>
+              )}
+
+              {referralSource === 'camp' && (
+                <Input
+                  label="Health Camp Name / Location"
+                  placeholder="e.g. Malda Mega Health Camp 2026"
+                  value={referralCampName}
+                  onChange={(e) => setReferralCampName(e.target.value)}
+                />
+              )}
+
+              {referralSource === 'agent' && (
+                <>
+                  <Input
+                    label="Agent ID / Code"
+                    placeholder="e.g. AGT-WB-09"
+                    value={referralAgentId}
+                    onChange={(e) => setReferralAgentId(e.target.value)}
+                  />
+                  <Input
+                    label="Agent Name"
+                    placeholder="e.g. Swapan Roy"
+                    value={referralPersonName}
+                    onChange={(e) => setReferralPersonName(e.target.value)}
+                  />
+                </>
+              )}
+            </div>
+          </div>
+
+          {/* 6. FAMILY HEALTH SHIELD & DEPENDENTS (Allowance: 5 Included) */}
+          <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 sm:p-8 border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 dark:border-slate-800 pb-3">
+              <div className="flex items-center gap-2">
+                <span className="w-6 h-6 rounded-full bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400 text-xs font-black flex items-center justify-center">6</span>
+                <h3 className="text-sm font-black uppercase tracking-wider text-slate-800 dark:text-white flex items-center gap-2">
+                  <span>Family Health Shield & Dependent Enrollment</span>
+                </h3>
+              </div>
+
+              {/* Real-time Counter: Family Members Added: X / 5 */}
+              <div className="flex items-center gap-2">
+                <span
+                  className={`px-3 py-1 rounded-full text-xs font-black font-mono border transition-all ${
+                    familyMembers.length <= maxIncludedMembers
+                      ? 'bg-emerald-50 text-emerald-700 border-emerald-300 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-700'
+                      : 'bg-amber-50 text-amber-800 border-amber-300 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-700'
+                  }`}
+                >
+                  Family Members Added: {familyMembers.length} / {maxIncludedMembers}
+                </span>
+
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={addFamilyMemberRow}
+                  leftIcon={<Plus className="w-3.5 h-3.5" />}
+                  className="text-xs"
+                >
+                  Add Dependent
+                </Button>
+              </div>
+            </div>
+
+            {/* Surcharge Notification when > 5 members */}
+            {familyMembers.length > maxIncludedMembers && (
+              <div className="p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-700/80 text-amber-900 dark:text-amber-200 space-y-2 animate-in fade-in duration-200">
+                <div className="flex items-center gap-2 font-bold text-xs">
+                  <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+                  <span>Standard Family Allowance Exceeded ({maxIncludedMembers} Included)</span>
+                </div>
+                <p className="text-xs text-slate-600 dark:text-amber-200/90 leading-relaxed">
+                  You have added <strong>{familyMembers.length} family members</strong>. The first{' '}
+                  <strong>{maxIncludedMembers} dependents</strong> are included under the standard Family Health Shield allowance. Additional dependents incur an applicable card charge of{' '}
+                  <strong>₹{additionalMemberFee} each</strong>.
+                </p>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2 border-t border-amber-200 dark:border-amber-800/60 font-mono text-xs">
+                  <div className="p-2.5 rounded-xl bg-white/80 dark:bg-slate-900/80 border border-amber-200/80">
+                    <span className="text-[10px] text-slate-500 block uppercase font-sans">Included Members</span>
+                    <span className="font-bold text-emerald-600">{maxIncludedMembers}</span>
+                  </div>
+                  <div className="p-2.5 rounded-xl bg-white/80 dark:bg-slate-900/80 border border-amber-200/80">
+                    <span className="text-[10px] text-slate-500 block uppercase font-sans">Additional Members</span>
+                    <span className="font-bold text-amber-600">{familyMembers.length - maxIncludedMembers}</span>
+                  </div>
+                  <div className="p-2.5 rounded-xl bg-white/80 dark:bg-slate-900/80 border border-amber-200/80">
+                    <span className="text-[10px] text-slate-500 block uppercase font-sans">Additional Card Charge</span>
+                    <span className="font-bold text-slate-900 dark:text-white">
+                      ₹{(familyMembers.length - maxIncludedMembers) * additionalMemberFee}
+                    </span>
+                  </div>
+                  <div className="p-2.5 rounded-xl bg-white/80 dark:bg-slate-900/80 border border-amber-200/80">
+                    <span className="text-[10px] text-slate-500 block uppercase font-sans">Total Payable</span>
+                    <span className="font-bold text-blue-600">{formatCurrency(billCalculation.netPayable)}</span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {familyMembers.length === 0 ? (
+              <div className="p-6 rounded-2xl bg-slate-50 dark:bg-slate-800/30 border border-dashed border-slate-200 dark:border-slate-800 text-center space-y-2">
+                <Users className="w-8 h-8 text-slate-400 mx-auto" />
+                <p className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                  No Family Members Added Yet (0 / {maxIncludedMembers})
+                </p>
+                <p className="text-xs text-slate-400 max-w-sm mx-auto">
+                  Primary holder can include spouse, children, and parents under the same Family Health Shield.
+                </p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={addFamilyMemberRow}
+                  leftIcon={<Plus className="w-3.5 h-3.5" />}
+                  className="mt-2 text-xs"
+                >
+                  Add Family Member
+                </Button>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {familyMembers.map((member, index) => (
+                  <div
+                    key={member.id}
+                    className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/80 space-y-3 relative group"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="w-6 h-6 rounded-lg bg-indigo-100 text-indigo-700 dark:bg-indigo-900/60 dark:text-indigo-300 font-bold text-xs flex items-center justify-center font-mono">
+                          #{index + 1}
+                        </span>
+                        <span className="text-xs font-black text-slate-900 dark:text-white">
+                          Family Member {index + 1}{' '}
+                          {index < maxIncludedMembers ? (
+                            <span className="text-emerald-600 font-normal text-[11px]">(Included in standard allowance)</span>
+                          ) : (
+                            <span className="text-amber-600 font-bold text-[11px]">(+₹{additionalMemberFee} Extra Charge)</span>
+                          )}
+                        </span>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => removeFamilyMember(member.id)}
+                        className="text-slate-400 hover:text-rose-500 p-1.5 rounded-lg transition-colors"
+                        title="Remove Dependent"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                      <Input
+                        label="Full Name *"
+                        placeholder="e.g. Priya Mukherjee"
+                        value={member.fullName}
+                        onChange={(e) => updateFamilyMember(member.id, 'fullName', e.target.value)}
+                        required
+                      />
+
+                      <Select
+                        label="Relationship *"
+                        value={member.relationship}
+                        onChange={(e) => updateFamilyMember(member.id, 'relationship', e.target.value)}
+                        options={[
+                          { value: 'Spouse', label: 'Spouse' },
+                          { value: 'Son', label: 'Son' },
+                          { value: 'Daughter', label: 'Daughter' },
+                          { value: 'Father', label: 'Father' },
+                          { value: 'Mother', label: 'Mother' },
+                          { value: 'Brother', label: 'Brother' },
+                          { value: 'Sister', label: 'Sister' },
+                          { value: 'Other Dependent', label: 'Other' }
+                        ]}
+                      />
+
+                      <div className="grid grid-cols-2 gap-2">
+                        <Input
+                          label="Age"
+                          type="number"
+                          placeholder="28"
+                          value={member.age || ''}
+                          onChange={(e) => updateFamilyMember(member.id, 'age', parseInt(e.target.value, 10) || 0)}
+                        />
+                        <Select
+                          label="Gender"
+                          value={member.gender}
+                          onChange={(e) => updateFamilyMember(member.id, 'gender', e.target.value)}
+                          options={[
+                            { value: 'female', label: 'Female' },
+                            { value: 'male', label: 'Male' },
+                            { value: 'other', label: 'Other' }
+                          ]}
+                        />
+                      </div>
+
+                      <Select
+                        label="Blood Group"
+                        value={member.bloodGroup || 'Unknown / Not Known'}
+                        onChange={(e) => updateFamilyMember(member.id, 'bloodGroup', e.target.value)}
+                        options={BLOOD_GROUP_OPTIONS.map(opt => ({
+                          value: opt.value,
+                          label: opt.badge
+                        }))}
+                      />
+                    </div>
+
+                    <div className="flex items-center justify-between pt-1 border-t border-slate-200/50 dark:border-slate-700/50 text-xs">
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          id={`issue_card_${member.id}`}
+                          checked={member.issueCard}
+                          onChange={(e) => updateFamilyMember(member.id, 'issueCard', e.target.checked)}
+                          disabled={!issueHealthCard}
+                          className="rounded text-blue-600 focus:ring-blue-500"
+                        />
+                        <label
+                          htmlFor={`issue_card_${member.id}`}
+                          className={`cursor-pointer ${!issueHealthCard ? 'text-slate-400' : 'text-slate-700 dark:text-slate-300'}`}
+                        >
+                          Issue Individual Health Card for this dependent
+                        </label>
+                      </div>
+
+                      <span className="text-[10px] text-slate-400">
+                        Generates dedicated patient ID in Firestore
                       </span>
                     </div>
-                    <span className="text-[10px] font-mono font-black text-amber-400 uppercase tracking-widest hidden sm:inline">
-                      TOP CHOICE
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* 7. SMART HEALTH CARD ISSUANCE (OFF BY DEFAULT) */}
+          <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 sm:p-8 border border-slate-200 dark:border-slate-800 shadow-sm space-y-6">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+              <h3 className="text-sm font-black uppercase tracking-wider text-slate-800 dark:text-white flex items-center gap-2">
+                <span className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/50 text-blue-600 dark:text-blue-400 text-xs font-black flex items-center justify-center">7</span>
+                <span>Smart Health Card Enrollment (OFF by Default)</span>
+              </h3>
+              <Badge variant={issueHealthCard ? 'success' : 'neutral'}>
+                {issueHealthCard ? 'Card Issuance: ON' : 'Card Issuance: OFF'}
+              </Badge>
+            </div>
+
+            {/* Prominent Toggle Banner */}
+            <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700/80 flex items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div
+                  className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all ${
+                    issueHealthCard
+                      ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20'
+                      : 'bg-slate-200 dark:bg-slate-800 text-slate-500'
+                  }`}
+                >
+                  <CreditCard className="w-6 h-6" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                    <span>Issue Smart Health Card</span>
+                    <span className="text-xs font-normal text-slate-500">
+                      ({issueHealthCard ? 'Enabled' : 'Disabled by Default'})
+                    </span>
+                  </h4>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 max-w-lg leading-relaxed">
+                    Card issuance is <strong>OFF by default</strong> to prevent accidental card creation. Enable this only when patient explicitly requests an active Health Card.
+                  </p>
+                </div>
+              </div>
+
+              <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                <input
+                  type="checkbox"
+                  checked={issueHealthCard}
+                  onChange={(e) => setIssueHealthCard(e.target.checked)}
+                  className="sr-only peer"
+                />
+                <div className="w-14 h-7 bg-slate-300 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[4px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all dark:border-slate-600 peer-checked:bg-blue-600"></div>
+              </label>
+            </div>
+
+            {/* When Card Issuance is ON: Show Tier, Preset & Material Options */}
+            {issueHealthCard ? (
+              <div className="space-y-4 pt-2">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <Select
+                    label="Membership Tier *"
+                    value={membershipId}
+                    onChange={(e) => handleMembershipChange(e.target.value)}
+                    options={memberships.map(m => ({
+                      value: m.id,
+                      label: `${m.name} (${formatCurrency(m.registrationFee || 0)})`
+                    }))}
+                  />
+
+                  <Select
+                    label="CR80 Card Visual Theme"
+                    value={cardPreset}
+                    onChange={(e) => setCardPreset(e.target.value as any)}
+                    options={[
+                      { value: 'royal_gold', label: 'Royal Gold & Navy' },
+                      { value: 'platinum_elite', label: 'Platinum Elite' },
+                      { value: 'emerald_health', label: 'Emerald Health' },
+                      { value: 'executive_navy', label: 'Executive Navy' },
+                      { value: 'clean_minimal', label: 'Clean Minimalist' },
+                      { value: 'crimson_care', label: 'Crimson Care' }
+                    ]}
+                  />
+
+                  <Select
+                    label="Card Material Finish"
+                    value={cardMaterial}
+                    onChange={(e) => setCardMaterial(e.target.value as any)}
+                    options={[
+                      { value: 'metallic', label: 'Metallic Foil Embossed' },
+                      { value: 'gloss', label: 'Standard High Gloss' },
+                      { value: 'matte', label: 'Matte Silk Velvet' },
+                      { value: 'hologram', label: 'Holographic Anti-Counterfeit' }
+                    ]}
+                  />
+                </div>
+
+                <div className="p-3.5 rounded-2xl bg-blue-50/70 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900/40 flex items-center justify-between text-xs">
+                  <div className="flex items-center gap-2 text-blue-900 dark:text-blue-300">
+                    <Sparkles className="w-4 h-4 text-amber-500" />
+                    <span>
+                      Tier Benefits: <strong>OPD {selectedMembership?.opdDiscount || 20}% OFF</strong> •{' '}
+                      <strong>Lab {selectedMembership?.labDiscount || 25}% OFF</strong> • Pharmacy{' '}
+                      {selectedMembership?.pharmacyDiscount || 15}% OFF
+                    </span>
+                  </div>
+                  <span className="font-mono font-bold text-blue-600 dark:text-blue-400">
+                    Validity: {selectedMembership?.validityMonths || 12} Months
+                  </span>
+                </div>
+              </div>
+            ) : (
+              <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/30 border border-dashed border-slate-200 dark:border-slate-800 text-center text-xs text-slate-500">
+                Card options disabled. Patient will be registered directly without health card charges.
+              </div>
+            )}
+          </div>
+
+          {/* 8. STEP-BY-STEP REVIEW, BILLING & CONFIRMATION */}
+          <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 sm:p-8 border border-slate-200 dark:border-slate-800 shadow-sm space-y-6">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+              <h3 className="text-sm font-black uppercase tracking-wider text-slate-800 dark:text-white flex items-center gap-2">
+                <span className="w-6 h-6 rounded-full bg-emerald-100 dark:bg-emerald-900/50 text-emerald-600 dark:text-emerald-400 text-xs font-black flex items-center justify-center">8</span>
+                <span>Enrollment Summary, Billing & Final Confirmation</span>
+              </h3>
+              <Badge variant="success">Final Step</Badge>
+            </div>
+
+            {/* Complete Review & Charges Breakdown */}
+            <div className="p-5 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700/80 space-y-4 text-xs">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div>
+                  <span className="text-slate-400 block text-[10px] uppercase">Cardholder</span>
+                  <strong className="text-slate-900 dark:text-white text-sm">{fullName || 'Patient Name'}</strong>
+                </div>
+                <div>
+                  <span className="text-slate-400 block text-[10px] uppercase">Card Status</span>
+                  <strong className={issueHealthCard ? 'text-blue-600' : 'text-slate-500'}>
+                    {issueHealthCard ? `Issue Card (${selectedMembership?.name})` : 'Card Issuance: OFF'}
+                  </strong>
+                </div>
+                <div>
+                  <span className="text-slate-400 block text-[10px] uppercase">Family Allowance</span>
+                  <strong className="text-indigo-600">
+                    {familyMembers.length} Dependents ({Math.min(familyMembers.length, maxIncludedMembers)} Free)
+                  </strong>
+                </div>
+                <div>
+                  <span className="text-slate-400 block text-[10px] uppercase">Blood Group</span>
+                  <strong className="text-slate-700 dark:text-slate-300">{bloodGroup}</strong>
+                </div>
+              </div>
+
+              {/* Itemized Pricing Row */}
+              <div className="pt-3 border-t border-slate-200 dark:border-slate-700/60 space-y-2">
+                <div className="flex justify-between py-1 text-slate-600 dark:text-slate-400">
+                  <span>Base Card / Registration Fee:</span>
+                  <span className="font-mono font-bold text-slate-900 dark:text-white">
+                    {formatCurrency(billCalculation.baseCardCharge)}
+                  </span>
+                </div>
+
+                {familyMembers.length > 0 && (
+                  <div className="flex justify-between py-1 text-slate-600 dark:text-slate-400">
+                    <span>Family Allowance (Up to {maxIncludedMembers} Included):</span>
+                    <span className="font-mono font-bold text-emerald-600">₹0.00</span>
+                  </div>
+                )}
+
+                {billCalculation.additionalMembers > 0 && (
+                  <div className="flex justify-between py-1 text-amber-700 dark:text-amber-400 bg-amber-100/40 dark:bg-amber-950/40 px-2 rounded-lg">
+                    <span>Additional Family Members ({billCalculation.additionalMembers} × ₹{additionalMemberFee}):</span>
+                    <span className="font-mono font-bold">
+                      {formatCurrency(billCalculation.additionalMemberCharge)}
                     </span>
                   </div>
                 )}
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+                  <Select
+                    label="Payment Method *"
+                    value={paymentMethod}
+                    onChange={(e) => setPaymentMethod(e.target.value as any)}
+                    options={[
+                      { value: 'cash', label: 'Cash Desk Payment' },
+                      { value: 'upi', label: 'UPI / QR Payment' },
+                      { value: 'card', label: 'Credit / Debit Card (POS)' },
+                      { value: 'netbanking', label: 'Net Banking' },
+                      { value: 'wallet', label: 'Patient Wallet' }
+                    ]}
+                  />
+
+                  <Input
+                    label="Promotional Discount (₹)"
+                    type="number"
+                    placeholder="0"
+                    value={discountAmount || ''}
+                    onChange={(e) => setDiscountAmount(parseFloat(e.target.value) || 0)}
+                  />
+                </div>
+
+                <div className="flex items-center justify-between pt-3 border-t border-slate-200 dark:border-slate-700 text-sm">
+                  <span className="font-black text-slate-900 dark:text-white uppercase">Total Net Amount Payable:</span>
+                  <span className="font-black text-xl font-mono text-blue-600 dark:text-blue-400">
+                    {formatCurrency(billCalculation.netPayable)}
+                  </span>
+                </div>
               </div>
-
-              <Input
-                label="Initial Health Wallet Balance (₹)"
-                type="number"
-                min="0"
-                placeholder="e.g. 500"
-                value={initialDeposit}
-                onChange={(e) => setInitialDeposit(e.target.value)}
-                helperText="Instant prepaid balance credited to patient wallet"
-              />
-
-              <Select
-                label="Card Visual Theme Preset"
-                value={cardPreset}
-                onChange={(e) => setCardPreset(e.target.value as any)}
-                options={[
-                  { value: 'royal_gold', label: '👑 Royal Gold Prestige' },
-                  { value: 'platinum_elite', label: '💎 Platinum Elite Obsidian' },
-                  { value: 'executive_navy', label: '🛡️ Executive Navy Classic' },
-                  { value: 'emerald_health', label: '🌿 Emerald Health Nature' },
-                  { value: 'crimson_care', label: '❤️ Crimson Care Medical' },
-                  { value: 'clean_minimal', label: '⚡ Clean Minimal Modern' }
-                ]}
-              />
-
-              <Select
-                label="Card Physical Surface Material"
-                value={cardMaterial}
-                onChange={(e) => setCardMaterial(e.target.value as any)}
-                options={[
-                  { value: 'gloss', label: 'Ultra High Gloss PVC' },
-                  { value: 'matte', label: 'Satin Matte Premium Finish' },
-                  { value: 'metallic', label: 'Brushed Metallic Luster' },
-                  { value: 'hologram', label: '3D Holographic Security Film' }
-                ]}
-              />
             </div>
-          </div>
 
-          {/* Submit Action Bar */}
-          <div className="p-6 bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-4">
-            <Button type="button" variant="outline" onClick={() => navigate('/patients')}>
-              Cancel & Return
-            </Button>
-
-            <Button
-              type="submit"
-              variant="primary"
-              size="lg"
-              isLoading={isSubmitting}
-              leftIcon={<UserPlus className="w-5 h-5" />}
-              className="w-full sm:w-auto px-8 shadow-xl shadow-blue-600/30"
-            >
-              Complete Registration & Issue Cards
-            </Button>
+            {/* Explicit Confirm Action Button */}
+            <div className="pt-2">
+              <Button
+                type="submit"
+                variant="primary"
+                size="lg"
+                isLoading={isSubmitting}
+                leftIcon={issueHealthCard ? <CreditCard className="w-5 h-5" /> : <UserCheck className="w-5 h-5" />}
+                className={`w-full py-4 text-base font-black shadow-xl tracking-wide uppercase transition-all ${
+                  issueHealthCard
+                    ? 'bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 hover:from-blue-500 hover:to-indigo-600 text-white'
+                    : 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white'
+                }`}
+              >
+                {issueHealthCard
+                  ? `CONFIRM & ISSUE HEALTH CARD (${formatCurrency(billCalculation.netPayable)})`
+                  : `CONFIRM & REGISTER PATIENT (NO CARD - ${formatCurrency(billCalculation.netPayable)})`}
+              </Button>
+            </div>
           </div>
         </form>
 
-        {/* Right Column: Sticky Live CR80 Real-Time Card Preview */}
-        <div className="lg:col-span-4 space-y-6 lg:sticky lg:top-6">
-          <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-black uppercase tracking-wider text-slate-800 dark:text-white flex items-center gap-1.5">
-                <Eye className="w-4 h-4 text-blue-600" /> Real-time CR80 Preview
-              </span>
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800">
-                Live Rendering
-              </span>
-            </div>
+        {/* RIGHT COLUMN: Live Card Preview & Quick Stats */}
+        <div className="lg:col-span-4 space-y-6">
+          <div className="sticky top-6 space-y-6">
+            {/* Live CR80 Card Front Preview */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                <span>{issueHealthCard ? 'Live Health Card Preview' : 'Digital ID Preview'}</span>
+                <Badge variant={issueHealthCard ? 'blue' : 'neutral'}>
+                  {issueHealthCard ? 'Physical CR80' : 'Digital Only'}
+                </Badge>
+              </div>
 
-            <p className="text-[11px] text-slate-500">
-              This is how the patient's physical CR80 smart health card will be printed.
-            </p>
-
-            {/* Live Front Card View */}
-            <div className="flex justify-center py-2 overflow-hidden">
-              <div className="transform scale-[0.85] origin-top sm:scale-100">
+              <div className="overflow-hidden rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800">
                 <CR80CardFront
-                  patient={livePreviewPatient}
                   card={livePreviewCard}
+                  patient={livePreviewPatient}
                   membership={selectedMembership}
                   company={company}
-                  scale={1}
                 />
               </div>
             </div>
 
-            {/* Live Card Specs Summary */}
-            <div className="space-y-2 pt-4 border-t border-slate-100 dark:border-slate-800 text-xs">
-              <div className="flex justify-between py-1 border-b border-slate-50 dark:border-slate-800/50">
-                <span className="text-slate-400">Cardholder:</span>
-                <span className="font-bold text-slate-700 dark:text-slate-200">{fullName || 'Rajesh Mukherjee'}</span>
+            {/* Live Registration Summary Card */}
+            <div className="p-5 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm space-y-3 text-xs">
+              <h4 className="font-bold text-slate-900 dark:text-white uppercase tracking-wider text-[11px]">
+                Registration Overview
+              </h4>
+
+              <div className="space-y-2 pt-1 border-t border-slate-100 dark:border-slate-800">
+                <div className="flex justify-between py-1 border-b border-slate-50 dark:border-slate-800/60">
+                  <span className="text-slate-400">Patient ID Preview:</span>
+                  <span className="font-mono font-bold text-slate-800 dark:text-slate-200">{previewNextPatientId}</span>
+                </div>
+                <div className="flex justify-between py-1 border-b border-slate-50 dark:border-slate-800/60">
+                  <span className="text-slate-400">Health Card Issuance:</span>
+                  <span className={`font-bold ${issueHealthCard ? 'text-blue-600' : 'text-slate-500'}`}>
+                    {issueHealthCard ? `ON (${selectedMembership?.name})` : 'OFF by Default'}
+                  </span>
+                </div>
+                <div className="flex justify-between py-1 border-b border-slate-50 dark:border-slate-800/60">
+                  <span className="text-slate-400">Blood Group:</span>
+                  <span className="font-bold text-slate-800 dark:text-slate-200">{bloodGroup}</span>
+                </div>
+                <div className="flex justify-between py-1 border-b border-slate-50 dark:border-slate-800/60">
+                  <span className="text-slate-400">Clinical Triage:</span>
+                  <span className="font-bold text-teal-600">
+                    {enableClinicalTriage ? 'Active' : 'OFF (Skipped)'}
+                  </span>
+                </div>
+                <div className="flex justify-between py-1 border-b border-slate-50 dark:border-slate-800/60">
+                  <span className="text-slate-400">Family Members:</span>
+                  <span className="font-bold text-indigo-600 font-mono">
+                    {familyMembers.length} / {maxIncludedMembers}
+                  </span>
+                </div>
+                <div className="flex justify-between py-1 border-b border-slate-50 dark:border-slate-800/60">
+                  <span className="text-slate-400">Total Net Payable:</span>
+                  <span className="font-mono font-bold text-blue-600 dark:text-blue-400">
+                    {formatCurrency(billCalculation.netPayable)}
+                  </span>
+                </div>
               </div>
-              <div className="flex justify-between py-1 border-b border-slate-50 dark:border-slate-800/50">
-                <span className="text-slate-400">Membership Tier:</span>
-                <span className="font-bold text-blue-600 dark:text-blue-400">{selectedMembership?.name}</span>
-              </div>
-              <div className="flex justify-between py-1 border-b border-slate-50 dark:border-slate-800/50">
-                <span className="text-slate-400">OPD & Lab Discount:</span>
-                <span className="font-bold text-emerald-600">OPD {selectedMembership?.opdDiscount}% | Lab {selectedMembership?.labDiscount}%</span>
-              </div>
-              <div className="flex justify-between py-1 border-b border-slate-50 dark:border-slate-800/50">
-                <span className="text-slate-400">Family Members:</span>
-                <span className="font-bold text-indigo-600">
-                  {familyMembers.length > 0 ? `${familyMembers.length} Dependents (${familyMembers.filter(m => m.issueCard).length} Cards)` : 'Single Account'}
-                </span>
-              </div>
-              <div className="flex justify-between py-1">
-                <span className="text-slate-400">Referral Channel:</span>
-                <span className="font-bold text-amber-600 capitalize">{referralSource.replace('_', ' ')}</span>
+
+              <div className="pt-2 text-[11px] text-slate-400 flex items-center gap-1.5">
+                <Shield className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                <span>Synchronized with Central Firestore in real-time.</span>
               </div>
             </div>
           </div>
         </div>
       </div>
 
-      {/* POST-REGISTRATION MULTI-CARD SUCCESS MODAL */}
-      {createdResult && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-in fade-in duration-200">
-          <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-2xl max-w-2xl w-full p-6 sm:p-8 space-y-6 max-h-[90vh] overflow-y-auto">
-            <div className="text-center space-y-2">
-              <div className="w-16 h-16 rounded-full bg-emerald-500/20 text-emerald-500 flex items-center justify-center mx-auto border border-emerald-500/30 shadow-lg">
-                <CheckCircle2 className="w-10 h-10" />
-              </div>
-              <span className="text-[10px] uppercase font-mono font-bold tracking-widest px-3 py-1 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 border border-emerald-300">
-                Cards Successfully Provisioned
-              </span>
-              <h2 className="text-2xl font-black text-slate-900 dark:text-white">
-                Registration & Issuance Complete!
-              </h2>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                Primary cardholder registered and individual health cards have been issued.
-              </p>
-            </div>
-
-            {/* Issued Cards Breakdown */}
-            <div className="space-y-3 bg-slate-50 dark:bg-slate-800/40 p-4 rounded-2xl border border-slate-200 dark:border-slate-700">
-              <div className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300 flex items-center justify-between">
-                <span>Issued Health Cards Summary</span>
-                <Badge variant="blue">
-                  {1 + createdResult.issuedFamilyCards.filter(c => c.card).length} Total Cards
-                </Badge>
-              </div>
-
-              {/* Primary Card */}
-              <div className="flex items-center justify-between p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-lg bg-blue-100 dark:bg-blue-900/50 text-blue-600 flex items-center justify-center font-black text-xs">
-                    HEAD
-                  </div>
-                  <div>
-                    <h4 className="text-xs font-black text-slate-900 dark:text-white">
-                      {createdResult.patient.fullName} (Primary)
-                    </h4>
-                    <span className="text-[10px] font-mono text-slate-500">
-                      ID: {createdResult.patient.id} • Card: {createdResult.card.cardNumber}
-                    </span>
-                  </div>
-                </div>
-                <Badge variant="success">Active Card</Badge>
-              </div>
-
-              {/* Family Members Cards */}
-              {createdResult.issuedFamilyCards.map((item, i) => (
-                <div
-                  key={item.patient.id}
-                  className="flex items-center justify-between p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-lg bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 flex items-center justify-center font-bold text-xs">
-                      #{i + 1}
-                    </div>
-                    <div>
-                      <h4 className="text-xs font-black text-slate-900 dark:text-white">
-                        {item.patient.fullName} ({item.relationship})
-                      </h4>
-                      <span className="text-[10px] font-mono text-slate-500">
-                        ID: {item.patient.id} {item.card ? `• Card: ${item.card.cardNumber}` : '• (Dependent on Family Plan)'}
-                      </span>
-                    </div>
-                  </div>
-                  <Badge variant={item.card ? 'success' : 'neutral'}>
-                    {item.card ? 'Issued Card' : 'Covered Dependent'}
-                  </Badge>
-                </div>
-              ))}
-            </div>
-
-            {/* Quick Action Buttons */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
-              <Button
-                variant="primary"
-                onClick={() => navigate('/cards/print-sheet')}
-                leftIcon={<Printer className="w-4 h-4" />}
-              >
-                Print Cards on A4 Sheet
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() => navigate(`/patients/${createdResult.patient.id}`)}
-                leftIcon={<ChevronRight className="w-4 h-4" />}
-              >
-                Go to Patient Profile
-              </Button>
-            </div>
-          </div>
-        </div>
+      {/* Duplicate Patient Warning Modal */}
+      {matchedDuplicatePatient && (
+        <DuplicatePatientWarningModal
+          isOpen={duplicateWarningOpen}
+          onClose={() => setDuplicateWarningOpen(false)}
+          onProceedAnyway={() => {
+            setDuplicateBypassConfirmed(true);
+            setDuplicateWarningOpen(false);
+            showToast('info', 'Duplicate Bypass Acknowledged', 'Proceeding with new patient enrollment.');
+          }}
+          matchedPatient={matchedDuplicatePatient}
+          matchedCard={matchedDuplicateCard}
+          duplicateField="mobile"
+        />
       )}
 
-      {/* Smart Address Auto Popup Modal */}
+      {/* Address Auto-Popup Modal */}
       {isAddressPopupOpen && (
         <AddressAutoPopupModal
           isOpen={isAddressPopupOpen}
@@ -1383,6 +1653,19 @@ export const PatientCreatePage: React.FC = () => {
             setPinCode(addr.pinCode);
             showToast('success', 'Address Auto-Filled', `${addr.cityArea}, PIN ${addr.pinCode}`);
           }}
+        />
+      )}
+
+      {/* Automatic Patient Bill & Slip Printing Modal */}
+      {createdResult && (
+        <PatientRegistrationBillSlipModal
+          isOpen={isSuccessModalOpen}
+          onClose={() => setIsSuccessModalOpen(false)}
+          patient={createdResult.patient}
+          card={createdResult.card}
+          bill={createdResult.bill}
+          familyMembers={createdResult.issuedFamilyCards}
+          onRegisterAnother={handleRegisterAnother}
         />
       )}
     </div>

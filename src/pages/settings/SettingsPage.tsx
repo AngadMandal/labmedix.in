@@ -59,7 +59,10 @@ import {
   Unlock,
   Compass,
   Building2,
-  ShieldAlert
+  ShieldAlert,
+  Users,
+  Stethoscope,
+  UserCheck
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { NFCSettings, UpiMerchantSettings } from '../../types';
@@ -87,7 +90,7 @@ export const SettingsPage: React.FC = () => {
   const [isAddressModalOpen, setIsAddressModalOpen] = useState(false);
 
 
-  const [activeTab, setActiveTab] = useState<'branding' | 'helplines' | 'legal' | 'card_defaults' | 'presets' | 'nfc_config' | 'gpay_merchant' | 'system' | 'tier_config'>('branding');
+  const [activeTab, setActiveTab] = useState<'branding' | 'helplines' | 'legal' | 'card_defaults' | 'presets' | 'nfc_config' | 'gpay_merchant' | 'registration_policy' | 'system' | 'tier_config'>('branding');
 
   // 1. Branding & Identity
   const [name, setName] = useState(companyProfile.name);
@@ -140,6 +143,19 @@ export const SettingsPage: React.FC = () => {
   const [gpayMerchantId, setGpayMerchantId] = useState<string>(defaultUpi.googlePayMerchantId || 'GPAY-LMDX-8829-LIVE');
   const [gpayBusinessName, setGpayBusinessName] = useState<string>(defaultUpi.googlePayBusinessName || 'LABMEDIX HEALTHCARE');
   const [upiDeepLinks, setUpiDeepLinks] = useState<boolean>(defaultUpi.enableDeepLinks ?? true);
+
+  // 8. Registration & Family Shield Policies
+  const defaultRegSettings = companyProfile.registrationSettings || {
+    enableClinicalTriageDefault: false,
+    maxIncludedFamilyMembers: 5,
+    additionalMemberFee: 299,
+    cardIssuanceDefault: false,
+  };
+
+  const [regTriageDefault, setRegTriageDefault] = useState<boolean>(defaultRegSettings.enableClinicalTriageDefault ?? false);
+  const [regMaxFamily, setRegMaxFamily] = useState<number>(defaultRegSettings.maxIncludedFamilyMembers ?? 5);
+  const [regExtraMemberFee, setRegExtraMemberFee] = useState<number>(defaultRegSettings.additionalMemberFee ?? 299);
+  const [regCardIssuanceDefault, setRegCardIssuanceDefault] = useState<boolean>(defaultRegSettings.cardIssuanceDefault ?? false);
 
   // 2. Helplines & Contacts
   const [phone, setPhone] = useState(companyProfile.phone);
@@ -221,6 +237,13 @@ export const SettingsPage: React.FC = () => {
         setGpayMerchantId(companyProfile.upiSettings.googlePayMerchantId || 'GPAY-LMDX-8829-LIVE');
         setGpayBusinessName(companyProfile.upiSettings.googlePayBusinessName || 'LABMEDIX HEALTHCARE');
         setUpiDeepLinks(companyProfile.upiSettings.enableDeepLinks ?? true);
+      }
+
+      if (companyProfile.registrationSettings) {
+        setRegTriageDefault(companyProfile.registrationSettings.enableClinicalTriageDefault ?? false);
+        setRegMaxFamily(companyProfile.registrationSettings.maxIncludedFamilyMembers ?? 5);
+        setRegExtraMemberFee(companyProfile.registrationSettings.additionalMemberFee ?? 299);
+        setRegCardIssuanceDefault(companyProfile.registrationSettings.cardIssuanceDefault ?? false);
       }
     }
   }, [companyProfile, isSaving]);
@@ -485,6 +508,12 @@ export const SettingsPage: React.FC = () => {
       lockedBy: operator,
       nfcSettings: updatedNfcConfig,
       upiSettings: updatedUpiConfig,
+      registrationSettings: {
+        enableClinicalTriageDefault: regTriageDefault,
+        maxIncludedFamilyMembers: Number(regMaxFamily) || 5,
+        additionalMemberFee: Number(regExtraMemberFee) >= 0 ? Number(regExtraMemberFee) : 299,
+        cardIssuanceDefault: regCardIssuanceDefault,
+      },
       services: companyProfile.services || [],
       termsAndConditions: companyProfile.termsAndConditions || []
     };
@@ -859,6 +888,19 @@ export const SettingsPage: React.FC = () => {
             >
               <Smartphone className="w-4 h-4 text-cyan-400" />
               <span>7. Google Pay & UPI</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab('registration_policy')}
+              className={`py-2 px-3.5 rounded-xl whitespace-nowrap transition-all flex items-center gap-2 ${
+                activeTab === 'registration_policy'
+                  ? 'bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 text-white shadow-sm'
+                  : 'text-slate-600 dark:text-slate-300 hover:text-slate-900'
+              }`}
+            >
+              <Users className="w-4 h-4 text-purple-300" />
+              <span>8. Registration & Family Shield</span>
             </button>
 
 
@@ -1686,7 +1728,134 @@ export const SettingsPage: React.FC = () => {
               </div>
             )}
 
-            {/* TAB 7: System Diagnostics & Health */}
+            {/* TAB 8: Registration & Family Health Shield Policies */}
+            {activeTab === 'registration_policy' && (
+              <div className="space-y-6">
+                <div className="p-5 rounded-3xl bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 border-2 border-indigo-500/50 text-white shadow-xl space-y-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 rounded-2xl bg-indigo-600/30 border border-indigo-400/40 p-2 flex items-center justify-center text-indigo-300">
+                      <Users className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <h3 className="text-base font-black tracking-tight text-white flex items-center gap-2">
+                        Patient Registration & Family Shield Global Policies
+                      </h3>
+                      <p className="text-xs text-slate-300">
+                        Configure clinic defaults for initial triage vitals, family membership allowance limits, extra dependent surcharge fees, and health card issuance switches.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-5">
+                  {/* Card Issuance Default Policy */}
+                  <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div className="space-y-0.5">
+                      <div className="flex items-center gap-2">
+                        <CreditCard className="w-4 h-4 text-blue-500" />
+                        <strong className="text-sm font-bold text-slate-900 dark:text-white">
+                          Smart Health Card Issuance by Default
+                        </strong>
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
+                          Safety Safeguard
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">
+                        When enabled, newly opened registration forms will have "Issue Smart Health Card" toggled ON. Recommended: Keep OFF to avoid accidental physical card issuance.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      disabled={isLocked}
+                      onClick={() => setRegCardIssuanceDefault(!regCardIssuanceDefault)}
+                      className={`w-12 h-6 rounded-full transition-colors relative p-0.5 shrink-0 ${
+                        regCardIssuanceDefault ? 'bg-blue-600' : 'bg-slate-300 dark:bg-slate-700'
+                      } ${isLocked ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                    >
+                      <div
+                        className={`w-5 h-5 rounded-full bg-white transition-transform ${
+                          regCardIssuanceDefault ? 'translate-x-6' : 'translate-x-0'
+                        }`}
+                      />
+                    </button>
+                  </div>
+
+                  {/* Clinical Triage Default Policy */}
+                  <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div className="space-y-0.5">
+                      <div className="flex items-center gap-2">
+                        <Stethoscope className="w-4 h-4 text-emerald-500" />
+                        <strong className="text-sm font-bold text-slate-900 dark:text-white">
+                          Clinical Triage & Physical Measurements Default
+                        </strong>
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                          Speed Optimized
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">
+                        When enabled, initial registration opens the vitals panel (BP, Pulse, SpO2, Temp, Weight, Height, BMI) expanded. Recommended: Keep OFF for rapid front-desk check-in.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      disabled={isLocked}
+                      onClick={() => setRegTriageDefault(!regTriageDefault)}
+                      className={`w-12 h-6 rounded-full transition-colors relative p-0.5 shrink-0 ${
+                        regTriageDefault ? 'bg-emerald-600' : 'bg-slate-300 dark:bg-slate-700'
+                      } ${isLocked ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                    >
+                      <div
+                        className={`w-5 h-5 rounded-full bg-white transition-transform ${
+                          regTriageDefault ? 'translate-x-6' : 'translate-x-0'
+                        }`}
+                      />
+                    </button>
+                  </div>
+
+                  {/* Family Shield Included Count & Extra Fee */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <Input
+                        label="Included Family Shield Dependents"
+                        type="number"
+                        min={1}
+                        max={20}
+                        value={regMaxFamily}
+                        onChange={(e) => setRegMaxFamily(parseInt(e.target.value) || 5)}
+                        disabled={isLocked}
+                        helperText="Base quota included at no extra charge (Default: 5 members)"
+                      />
+                    </div>
+
+                    <div>
+                      <Input
+                        label="Extra Dependent Surcharge (₹)"
+                        type="number"
+                        min={0}
+                        step={1}
+                        value={regExtraMemberFee}
+                        onChange={(e) => setRegExtraMemberFee(parseFloat(e.target.value) || 0)}
+                        disabled={isLocked}
+                        helperText="Fee charged per dependent registered beyond the quota (Default: ₹299)"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Policy Summary Notice */}
+                  <div className="p-4 rounded-2xl bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800 text-xs text-indigo-900 dark:text-indigo-300 flex items-start gap-3">
+                    <ShieldCheck className="w-5 h-5 text-indigo-600 shrink-0 mt-0.5" />
+                    <div>
+                      <strong className="block font-bold">Family Shield Multi-Member Rule Active</strong>
+                      <span>
+                        The primary patient and first <strong>{regMaxFamily}</strong> dependents are covered under the standard registration plan. Any additional family members enrolled will automatically incur a surcharge of <strong>₹{regExtraMemberFee} each</strong> on the itemized patient bill.
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* TAB 9: System Diagnostics & Health */}
             {activeTab === 'system' && (
               <div className="space-y-6">
                 <div>

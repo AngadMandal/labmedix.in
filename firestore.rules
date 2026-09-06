@@ -39,6 +39,12 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    match /bills/{billId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAuthenticated();
+      allow delete: if false;
+    }
+
     match /vouchers/{voucherId} {
       allow read: if isAuthenticated();
       allow create, update: if isAuthenticated();

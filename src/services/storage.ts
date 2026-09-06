@@ -20,9 +20,10 @@ import {
   CardDispatchRecord,
   CardDispatchBatch,
   PatientAppointment,
-  ClinicalEncounter
+  ClinicalEncounter,
+  PatientBill
 } from '../types';
-import { DEFAULT_COMPANY_PROFILE, DEFAULT_CARD_DESIGN } from '../constants/defaults';
+import { DEFAULT_COMPANY_PROFILE, DEFAULT_CARD_DESIGN, DEFAULT_CLINIC_REGISTRATION_SETTINGS } from '../constants/defaults';
 import { DEFAULT_MEMBERSHIPS } from '../constants/memberships';
 import {
   DEFAULT_NGO_PARTNERS,
@@ -77,7 +78,8 @@ export const STORAGE_KEYS = {
   HEALTH_CAMPS: 'labmedix_health_camps_v1',
   CAMP_ATTENDEES: 'labmedix_camp_attendees_v1',
   CHARITY_GRANTS: 'labmedix_charity_grants_v1',
-  NGO_FUND_TRANSACTIONS: 'labmedix_ngo_fund_transactions_v1'
+  NGO_FUND_TRANSACTIONS: 'labmedix_ngo_fund_transactions_v1',
+  BILLS: 'labmedix_bills_v1'
 };
 
 const INITIAL_USERS: User[] = [
@@ -346,6 +348,7 @@ export class StorageService {
         auditLogs: this.getAuditLogs(),
         companyProfile: this.getCompanyProfile(),
         cashDeskVouchers: this.getCashDeskVouchers(),
+        bills: this.getBills(),
         portalLabBookings: this.getItem(STORAGE_KEYS.PORTAL_LAB_BOOKINGS, []),
         portalPharmacyOrders: this.getItem(STORAGE_KEYS.PORTAL_PHARMACY_ORDERS, []),
         portalCardApplications: this.getItem(STORAGE_KEYS.PORTAL_CARD_APPLICATIONS, []),
@@ -998,7 +1001,8 @@ export class StorageService {
         cloudCampAttendees,
         cloudCharityGrants,
         cloudNgoTxns,
-        cloudMembershipTiers
+        cloudMembershipTiers,
+        cloudBills
       ] = await Promise.all([
         ApiSyncService.fetchCollection<Patient>('patients').catch(() => []),
         ApiSyncService.fetchCollection<HealthCard>('cards').catch(() => []),
@@ -1028,7 +1032,8 @@ export class StorageService {
         ApiSyncService.fetchCollection<CampAttendee>('campAttendees').catch(() => []),
         ApiSyncService.fetchCollection<CharityGrant>('charityGrants').catch(() => []),
         ApiSyncService.fetchCollection<NgoFundTransaction>('ngoTransactions').catch(() => []),
-        ApiSyncService.fetchCollection<Membership>('membershipTiers').catch(() => [])
+        ApiSyncService.fetchCollection<Membership>('membershipTiers').catch(() => []),
+        ApiSyncService.fetchCollection<PatientBill>('bills').catch(() => [])
       ]);
 
       const effectiveMemberships = (cloudMembershipTiers && cloudMembershipTiers.length > 0)
@@ -1070,6 +1075,7 @@ export class StorageService {
       syncEntity(cloudCampAttendees, STORAGE_KEYS.CAMP_ATTENDEES);
       syncEntity(cloudCharityGrants, STORAGE_KEYS.CHARITY_GRANTS);
       syncEntity(cloudNgoTxns, STORAGE_KEYS.NGO_FUND_TRANSACTIONS);
+      syncEntity(cloudBills, STORAGE_KEYS.BILLS);
 
       if (cloudVoucherSettings) {
         StorageService.updateCacheAndNotify(STORAGE_KEYS.VOUCHER_SETTINGS, cloudVoucherSettings);
@@ -1329,6 +1335,29 @@ export class StorageService {
     ApiSyncService.syncAuditLogs(logs).catch(() => { });
   }
 
+  // Patient Bills
+  public static getBills(): PatientBill[] {
+    return this.getItem<PatientBill[]>(STORAGE_KEYS.BILLS, []);
+  }
+  public static saveBills(bills: PatientBill[]): void {
+    this.setItem(STORAGE_KEYS.BILLS, bills);
+    ApiSyncService.syncKeyToFirestore(STORAGE_KEYS.BILLS, bills).catch(() => { });
+  }
+  public static saveBill(bill: PatientBill): void {
+    const bills = this.getBills();
+    const index = bills.findIndex(b => b.id === bill.id);
+    if (index >= 0) {
+      bills[index] = bill;
+    } else {
+      bills.unshift(bill);
+    }
+    this.saveBills(bills);
+    ApiSyncService.saveDocument('bills', bill.id, bill).catch(() => { });
+  }
+  public static getBillById(id: string): PatientBill | undefined {
+    return this.getBills().find(b => b.id === id || b.billNumber === id);
+  }
+
   // Company Profile
   public static getCompanyProfile(): CompanyProfile {
     let profile = this.getItem<CompanyProfile>(STORAGE_KEYS.COMPANY_PROFILE, DEFAULT_COMPANY_PROFILE);
@@ -1338,6 +1367,10 @@ export class StorageService {
     return {
       ...DEFAULT_COMPANY_PROFILE,
       ...profile,
+      registrationSettings: {
+        ...DEFAULT_CLINIC_REGISTRATION_SETTINGS,
+        ...(profile.registrationSettings || {})
+      },
       nfcSettings: {
         defaultStandard: 'ISO/IEC 14443 Type A',
         frequency: '13.56 MHz',

@@ -286,7 +286,8 @@ export class OfflineFormService {
         initialDeposit: d.initialDeposit || 0,
         cardDesignPreset: d.cardDesignPreset || 'medical_pro_cyan',
         familyName: d.familyName || undefined,
-        familyMembers: d.familyMembers && d.familyMembers.length > 0 ? d.familyMembers : undefined
+        familyMembers: d.familyMembers && d.familyMembers.length > 0 ? d.familyMembers : undefined,
+        issueHealthCard: true
       };
 
       const result = PatientService.createPatient(patientInput);
@@ -319,20 +320,20 @@ export class OfflineFormService {
         syncStatus: 'synced',
         syncedAt: new Date().toISOString(),
         syncedPatientId: result.patient.id,
-        syncedCardNumber: result.card.cardNumber,
+        syncedCardNumber: result.card?.cardNumber,
         syncError: undefined
       });
 
       AuditService.log(
         'OFFLINE_FORM_SYNCED',
         'patient',
-        `Synced offline submission ${submission.offlineToken} to live patient ${result.patient.fullName} (${result.patient.id}, Card: ${result.card.cardNumber}).`
+        `Synced offline submission ${submission.offlineToken} to live patient ${result.patient.fullName} (${result.patient.id}${result.card ? `, Card: ${result.card.cardNumber}` : ''}).`
       );
 
       return {
         success: true,
         patientId: result.patient.id,
-        cardNumber: result.card.cardNumber
+        cardNumber: result.card?.cardNumber
       };
     } catch (err: any) {
       console.error('[OfflineFormService] Sync failed for submission:', id, err);

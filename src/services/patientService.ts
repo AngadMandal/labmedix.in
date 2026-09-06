@@ -1,7 +1,8 @@
-import { Patient, HealthCard, Wallet, FamilyGroup } from '../types';
+import { Patient, HealthCard, Wallet, FamilyGroup, PatientBill, BloodGroupStatus, BloodGroupHistoryEntry } from '../types';
 import { StorageService } from './storage';
 import { AuditService } from './auditService';
 import { ApiSyncService } from './apiSyncService';
+import { BillService } from './billService';
 import { generatePatientId, generateCardNumber, generateVerificationCode, generateCardCvv, generateUuid, generateFamilyId } from '../utils/idGenerator';
 import { DEFAULT_CARD_DESIGN } from '../constants/defaults';
 
@@ -12,6 +13,7 @@ export interface CreateFamilyMemberInput {
   age: number;
   gender: 'male' | 'female' | 'other';
   bloodGroup: string;
+  bloodGroupStatus?: BloodGroupStatus;
   mobile?: string;
   photoUrl?: string;
   allergies?: string;
@@ -28,6 +30,7 @@ export interface CreatePatientInput {
   whatsapp?: string;
   email?: string;
   bloodGroup: string;
+  bloodGroupStatus?: BloodGroupStatus;
   photoUrl: string;
   portalPassword?: string;
   address: {
@@ -69,12 +72,19 @@ export interface CreatePatientInput {
     pulse?: number;
     rbs?: string;
     spo2?: number;
+    temperature?: string;
+    respiratoryRate?: number;
     weight?: number;
     height?: number;
     bmi?: number;
   };
-  membershipId: string;
+  issueHealthCard?: boolean; // Smart Health Card Issuance: OFF by default
+  membershipId?: string;
   initialDeposit?: number;
+  discountAmount?: number;
+  paidAmount?: number;
+  paymentMethod?: 'cash' | 'upi' | 'card' | 'netbanking' | 'wallet';
+  paymentStatus?: 'paid' | 'pending' | 'waived';
   cardDesignPreset?: string;
   cardMaterial?: string;
   familyName?: string;
@@ -83,8 +93,9 @@ export interface CreatePatientInput {
 
 export interface CreatePatientResult {
   patient: Patient;
-  card: HealthCard;
+  card?: HealthCard;
   wallet: Wallet;
+  bill: PatientBill;
   familyGroup?: FamilyGroup;
   issuedFamilyCards: Array<{
     patient: Patient;
@@ -179,7 +190,8 @@ export class PatientService {
       StorageService.saveTransactions(txns);
     }
 
-    // 3. Create Health Card for Primary Patient with foolproof membership fallback
+    // 3. Conditional Health Card Issuance (OFF by default)
+    const isCardIssued = Boolean(input.issueHealthCard);
     const defaultMembership = {
       id: 'mem_gold',
       name: 'Gold Health Shield',
@@ -194,55 +206,58 @@ export class PatientService {
     };
     const selectedMembership = memberships.find(m => m.id === input.membershipId) || memberships[0] || defaultMembership;
     
-    const usedCardNumbers = new Set(cards.map(c => c.cardNumber));
-    const cardNumber = generateCardNumber(Array.from(usedCardNumbers));
-    usedCardNumbers.add(cardNumber);
-
-    const cardId = `card_${generateUuid().slice(0, 8)}`;
+    let newCard: HealthCard | undefined;
+    let cardId: string | undefined;
+    let cardNumber: string | undefined;
     const now = new Date();
     const expiry = new Date();
     expiry.setMonth(expiry.getMonth() + (selectedMembership.validityMonths || 12));
 
+    const usedCardNumbers = new Set(cards.map(c => c.cardNumber));
     const primaryPreset = input.cardDesignPreset || (
       selectedMembership.slug === 'platinum' ? 'platinum_elite' :
       selectedMembership.slug === 'gold' ? 'royal_gold' :
       selectedMembership.slug === 'silver' ? 'emerald_health' : 'executive_navy'
     );
 
-    const initialStatus = 'active';
+    if (isCardIssued) {
+      cardNumber = generateCardNumber(Array.from(usedCardNumbers));
+      usedCardNumbers.add(cardNumber);
+      cardId = `card_${generateUuid().slice(0, 8)}`;
 
-    const newCard: HealthCard = {
-      id: cardId,
-      cardNumber,
-      patientId,
-      membershipId: selectedMembership.id,
-      issueDate: now.toISOString().split('T')[0],
-      expiryDate: expiry.toISOString().split('T')[0],
-      status: initialStatus,
-      isDemo: false,
-      cvv: generateCardCvv(),
-      verificationCode: generateVerificationCode(),
-      designConfig: {
-        ...DEFAULT_CARD_DESIGN,
-        preset: primaryPreset as any,
-        material: (input.cardMaterial as any) || 'metallic'
-      },
-      statusHistory: [
-        {
-          id: generateUuid(),
-          cardId,
-          date: now.toISOString(),
-          previousStatus: 'active',
-          newStatus: initialStatus,
-          changedBy: currentUser?.fullName || 'Super Administrator',
-          reason: `Initial card generation for ${selectedMembership.name}`
-        }
-      ],
-      renewedCount: 0,
-      createdAt: now.toISOString(),
-      updatedAt: now.toISOString()
-    };
-    cards.push(newCard);
+      newCard = {
+        id: cardId,
+        cardNumber,
+        patientId,
+        membershipId: selectedMembership.id,
+        issueDate: now.toISOString().split('T')[0],
+        expiryDate: expiry.toISOString().split('T')[0],
+        status: 'active',
+        isDemo: false,
+        cvv: generateCardCvv(),
+        verificationCode: generateVerificationCode(),
+        designConfig: {
+          ...DEFAULT_CARD_DESIGN,
+          preset: primaryPreset as any,
+          material: (input.cardMaterial as any) || 'metallic'
+        },
+        statusHistory: [
+          {
+            id: generateUuid(),
+            cardId,
+            date: now.toISOString(),
+            previousStatus: 'active',
+            newStatus: 'active',
+            changedBy: currentUser?.fullName || 'Super Administrator',
+            reason: `Initial card generation for ${selectedMembership.name}`
+          }
+        ],
+        renewedCount: 0,
+        createdAt: now.toISOString(),
+        updatedAt: now.toISOString()
+      };
+      cards.push(newCard);
+    }
 
     // 4. Multi-Family Setup if Family Members are provided
     let familyGroup: FamilyGroup | undefined;
@@ -274,6 +289,23 @@ export class PatientService {
       };
     }
 
+    // Determine initial blood group status and history
+    const initialBloodStatus: BloodGroupStatus = input.bloodGroupStatus || (
+      input.bloodGroup.toLowerCase().includes('unknown') ? 'unknown' :
+      input.bloodGroup.toLowerCase().includes('not tested') ? 'not_tested' : 'unverified'
+    );
+
+    const initialBloodHistory: BloodGroupHistoryEntry[] = [
+      {
+        id: `bgh_${generateUuid().slice(0, 8)}`,
+        bloodGroup: input.bloodGroup,
+        status: initialBloodStatus,
+        updatedAt: now.toISOString(),
+        updatedBy: currentUser?.fullName || 'Front Desk Staff',
+        notes: 'Initial registration record'
+      }
+    ];
+
     // 5. Create Primary Patient Record
     const newPatient: Patient = {
       id: patientId,
@@ -285,6 +317,8 @@ export class PatientService {
       whatsapp: input.whatsapp?.trim() || input.mobile.trim(),
       email: input.email?.trim() || '',
       bloodGroup: input.bloodGroup,
+      bloodGroupStatus: initialBloodStatus,
+      bloodGroupHistory: initialBloodHistory,
       photoUrl: input.photoUrl || '/logo.jpg',
       address: input.address,
       emergencyContact: input.emergencyContact,
@@ -333,8 +367,8 @@ export class PatientService {
         let memberCard: HealthCard | undefined;
         let memberCardId: string | undefined;
 
-        // If checkbox `issueCard` is true, issue individual Health Card
-        if (member.issueCard) {
+        // Individual card issued ONLY IF card issuance is enabled AND member card checkbox is checked
+        if (isCardIssued && member.issueCard) {
           const memberCardNumber = generateCardNumber(Array.from(usedCardNumbers));
           usedCardNumbers.add(memberCardNumber);
           memberCardId = `card_${generateUuid().slice(0, 8)}`;
@@ -380,6 +414,11 @@ export class PatientService {
           memberDob = `${birthYear}-01-01`;
         }
 
+        const memberBloodStatus: BloodGroupStatus = member.bloodGroupStatus || (
+          (member.bloodGroup || '').toLowerCase().includes('unknown') ? 'unknown' :
+          (member.bloodGroup || '').toLowerCase().includes('not tested') ? 'not_tested' : 'unverified'
+        );
+
         const memberPatient: Patient = {
           id: memberPatientId,
           fullName: member.fullName.trim(),
@@ -389,7 +428,18 @@ export class PatientService {
           mobile: member.mobile?.trim() || input.mobile.trim(),
           whatsapp: member.mobile?.trim() || input.whatsapp?.trim() || input.mobile.trim(),
           email: '',
-          bloodGroup: member.bloodGroup || 'B+',
+          bloodGroup: member.bloodGroup || 'Unknown / Not Known',
+          bloodGroupStatus: memberBloodStatus,
+          bloodGroupHistory: [
+            {
+              id: `bgh_${generateUuid().slice(0, 8)}`,
+              bloodGroup: member.bloodGroup || 'Unknown / Not Known',
+              status: memberBloodStatus,
+              updatedAt: now.toISOString(),
+              updatedBy: currentUser?.fullName || 'Front Desk Staff',
+              notes: `Registered as dependent under ${newPatient.fullName}`
+            }
+          ],
           photoUrl: member.photoUrl || '/logo.jpg',
           address: input.address,
           emergencyContact: {
@@ -401,7 +451,7 @@ export class PatientService {
             allergies: member.allergies || 'None',
             chronicConditions: member.chronicConditions || 'None',
             importantNotes: `Covered under ${familyGroup?.familyName}`,
-            bloodGroup: member.bloodGroup || 'B+'
+            bloodGroup: member.bloodGroup || 'Unknown / Not Known'
           },
           familyId,
           isFamilyHead: false,
@@ -433,14 +483,31 @@ export class PatientService {
       StorageService.saveFamilies(families);
     }
 
-    // Save Cards, Wallets, and Patients locally
+    // 7. Save Cards, Wallets, and Patients locally
     StorageService.saveCards(cards);
     StorageService.saveWallets(wallets);
     StorageService.savePatients(patients);
 
-    // Direct atomic sync to Central Firestore for instant multi-device reflection
+    // 8. Generate Automatic Patient Bill & Enrollment Record
+    const validFamilyMembers = (input.familyMembers || []).filter(m => m.fullName?.trim());
+    const bill = BillService.createRegistrationBill({
+      patient: newPatient,
+      card: newCard,
+      membership: isCardIssued ? selectedMembership : undefined,
+      isCardIssued,
+      familyMembersCount: validFamilyMembers.length,
+      discountAmount: input.discountAmount,
+      paidAmount: input.paidAmount,
+      paymentMethod: input.paymentMethod,
+      paymentStatus: input.paymentStatus,
+      currentUser
+    });
+
+    // 9. Direct atomic sync to Central Firestore for instant multi-device reflection
     ApiSyncService.saveDocument('patients', newPatient.id, newPatient).catch(() => {});
-    ApiSyncService.saveDocument('cards', newCard.id, newCard).catch(() => {});
+    if (newCard) {
+      ApiSyncService.saveDocument('cards', newCard.id, newCard).catch(() => {});
+    }
     ApiSyncService.saveDocument('wallets', newWallet.id, newWallet).catch(() => {});
     if (familyGroup) {
       ApiSyncService.saveDocument('families', familyGroup.id, familyGroup).catch(() => {});
@@ -454,11 +521,12 @@ export class PatientService {
       ? ` | Referred by: ${input.referral.source.toUpperCase()} (${input.referral.name || input.referral.details || 'N/A'})`
       : '';
     const famNote = hasFamily ? ` | Family Shield: ${familyGroup?.familyName} (+${issuedFamilyCards.length} members)` : '';
+    const cardNote = isCardIssued ? ` | Card Issued: ${cardNumber}` : ' | Card Issuance: OFF';
 
     AuditService.log(
       'PATIENT_REGISTERED',
       'patient',
-      `Registered patient ${newPatient.fullName} (ID: ${patientId}, Card: ${cardNumber}, Membership: ${selectedMembership.name})${refNote}${famNote}`,
+      `Registered patient ${newPatient.fullName} (ID: ${patientId}${cardNote})${refNote}${famNote} | Bill: ${bill.billNumber}`,
       patientId
     );
 
@@ -466,6 +534,7 @@ export class PatientService {
       patient: newPatient,
       card: newCard,
       wallet: newWallet,
+      bill,
       familyGroup,
       issuedFamilyCards
     };
@@ -476,10 +545,35 @@ export class PatientService {
     const index = patients.findIndex(p => p.id === id);
     if (index === -1) return null;
 
-    const updated = {
-      ...patients[index],
+    const currentUser = StorageService.getCurrentUser();
+    const currentPatient = patients[index];
+    const now = new Date().toISOString();
+
+    // Check if blood group was updated
+    let updatedHistory = currentPatient.bloodGroupHistory ? [...currentPatient.bloodGroupHistory] : [];
+    let updatedBloodStatus = updates.bloodGroupStatus || currentPatient.bloodGroupStatus || 'unverified';
+
+    if (updates.bloodGroup && updates.bloodGroup !== currentPatient.bloodGroup) {
+      updatedBloodStatus = updates.bloodGroupStatus || (
+        updates.bloodGroup.toLowerCase().includes('unknown') ? 'unknown' :
+        updates.bloodGroup.toLowerCase().includes('not tested') ? 'not_tested' : 'verified'
+      );
+      updatedHistory.unshift({
+        id: `bgh_${generateUuid().slice(0, 8)}`,
+        bloodGroup: updates.bloodGroup,
+        status: updatedBloodStatus,
+        updatedAt: now,
+        updatedBy: currentUser?.fullName || 'Staff User',
+        notes: 'Updated via clinical/patient management'
+      });
+    }
+
+    const updated: Patient = {
+      ...currentPatient,
       ...updates,
-      updatedAt: new Date().toISOString()
+      bloodGroupStatus: updatedBloodStatus,
+      bloodGroupHistory: updatedHistory,
+      updatedAt: now
     };
     patients[index] = updated;
     StorageService.savePatients(patients);

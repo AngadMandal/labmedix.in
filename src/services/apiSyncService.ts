@@ -459,6 +459,7 @@ export class ApiSyncService {
     'labmedix_charity_grants_v1': { type: 'collection', path: 'charityGrants' },
     'labmedix_ngo_fund_transactions_v1': { type: 'collection', path: 'ngoTransactions' },
     'labmedix_company_profile_v1': { type: 'doc', path: 'settings/companyProfile' },
+    'labmedix_bills_v1': { type: 'collection', path: 'bills' },
     'LABMEDIX_WEBSITE_CMS_CONFIG': { type: 'doc', path: 'settings/websiteCms' },
     'labmedix_integrations_v4': { type: 'doc', path: 'settings/integrations' }
   };
