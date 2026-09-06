@@ -45,14 +45,81 @@ export const VoucherCreateModal: React.FC<VoucherCreateModalProps> = ({
 
   // Single Voucher Form State
   const [category, setCategory] = useState<VoucherCategory>('opd_consultation');
-  const [amount, setAmount] = useState<number>(1000);
-  const [bearerType, setBearerType] = useState<'specific_patient' | 'cash_desk_bearer'>('specific_patient');
+  const [amount, setAmount] = useState<number>(500);
+  const [bearerType, setBearerType] = useState<'specific_patient' | 'cash_desk_bearer'>('cash_desk_bearer');
   const [selectedPatientId, setSelectedPatientId] = useState<string>('');
   const [validityDays, setValidityDays] = useState<number>(30);
   const [pinLength, setPinLength] = useState<6 | 8>(6);
   const [departmentRestriction, setDepartmentRestriction] = useState<string>('');
   const [doctorRestrictionName, setDoctorRestrictionName] = useState<string>('');
   const [notes, setNotes] = useState<string>('');
+
+  // Recommended Standard Voucher Templates
+  const STANDARD_TEMPLATES = [
+    {
+      name: 'OPD Doctor Consultation Fee',
+      bengali: 'ডাক্তার ওপিডি কনসালটেশন',
+      category: 'opd_consultation' as VoucherCategory,
+      amount: 500,
+      validityDays: 30,
+      notes: 'Standard OPD specialist doctor consultation voucher',
+      department: ''
+    },
+    {
+      name: 'Diagnostic & Pathology Investigations',
+      bengali: 'ল্যাব ও প্যাথলজি টেস্ট',
+      category: 'diagnostic_lab' as VoucherCategory,
+      amount: 1000,
+      validityDays: 45,
+      notes: 'Standard pathology, biochemistry & imaging test voucher',
+      department: 'Pathology & Diagnostic Laboratory'
+    },
+    {
+      name: 'Smart Health Card Wallet Top-up',
+      bengali: 'স্মার্ট কার্ড ওয়ালেট টপ-আপ',
+      category: 'health_card_topup' as VoucherCategory,
+      amount: 1500,
+      validityDays: 90,
+      notes: 'Direct prepaid float into patient digital health wallet',
+      department: ''
+    },
+    {
+      name: 'Universal Cash Desk Credit Voucher',
+      bengali: 'ইউনিভার্সাল ক্যাশ ডেস্ক ভাউচার',
+      category: 'all_purpose_cash' as VoucherCategory,
+      amount: 2000,
+      validityDays: 60,
+      notes: 'Universal tender accepted across all hospital billing counters',
+      department: ''
+    },
+    {
+      name: 'Pharmacy & Surgical Supplies',
+      bengali: 'ফার্মেসি ও মেডিসিন ভাউচার',
+      category: 'pharmacy_meds' as VoucherCategory,
+      amount: 750,
+      validityDays: 30,
+      notes: 'Prescription medicines and surgical consumables discount',
+      department: 'In-House Hospital Pharmacy'
+    },
+    {
+      name: 'Emergency Ward / IPD Float',
+      bengali: 'জরুরি বিভাগ / আইপিডি ফ্লোট',
+      category: 'emergency_float' as VoucherCategory,
+      amount: 2500,
+      validityDays: 7,
+      notes: 'Hospital emergency desk float credit for fast-track admissions',
+      department: 'Emergency Casualty & Triage Desk'
+    }
+  ];
+
+  const handleApplyTemplate = (tpl: typeof STANDARD_TEMPLATES[0]) => {
+    setCategory(tpl.category);
+    setAmount(tpl.amount);
+    setValidityDays(tpl.validityDays);
+    setDepartmentRestriction(tpl.department || '');
+    setNotes(tpl.notes);
+    showToast('info', 'Template Applied', `Applied recommended template: ${tpl.name} (₹${tpl.amount})`);
+  };
 
   // Batch Fleet Form State
   const [batchCount, setBatchCount] = useState<number>(10);
@@ -233,6 +300,40 @@ export const VoucherCreateModal: React.FC<VoucherCreateModalProps> = ({
         {/* ================= MODE 1: SINGLE AUTO VOUCHER ================= */}
         {mode === 'single_auto' && (
           <form onSubmit={handleSingleSubmit} className="space-y-5">
+            {/* Recommended Standard Templates Quick Apply Bar */}
+            <div className="p-4 rounded-2xl bg-gradient-to-r from-amber-500/10 via-indigo-500/10 to-teal-500/10 border border-amber-500/30 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-amber-600 dark:text-amber-400 flex items-center gap-1.5">
+                  <Sparkles className="w-4 h-4" />
+                  <span>Recommended Standard Hospital Voucher Templates (1-Click Apply)</span>
+                </span>
+                <span className="text-[10px] font-mono text-slate-400">Official Hospital Defaults</span>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                {STANDARD_TEMPLATES.map(tpl => {
+                  const isMatch = category === tpl.category && amount === tpl.amount;
+                  return (
+                    <button
+                      key={tpl.name}
+                      type="button"
+                      onClick={() => handleApplyTemplate(tpl)}
+                      className={`p-2.5 rounded-xl border text-left transition-all text-xs ${
+                        isMatch
+                          ? 'bg-amber-500/20 border-amber-500 ring-1 ring-amber-500/40 text-amber-900 dark:text-amber-200'
+                          : 'bg-white/80 dark:bg-slate-800 border-slate-200 dark:border-slate-700 hover:border-amber-400 text-slate-700 dark:text-slate-300'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between mb-0.5">
+                        <span className="font-bold truncate text-[11px]">{tpl.name}</span>
+                        <span className="font-mono font-black text-emerald-600 dark:text-emerald-400 ml-1">₹{tpl.amount}</span>
+                      </div>
+                      <p className="text-[10px] text-slate-500 dark:text-slate-400 truncate">{tpl.bengali}</p>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
             {/* Category Grid Selection */}
             <div>
               <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-2">

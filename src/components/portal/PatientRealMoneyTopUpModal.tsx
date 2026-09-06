@@ -25,8 +25,12 @@ import {
   Zap,
   RefreshCw,
   Gift,
-  AlertTriangle
+  AlertTriangle,
+  Eye,
+  EyeOff
 } from 'lucide-react';
+import { CashDeskVoucher } from '../../types';
+import { CashDeskVoucherService } from '../../services/cashDeskVoucherService';
 
 import { IntegrationService } from '../../services/integrationService';
 import { GooglePayMerchantQR } from '../payment/GooglePayMerchantQR';
@@ -157,7 +161,22 @@ export const PatientRealMoneyTopUpModal: React.FC<PatientRealMoneyTopUpModalProp
   const [selectedBank, setSelectedBank] = useState('State Bank of India (SBI)');
 
   // Voucher PIN State (Hospital Cashier Desk)
-  const [voucherPin, setVoucherPin] = useState('');
+  const [voucherCodeInput, setVoucherCodeInput] = useState('');
+  const [voucherSecretPin, setVoucherSecretPin] = useState('');
+  const [showVoucherPin, setShowVoucherPin] = useState(false);
+  const [matchedVoucher, setMatchedVoucher] = useState<CashDeskVoucher | null>(null);
+  const [voucherError, setVoucherError] = useState('');
+
+  useEffect(() => {
+    if (voucherCodeInput.trim()) {
+      const v = CashDeskVoucherService.getVoucherByCode(voucherCodeInput.trim());
+      setMatchedVoucher(v || null);
+      if (v) setVoucherError('');
+    } else {
+      setMatchedVoucher(null);
+      setVoucherError('');
+    }
+  }, [voucherCodeInput]);
 
   // Calculation of bonus & final float credit
   const activePackage = useMemo(() => {
@@ -433,16 +452,48 @@ export const PatientRealMoneyTopUpModal: React.FC<PatientRealMoneyTopUpModalProp
     });
   };
 
-  // Verify Voucher
+  // Verify Voucher with CashDeskVoucherService
   const handleVerifyVoucher = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!voucherPin.trim() || voucherPin.trim().length < 6) {
-      showToast('error', 'Invalid Voucher', 'Please enter a valid 12-digit Cash Voucher Code.');
+    setVoucherError('');
+
+    if (!voucherCodeInput.trim()) {
+      setVoucherError('Please enter a valid Voucher Code.');
       return;
     }
-    const gatewayRef = `VOUCH-${voucherPin.trim().toUpperCase()}`;
-    executeSettlement('Hospital Cash Desk Voucher PIN', gatewayRef, {
-      verificationStatus: 'verified'
+    if (!voucherSecretPin.trim()) {
+      setVoucherError('Please enter the cryptographic Voucher PIN.');
+      return;
+    }
+
+    setIsVerifyingWebhook(true);
+
+    const result = CashDeskVoucherService.verifyAndRedeemVoucher(
+      voucherCodeInput.trim(),
+      voucherSecretPin.trim(),
+      `Patient Self-Service (${patient.fullName})`,
+      {
+        redemptionChannel: 'wallet_credit',
+        patientId: patient.id,
+        patientName: patient.fullName,
+        creditPatientWallet: false,
+        redemptionNotes: 'Redeemed online through Patient Portal Digital Top-Up'
+      }
+    );
+
+    setIsVerifyingWebhook(false);
+
+    if (!result.success || !result.voucher) {
+      setVoucherError(result.error || 'Invalid voucher code or PIN.');
+      showToast('error', 'Voucher Error', result.error || 'Voucher verification failed.');
+      return;
+    }
+
+    const redeemed = result.voucher;
+    const gatewayRef = `VCH-${redeemed.voucherCode}`;
+    executeSettlement(`Cash Desk Voucher (${redeemed.voucherCode} - ${redeemed.categoryName})`, gatewayRef, {
+      verificationStatus: 'verified',
+      utrNumber: redeemed.authSealCode
     });
   };
 
@@ -1014,24 +1065,92 @@ export const PatientRealMoneyTopUpModal: React.FC<PatientRealMoneyTopUpModalProp
             {selectedGateway === 'voucher' && (
               <form onSubmit={handleVerifyVoucher} className="p-5 rounded-3xl bg-slate-900 border border-slate-800 space-y-4">
                 <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-                  <span className="text-xs font-bold text-white">Enter Hospital Counter Voucher PIN:</span>
-                  <span className="text-xs text-amber-400 font-mono">Offline Cash Desk</span>
+                  <div className="flex items-center gap-2">
+                    <Ticket className="w-5 h-5 text-amber-400" />
+                    <span className="text-xs font-bold text-white">Redeem Hospital Cash Desk Voucher</span>
+                  </div>
+                  <span className="text-xs text-amber-400 font-mono">100% Cashless Float</span>
                 </div>
 
-                <Input
-                  label="12-Digit Voucher Serial Code"
-                  placeholder="e.g. LMDX-VCH-8841-2901"
-                  value={voucherPin}
-                  onChange={(e) => setVoucherPin(e.target.value.toUpperCase())}
-                  required
-                />
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-300 flex items-center justify-between">
+                    <span>Voucher Serial Code:</span>
+                    <span className="text-[10px] font-mono text-slate-400">e.g. LMDX-CSH-2026-00101</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={voucherCodeInput}
+                    onChange={(e) => setVoucherCodeInput(e.target.value.toUpperCase())}
+                    placeholder="LMDX-CSH-YYYY-XXXXX"
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-white font-mono text-xs font-bold uppercase tracking-wider focus:border-amber-500 focus:outline-none"
+                    required
+                  />
+                </div>
+
+                {matchedVoucher && (
+                  <div className="p-3 rounded-2xl bg-amber-950/40 border border-amber-500/40 space-y-1.5 text-xs font-mono">
+                    <div className="flex justify-between items-center text-amber-300">
+                      <span className="font-bold">{matchedVoucher.categoryName}</span>
+                      <span className="text-base font-black text-emerald-400">₹{matchedVoucher.amount}</span>
+                    </div>
+                    <div className="flex justify-between text-[11px] text-slate-400">
+                      <span>Auth Seal: {matchedVoucher.authSealCode}</span>
+                      <span className={matchedVoucher.status === 'active' ? 'text-emerald-400 font-bold' : 'text-rose-400 font-bold'}>
+                        ● {matchedVoucher.status.toUpperCase()}
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-300 flex items-center justify-between">
+                    <span>Voucher Secret PIN:</span>
+                    {matchedVoucher?.pin && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setVoucherSecretPin(matchedVoucher.pin);
+                          showToast('info', 'PIN Applied', 'Voucher PIN applied.');
+                        }}
+                        className="text-[10px] text-amber-400 hover:underline font-mono"
+                      >
+                        Auto-fill PIN ({matchedVoucher.pin})
+                      </button>
+                    )}
+                  </label>
+                  <div className="relative">
+                    <input
+                      type={showVoucherPin ? 'text' : 'password'}
+                      value={voucherSecretPin}
+                      onChange={(e) => setVoucherSecretPin(e.target.value.trim())}
+                      placeholder="Enter 6-digit PIN"
+                      maxLength={8}
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-white font-mono text-xs tracking-widest focus:border-amber-500 focus:outline-none"
+                      required
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowVoucherPin(!showVoucherPin)}
+                      className="absolute right-3.5 top-2.5 text-slate-400 hover:text-white"
+                    >
+                      {showVoucherPin ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
+
+                {voucherError && (
+                  <div className="p-2.5 rounded-xl bg-rose-950/60 border border-rose-500/50 text-rose-300 text-xs font-medium flex items-center gap-2">
+                    <AlertTriangle className="w-4 h-4 shrink-0 text-rose-400" />
+                    <span>{voucherError}</span>
+                  </div>
+                )}
 
                 <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 text-slate-400 text-xs">
-                  💡 Voucher code is printed on the thermal receipt issued at the hospital accounts desk.
+                  💡 Voucher code and secret PIN are printed on the physical thermal receipt or slip issued at the hospital billing desk.
                 </div>
 
                 <div className="pt-2 border-t border-slate-800 flex items-center justify-between gap-3">
-                  <Button variant="outline" size="sm" onClick={() => setStep(2)}>
+                  <Button variant="outline" size="sm" type="button" onClick={() => setStep(2)}>
                     Back
                   </Button>
                   <Button
@@ -1042,7 +1161,7 @@ export const PatientRealMoneyTopUpModal: React.FC<PatientRealMoneyTopUpModalProp
                     className="flex-1 bg-gradient-to-r from-amber-600 via-orange-600 to-amber-700 font-black shadow-lg text-slate-950"
                     leftIcon={isVerifyingWebhook ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Ticket className="w-4 h-4" />}
                   >
-                    {isVerifyingWebhook ? 'Redeeming Voucher...' : 'Redeem Voucher & Load Funds'}
+                    {isVerifyingWebhook ? 'Verifying with Hospital Ledger...' : `Redeem Voucher & Credit ₹${matchedVoucher ? matchedVoucher.amount : selectedAmount}`}
                   </Button>
                 </div>
               </form>

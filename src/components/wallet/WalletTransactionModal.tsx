@@ -35,8 +35,10 @@ import {
   Check,
   HelpCircle,
   Copy,
-  AlertCircle
+  AlertCircle,
+  Ticket
 } from 'lucide-react';
+import { CashDeskVoucherService } from '../../services/cashDeskVoucherService';
 
 interface WalletTransactionModalProps {
   isOpen: boolean;
@@ -60,6 +62,12 @@ export const WalletTransactionModal: React.FC<WalletTransactionModalProps> = ({
   const [notes, setNotes] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { showToast } = useToast();
+
+  // Voucher redemption support in Wallet
+  const [useVoucher, setUseVoucher] = useState(false);
+  const [voucherCodeInput, setVoucherCodeInput] = useState('');
+  const [voucherPinInput, setVoucherPinInput] = useState('');
+  const [isVerifyingVoucher, setIsVerifyingVoucher] = useState(false);
 
   const QUICK_AMOUNTS = [500, 1000, 2000, 5000, 10000];
 
@@ -112,6 +120,51 @@ export const WalletTransactionModal: React.FC<WalletTransactionModalProps> = ({
     }
   };
 
+  const handleRedeemVoucherDeposit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!voucherCodeInput.trim()) {
+      showToast('error', 'Voucher Required', 'Please enter the voucher code.');
+      return;
+    }
+    if (!voucherPinInput.trim()) {
+      showToast('error', 'PIN Required', 'Please enter the cryptographic voucher PIN.');
+      return;
+    }
+
+    setIsVerifyingVoucher(true);
+    const cashier = StorageService.getCurrentUser()?.fullName || 'Hospital Cashier';
+    const res = CashDeskVoucherService.verifyAndRedeemVoucher(
+      voucherCodeInput.trim(),
+      voucherPinInput.trim(),
+      cashier,
+      {
+        redemptionChannel: 'wallet_credit',
+        patientId: patient.id,
+        patientName: patient.fullName,
+        creditPatientWallet: true,
+        redemptionNotes: `Redeemed at hospital counter for ${patient.fullName} wallet float`
+      }
+    );
+    setIsVerifyingVoucher(false);
+
+    if (!res.success || !res.voucher) {
+      showToast('error', 'Voucher Redemption Failed', res.error || 'Invalid voucher or PIN.');
+      return;
+    }
+
+    const v = res.voucher;
+    triggerCelebrationFireworks();
+    showToast('success', 'Voucher Redeemed & Credited!', `Added ${formatCurrency(v.amount)} from Voucher ${v.voucherCode} to ${patient.fullName}'s wallet.`);
+    
+    // Fetch updated wallet
+    const updatedWallet = WalletService.getByPatientId(patient.id) || wallet;
+    const lastTxn = WalletService.getTransactions(patient.id)[0];
+    if (updatedWallet) {
+      onSuccess(lastTxn, updatedWallet);
+    }
+    onClose();
+  };
+
   return (
     <Modal isOpen={isOpen} onClose={onClose} title={`Health Wallet Command: ${patient.fullName}`} maxWidth="lg">
       <form onSubmit={handleSubmit} className="space-y-4 text-xs">
@@ -158,6 +211,69 @@ export const WalletTransactionModal: React.FC<WalletTransactionModalProps> = ({
             ))}
           </div>
         </div>
+
+        {/* Voucher Redemption Option Toggle */}
+        {type === 'credit' && (
+          <div className="p-3 rounded-2xl bg-amber-500/10 border border-amber-500/30 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-amber-700 dark:text-amber-400 flex items-center gap-1.5">
+                <Ticket className="w-4 h-4" />
+                <span>Deposit via Cash Desk Voucher</span>
+              </span>
+              <button
+                type="button"
+                onClick={() => setUseVoucher(!useVoucher)}
+                className={`text-[11px] font-bold px-2.5 py-1 rounded-lg border transition-colors ${
+                  useVoucher
+                    ? 'bg-amber-600 text-white border-amber-600'
+                    : 'bg-white dark:bg-slate-800 text-amber-600 dark:text-amber-300 border-amber-400/40 hover:bg-amber-50'
+                }`}
+              >
+                {useVoucher ? 'Switch to Standard Deposit' : 'Redeem Voucher'}
+              </button>
+            </div>
+
+            {useVoucher && (
+              <div className="pt-2 border-t border-amber-500/20 space-y-2.5">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-400 block mb-1">Voucher Code</label>
+                    <input
+                      type="text"
+                      placeholder="LMDX-CSH-YYYY-XXXXX"
+                      value={voucherCodeInput}
+                      onChange={e => setVoucherCodeInput(e.target.value.toUpperCase())}
+                      className="w-full px-3 py-2 rounded-xl text-xs font-mono font-bold uppercase bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-400 block mb-1">Voucher PIN</label>
+                    <input
+                      type="password"
+                      placeholder="6-Digit PIN"
+                      maxLength={8}
+                      value={voucherPinInput}
+                      onChange={e => setVoucherPinInput(e.target.value.trim())}
+                      className="w-full px-3 py-2 rounded-xl text-xs font-mono tracking-widest bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white"
+                    />
+                  </div>
+                </div>
+
+                <Button
+                  type="button"
+                  variant="primary"
+                  size="sm"
+                  disabled={isVerifyingVoucher}
+                  onClick={handleRedeemVoucherDeposit}
+                  className="w-full bg-amber-600 hover:bg-amber-700 text-white font-bold"
+                  leftIcon={<Ticket className="w-3.5 h-3.5" />}
+                >
+                  {isVerifyingVoucher ? 'Verifying with Ledger...' : 'Verify PIN & Credit Patient Wallet'}
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Quick Amount Fast Buttons */}
         <div className="space-y-1.5 pt-1">

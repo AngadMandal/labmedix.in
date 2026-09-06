@@ -241,44 +241,12 @@ export const CashDeskBillVouchersPage: React.FC = () => {
     }
   };
 
-  /* ================= RESTRICTED SUPER ADMIN GATE ================= */
-  if (!isSuperAdmin) {
-    return (
-      <div className="max-w-4xl mx-auto py-12 px-4">
-        <div className="p-8 rounded-3xl bg-white dark:bg-slate-900 border-2 border-rose-200 dark:border-rose-900/60 shadow-xl text-center space-y-6">
-          <div className="w-16 h-16 rounded-3xl bg-rose-100 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 flex items-center justify-center mx-auto border border-rose-300 dark:border-rose-800">
-            <Lock className="w-8 h-8" />
-          </div>
-          <div className="space-y-2 max-w-md mx-auto">
-            <span className="px-3 py-1 rounded-full text-xs font-mono font-black uppercase tracking-wider bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300 border border-rose-300">
-              HTTP 403 SUPER ADMIN SOVEREIGN PRIVILEGE
-            </span>
-            <h2 className="text-2xl font-black text-slate-900 dark:text-white">
-              Hospital Cash Desk Voucher Portal
-            </h2>
-            <p className="text-sm text-slate-600 dark:text-slate-400">
-              Only the <strong>Super Administrator</strong> possesses cryptographic authorization to mint, batch issue, and manage Cash Desk Financial Vouchers and sovereign PINs.
-            </p>
-          </div>
-
-          <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 max-w-sm mx-auto text-xs text-slate-600 dark:text-slate-300 text-left space-y-1.5">
-            <p><strong>Current Active Role:</strong> <span className="uppercase text-rose-600 font-bold">{currentUser?.role || 'Guest'}</span></p>
-            <p><strong>Required Role:</strong> <span className="uppercase text-emerald-600 font-bold">super_admin</span></p>
-            <p className="text-[11px] text-slate-400">Please switch to Dr. Labmedix Super Admin profile to access this ledger.</p>
-          </div>
-
-          <Button
-            variant="primary"
-            leftIcon={<KeyRound className="w-4 h-4" />}
-            onClick={handleSwitchToSuperAdmin}
-            className="mx-auto"
-          >
-            Authorize as Dr. Labmedix (Super Admin)
-          </Button>
-        </div>
-      </div>
-    );
-  }
+  // Seed standard recommended vouchers
+  const handleSeedRecommended = () => {
+    const updated = CashDeskVoucherService.seedStandardRecommendedVouchers();
+    setVouchers(updated);
+    showToast('success', 'Recommended Vouchers Active', '6 Standard Hospital Recommended Vouchers have been seeded successfully!');
+  };
 
   return (
     <div className="space-y-6">
@@ -287,11 +255,16 @@ export const CashDeskBillVouchersPage: React.FC = () => {
         <div className="space-y-1.5">
           <div className="flex flex-wrap items-center gap-2">
             <span className="px-3 py-1 rounded-full text-[10px] font-mono font-bold uppercase tracking-wider bg-teal-500/20 text-teal-300 border border-teal-400/40 flex items-center gap-1.5">
-              <ShieldCheck className="w-3.5 h-3.5" /> Super Admin Portal Exclusive
+              <ShieldCheck className="w-3.5 h-3.5" /> Cash Desk POS & Finance Ledger
             </span>
             <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-amber-500/20 text-amber-300 border border-amber-400/30">
               Cryptographic PIN & Anti-Brute-Force
             </span>
+            {isSuperAdmin && (
+              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-400/30">
+                Super Admin Sovereign Mode
+              </span>
+            )}
           </div>
           <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-white flex items-center gap-2.5">
             Hospital Cash Desk Voucher Engine
@@ -303,6 +276,18 @@ export const CashDeskBillVouchersPage: React.FC = () => {
 
         {/* Action Buttons Toolbar */}
         <div className="flex flex-wrap items-center gap-2.5">
+          {/* Seed Recommended Standard Vouchers */}
+          <Button
+            variant="outline"
+            size="sm"
+            className="bg-amber-500/10 text-amber-300 border-amber-500/30 hover:bg-amber-500/20"
+            leftIcon={<Sparkles className="w-4 h-4 text-amber-300" />}
+            onClick={handleSeedRecommended}
+            title="Load 6 recommended standard hospital vouchers (OPD, Lab, Cash Desk, Topup, Pharmacy, Emergency)"
+          >
+            Load Recommended Vouchers
+          </Button>
+
           {/* Auto-print Toggle Switch */}
           <button
             type="button"
@@ -328,20 +313,22 @@ export const CashDeskBillVouchersPage: React.FC = () => {
             Cash Desk POS Redeem
           </Button>
 
-          <Button
-            variant="outline"
-            size="sm"
-            className="bg-white/10 text-white border-white/20 hover:bg-white/20"
-            leftIcon={<Layers className="w-4 h-4 text-indigo-300" />}
-            onClick={() => setIsCreateModalOpen(true)}
-          >
-            Auto Batch Fleet
-          </Button>
+          {(isSuperAdmin || currentUser?.role === 'admin') && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="bg-white/10 text-white border-white/20 hover:bg-white/20"
+              leftIcon={<Layers className="w-4 h-4 text-indigo-300" />}
+              onClick={() => setIsCreateModalOpen(true)}
+            >
+              Auto Batch Fleet
+            </Button>
+          )}
 
           <Button
             variant="primary"
             size="sm"
-            leftIcon={<Sparkles className="w-4 h-4" />}
+            leftIcon={<Plus className="w-4 h-4" />}
             onClick={() => setIsCreateModalOpen(true)}
           >
             + Create Voucher

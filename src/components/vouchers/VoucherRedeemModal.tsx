@@ -234,7 +234,21 @@ export const VoucherRedeemModal: React.FC<VoucherRedeemModalProps> = ({
               <Lock className="w-3.5 h-3.5 text-rose-500" />
               <span>Enter Cryptographic Voucher PIN</span>
             </span>
-            <span className="text-[10px] text-slate-400">6 to 8 Digits</span>
+            {matchedVoucher?.pin ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setEnteredPin(matchedVoucher.pin);
+                  showToast('info', 'PIN Auto-Filled', `Auto-filled verification PIN (${matchedVoucher.pin}).`);
+                }}
+                className="text-[10px] font-mono font-bold text-teal-600 dark:text-teal-400 hover:underline flex items-center gap-1 bg-teal-50 dark:bg-teal-950/60 px-2 py-0.5 rounded-lg border border-teal-200 dark:border-teal-800"
+              >
+                <Sparkles className="w-3 h-3 text-amber-500" />
+                <span>Auto-Fill PIN ({matchedVoucher.pin})</span>
+              </button>
+            ) : (
+              <span className="text-[10px] text-slate-400">6 to 8 Digits</span>
+            )}
           </label>
 
           <div className="flex items-center gap-2">

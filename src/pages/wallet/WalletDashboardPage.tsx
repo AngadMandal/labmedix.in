@@ -539,7 +539,7 @@ export const WalletDashboardPage: React.FC = () => {
               Export CSV
             </Button>
 
-            {currentUser?.role === 'super_admin' && (
+            {(currentUser?.role === 'super_admin' || currentUser?.role === 'admin' || currentUser?.role === 'manager' || currentUser?.role === 'reception' || currentUser?.role === 'card_operator') && (
               <a
                 href="#/cash-desk-vouchers"
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-indigo-600 hover:bg-indigo-500 text-white border border-indigo-400/40 transition-all shadow-md"
