@@ -4,6 +4,7 @@ import { AuditService } from './auditService';
 import { generateUuid } from '../utils/idGenerator';
 import { firestoreService } from './firestoreService';
 import { ApiSyncService } from './apiSyncService';
+import { AuthService } from './authService';
 import { generateBarcodeDataUrl } from '../utils/barcode';
 import { generateQrDataUrl, buildVerificationUrl } from '../utils/qr';
 
@@ -80,6 +81,34 @@ export class UserService {
     const cleanUsername = (userData.username || '').trim().toLowerCase().replace(/\s+/g, '');
     const cleanEmail = (userData.email || '').trim().toLowerCase().replace(/\s+/g, '');
 
+    // 1. Mandatory Email-Based Authentication Requirements Validation
+    if (!cleanEmail || !cleanEmail.includes('@') || !cleanEmail.includes('.')) {
+      return {
+        user: null as any,
+        error: 'Every staff member must have a valid unique registered email address (e.g. name@labmedix.org). Authentication requires a unique email.'
+      };
+    }
+
+    const users = StorageService.getUsers();
+
+    // 2. Strict Uniqueness Check for Registered Email Address
+    const duplicateEmail = users.find(u => u.email && u.email.trim().toLowerCase() === cleanEmail);
+    if (duplicateEmail) {
+      return {
+        user: null as any,
+        error: `Email address '${cleanEmail}' is already assigned to '${duplicateEmail.fullName}' (${duplicateEmail.staffId || duplicateEmail.username}). One staff member must never share or access another account.`
+      };
+    }
+
+    // Check duplicate username
+    const duplicateUsername = users.find(u => u.username && u.username.trim().toLowerCase() === cleanUsername);
+    if (duplicateUsername) {
+      return {
+        user: null as any,
+        error: `Staff username '@${cleanUsername}' is already taken. Please choose another username.`
+      };
+    }
+
     const staffId = this.generateStaffId();
     const employeeNo = userData.employeeNo?.trim() || this.generateEmployeeNo(staffId);
 
@@ -93,6 +122,8 @@ export class UserService {
       console.warn('Barcode/QR auto generation notice:', codeErr);
     }
 
+    const assignedPassword = userData.password?.trim() || this.generateSecurePassword();
+
     const newUser: User = {
       id: `usr_${generateUuid().slice(0, 8)}`,
       staffId,
@@ -100,8 +131,9 @@ export class UserService {
       username: cleanUsername,
       fullName: userData.fullName.trim(),
       email: cleanEmail,
-      password: userData.password?.trim() || this.generateSecurePassword(),
+      password: assignedPassword,
       role: userData.role,
+      companyId: 'LABMEDIX-MAIN-CLINIC',
       designation: userData.designation?.trim() || 'Staff Officer',
       photoUrl: userData.photoUrl?.trim() || undefined,
       bloodGroup: userData.bloodGroup?.trim() || 'O+',
@@ -124,44 +156,61 @@ export class UserService {
       emailSent: false,
       createdAt: new Date().toISOString(),
       // Preserve Super Admin granted module access and custom permission overrides
-      ...(userData.allowedModules && userData.allowedModules.length > 0 ? { allowedModules: userData.allowedModules } : {}),
-      ...(userData.customPermissions && userData.customPermissions.length > 0 ? { customPermissions: userData.customPermissions as any } : {}),
+      allowedModules: userData.allowedModules && userData.allowedModules.length > 0 ? userData.allowedModules : [],
+      customPermissions: (userData.customPermissions && userData.customPermissions.length > 0 ? userData.customPermissions : []) as any,
     };
 
     try {
-      // 1. Save to local storage & in-memory cache first
-      const users = StorageService.getUsers();
-      // Ensure no duplicate username or email exists
-      const existingUserIdx = users.findIndex(u => 
-        (u.username && u.username.toLowerCase() === cleanUsername) || 
-        (u.email && u.email.toLowerCase() === cleanEmail)
-      );
-
-      if (existingUserIdx !== -1) {
-        users[existingUserIdx] = { ...users[existingUserIdx], ...newUser };
-      } else {
-        users.push(newUser);
+      // 3. Provision Central Firebase Authentication account via secondary app instance
+      // (ensures Super Admin session is never signed out while creating staff credentials)
+      try {
+        const authRes = await AuthService.createStaffAuthAccount(cleanEmail, assignedPassword);
+        if (!authRes.success) {
+          console.warn('[UserService] Firebase Auth provisioning notice:', authRes.error);
+        } else {
+          console.info(`[UserService] Central Firebase Auth account provisioned for ${cleanEmail}`);
+        }
+      } catch (authErr) {
+        console.warn('[UserService] Error during Firebase Auth account provisioning:', authErr);
       }
+
+      // 4. Save to local storage & in-memory cache
+      users.push(newUser);
       StorageService.saveUsers(users);
 
-      // 2. Sync to Central Cloud Firestore so user can login from mobile, desktop, laptop
-      await firestoreService.setDocument('users', newUser.id, newUser);
-      AuditService.log('USER_CREATED', 'users', `Created new staff user: ${newUser.fullName} (${newUser.role}) [ID: ${newUser.staffId}]`, newUser.id);
+      // 5. Atomic write to Central Cloud Firestore with WAL & multi-device sync broadcast
+      await ApiSyncService.saveDocument('users', newUser.id, newUser);
+      AuditService.log('USER_CREATED', 'users', `Created new staff user: ${newUser.fullName} (${newUser.role}) [ID: ${newUser.staffId}, Email: ${newUser.email}]`, newUser.id);
       
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('labmedix_data_synced', { detail: { key: 'labmedix_users_v1' } }));
       }
 
       return { user: newUser };
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to create user in Firestore', error);
-      // Fallback: local storage is already saved
-      return { user: newUser };
+      return { user: newUser, error: error?.message };
     }
   }
 
   public static async updateUser(id: string, updates: Partial<User>): Promise<User | null> {
     try {
+      // If email is updated, ensure valid and not duplicate
+      if (updates.email) {
+        const cleanEmail = updates.email.trim().toLowerCase();
+        if (!cleanEmail.includes('@')) {
+          console.warn('[UserService] Invalid email update rejected:', updates.email);
+          return null;
+        }
+        const users = StorageService.getUsers();
+        const conflict = users.find(u => u.id !== id && u.email && u.email.trim().toLowerCase() === cleanEmail);
+        if (conflict) {
+          console.warn(`[UserService] Duplicate email conflict with ${conflict.fullName}`);
+          return null;
+        }
+        updates.email = cleanEmail;
+      }
+
       // If staffId changed, re-generate barcode & QR
       if (updates.staffId) {
         try {
@@ -180,8 +229,11 @@ export class UserService {
       // Sync full updated user object to Firestore (not just partial updates)
       // so allowedModules and customPermissions are always in sync across devices
       const updatedUser = users[userIndex] || { id, ...updates };
-      await firestoreService.setDocument('users', id, { ...updatedUser, updatedAt: new Date().toISOString() });
-      AuditService.log('USER_UPDATED', 'users', `Updated staff account`, id);
+      if (!updatedUser.companyId) {
+        updatedUser.companyId = 'LABMEDIX-MAIN-CLINIC';
+      }
+      await ApiSyncService.saveDocument('users', id, { ...updatedUser, updatedAt: new Date().toISOString() });
+      AuditService.log('USER_UPDATED', 'users', `Updated staff account [${updatedUser.fullName}] (${updatedUser.email})`, id);
       
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('labmedix_data_synced', { detail: { key: 'labmedix_users_v1' } }));
@@ -297,6 +349,15 @@ export class UserService {
 
   public static deleteUser(id: string): boolean {
     const users = StorageService.getUsers();
+    const user = users.find(u => u.id === id);
+    if (!user) return false;
+
+    // Root Super Admin account can never be deleted
+    if (user.role === 'super_admin' || user.username === 'superadmin' || id === 'usr_super_admin' || id === 'usr_superadmin_root') {
+      console.warn('[UserService] Root Super Admin account cannot be deleted.');
+      return false;
+    }
+
     const index = users.findIndex(u => u.id === id);
     if (index === -1) return false;
 

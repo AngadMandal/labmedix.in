@@ -57,6 +57,7 @@ export interface User {
   fullName: string;
   email: string;
   role: Role;
+  companyId?: string;
   designation?: string;
   avatar?: string;
   photoUrl?: string;

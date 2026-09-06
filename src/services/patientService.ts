@@ -433,10 +433,22 @@ export class PatientService {
       StorageService.saveFamilies(families);
     }
 
-    // Save Cards, Wallets, and Patients
+    // Save Cards, Wallets, and Patients locally
     StorageService.saveCards(cards);
     StorageService.saveWallets(wallets);
     StorageService.savePatients(patients);
+
+    // Direct atomic sync to Central Firestore for instant multi-device reflection
+    ApiSyncService.saveDocument('patients', newPatient.id, newPatient).catch(() => {});
+    ApiSyncService.saveDocument('cards', newCard.id, newCard).catch(() => {});
+    ApiSyncService.saveDocument('wallets', newWallet.id, newWallet).catch(() => {});
+    if (familyGroup) {
+      ApiSyncService.saveDocument('families', familyGroup.id, familyGroup).catch(() => {});
+    }
+    issuedFamilyCards.forEach(item => {
+      if (item.patient) ApiSyncService.saveDocument('patients', item.patient.id, item.patient).catch(() => {});
+      if (item.card) ApiSyncService.saveDocument('cards', item.card.id, item.card).catch(() => {});
+    });
 
     const refNote = input.referral?.source && input.referral.source !== 'none' 
       ? ` | Referred by: ${input.referral.source.toUpperCase()} (${input.referral.name || input.referral.details || 'N/A'})`
@@ -471,6 +483,7 @@ export class PatientService {
     };
     patients[index] = updated;
     StorageService.savePatients(patients);
+    ApiSyncService.saveDocument('patients', id, updated).catch(() => {});
 
     AuditService.log('PATIENT_UPDATED', 'patient', `Updated details for ${updated.fullName}`, id);
     return updated;
@@ -486,6 +499,7 @@ export class PatientService {
     patients[index].deletedAt = new Date().toISOString();
     patients[index].deletedBy = currentUser?.fullName || 'Admin';
     StorageService.savePatients(patients);
+    ApiSyncService.saveDocument('patients', id, patients[index]).catch(() => {});
 
     AuditService.log('PATIENT_DELETED', 'patient', `Soft deleted patient ${patients[index].fullName}`, id);
     return true;
@@ -500,6 +514,7 @@ export class PatientService {
     delete patients[index].deletedAt;
     delete patients[index].deletedBy;
     StorageService.savePatients(patients);
+    ApiSyncService.saveDocument('patients', id, patients[index]).catch(() => {});
 
     AuditService.log('PATIENT_RESTORED', 'patient', `Restored soft-deleted patient ${patients[index].fullName}`, id);
     return true;

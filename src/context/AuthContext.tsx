@@ -6,6 +6,9 @@ import { ApiSyncService } from '../services/apiSyncService';
 import { AuditService } from '../services/auditService';
 import { MultiDeviceSyncService } from '../services/multiDeviceSyncService';
 import { checkUserPermission, checkUserModuleAccess, SystemModuleKey } from '../constants/roles';
+import { onAuthStateChanged } from 'firebase/auth';
+import { doc, onSnapshot } from 'firebase/firestore';
+import { auth, db } from '../services/firebaseService';
 
 // Dynamic Session Timeout from Company Profile (default 15 minutes)
 const getIdleTimeouts = () => {
@@ -112,11 +115,78 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
     window.addEventListener('storage', handleStorageChange);
 
+    // ⚡ Listen to Central Firebase Auth State
+    const unsubAuth = onAuthStateChanged(auth, (fbUser) => {
+      if (fbUser && fbUser.email) {
+        const users = StorageService.getUsers();
+        const matched = users.find(u => u.email?.toLowerCase() === fbUser.email?.toLowerCase());
+        if (matched && matched.status === 'active') {
+          setCurrentUser(matched);
+          StorageService.setCurrentUser(matched);
+          ApiSyncService.subscribeToAll();
+        }
+      }
+    });
+
+    // 🌐 Ensure real-time multi-device listeners are running
+    const unsubAllSync = ApiSyncService.subscribeToAll();
+
     return () => {
       stopDeviceManager();
+      unsubAuth();
+      unsubAllSync();
       window.removeEventListener('storage', handleStorageChange);
     };
   }, [recordActivity]);
+
+  // ─────────────────────────────────────────────────────────────
+  // REAL-TIME USER PERMISSION & DEACTIVATION LISTENER
+  // When Super Admin updates permissions or deactivates an account in Firestore,
+  // the staff session immediately updates or terminates in real time.
+  // ─────────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!currentUser?.id) return;
+
+    const userDocRef = doc(db, 'users', currentUser.id);
+    const unsubUser = onSnapshot(userDocRef, (docSnap) => {
+      if (docSnap.exists()) {
+        const liveUserData = { id: docSnap.id, ...docSnap.data() } as User;
+
+        // If Super Admin deactivated this user account:
+        if (liveUserData.status === 'inactive') {
+          console.warn('[AuthContext] Account deactivated by Super Administrator. Revoking session.');
+          logout();
+          window.dispatchEvent(new CustomEvent('labmedix_account_deactivated', {
+            detail: { message: 'Your staff account has been deactivated by Super Administrator.' }
+          }));
+          return;
+        }
+
+        // Live Role, Permissions, and Module updates
+        setCurrentUser((prev) => {
+          if (!prev) return liveUserData;
+          const permsChanged = JSON.stringify(prev.customPermissions) !== JSON.stringify(liveUserData.customPermissions);
+          const modsChanged = JSON.stringify(prev.allowedModules) !== JSON.stringify(liveUserData.allowedModules);
+          const roleChanged = prev.role !== liveUserData.role;
+          const nameChanged = prev.fullName !== liveUserData.fullName;
+
+          if (permsChanged || modsChanged || roleChanged || nameChanged) {
+            console.info('[AuthContext] Real-time permissions/roles synced from Central Firestore.');
+            const merged = { ...prev, ...liveUserData };
+            StorageService.setCurrentUser(merged);
+            return merged;
+          }
+          return prev;
+        });
+      }
+    }, (err) => {
+      console.warn('[AuthContext] User document subscription notice:', err);
+    });
+
+    return () => {
+      unsubUser();
+    };
+  }, [currentUser?.id]);
 
   // ─────────────────────────────────────────────────────────────
   // 15-MINUTE SECURE IDLE TIMER ENGINE

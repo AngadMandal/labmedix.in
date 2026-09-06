@@ -740,6 +740,10 @@ Note: Keep these credentials confidential.`;
                 <span>•</span>
                 <span>@{u.username}</span>
               </div>
+              <div className="flex items-center gap-1 text-[11px] font-mono text-slate-600 dark:text-slate-300 pt-0.5 truncate max-w-[210px]" title={`Registered Staff Email: ${u.email}`}>
+                <Mail className="w-3 h-3 text-teal-500 shrink-0" />
+                <span className="truncate">{u.email}</span>
+              </div>
             </div>
           </div>
         );

@@ -407,6 +407,12 @@ export const StaffIDCard: React.FC<StaffIDCardProps> = ({
                     🔒 {user.accessZone}
                   </p>
                 )}
+                {user.email && (
+                  <p className="text-[8px] font-mono text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded border border-slate-200 dark:border-slate-700 truncate flex items-center gap-1">
+                    <Mail className="w-2.5 h-2.5 text-teal-600 dark:text-teal-400 shrink-0" />
+                    <span className="truncate">{user.email}</span>
+                  </p>
+                )}
               </div>
 
               {/* Dynamic Company Emergency Helplines */}

@@ -85,6 +85,7 @@ export class CardService {
       reason: reason || `Status changed from ${prevStatus} to ${newStatus}`
     });
     StorageService.saveCards(cards);
+    ApiSyncService.saveDocument('cards', card.id, card).catch(() => {});
 
     AuditService.log('CARD_STATUS_CHANGED', 'card', `Super Admin changed Card ${card.cardNumber} status: ${prevStatus} -> ${newStatus} (${reason})`, card.id);
     return card;
@@ -106,6 +107,7 @@ export class CardService {
     const previousValue = { ...card };
     Object.assign(card, updates, { updatedAt: new Date().toISOString() });
     StorageService.saveCards(cards);
+    ApiSyncService.saveDocument('cards', card.id, card).catch(() => {});
 
     AuditService.log(
       'CARD_EDITED_BY_SUPER_ADMIN',
@@ -196,6 +198,7 @@ export class CardService {
       });
 
       StorageService.saveCards(cards);
+      ApiSyncService.saveDocument('cards', card.id, card).catch(() => {});
 
       AuditService.log(
         'CARD_REVOKED_ARCHIVED',
@@ -258,6 +261,7 @@ export class CardService {
     });
 
     StorageService.saveCards(cards);
+    ApiSyncService.saveDocument('cards', card.id, card).catch(() => {});
 
     // Re-link patient active healthCardId
     const patients = StorageService.getPatients();
@@ -307,6 +311,7 @@ export class CardService {
     });
 
     StorageService.saveCards(cards);
+    ApiSyncService.saveDocument('cards', card.id, card).catch(() => {});
     AuditService.log('CARD_RENEWED', 'card', `Card ${card.cardNumber} renewed until ${card.expiryDate} (Previous: ${prevExpiry})`, card.id);
 
     return { card };
@@ -371,6 +376,8 @@ export class CardService {
 
     cards.unshift(newCard);
     StorageService.saveCards(cards);
+    ApiSyncService.saveDocument('cards', newCard.id, newCard).catch(() => {});
+    ApiSyncService.saveDocument('cards', oldCard.id, oldCard).catch(() => {});
 
     // Update patient's active healthCardId
     const patients = StorageService.getPatients();

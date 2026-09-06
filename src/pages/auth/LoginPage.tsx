@@ -187,20 +187,25 @@ export const LoginPage: React.FC = () => {
               <span>{companyProfile.name}</span>
             </h2>
             <p className="text-xs font-bold text-teal-400 uppercase tracking-wider mt-0.5">
-              Admin & Operational Command Panel
+              Live Staff Access & Command Portal
+            </p>
+            <p className="text-[10px] text-slate-400 font-mono mt-0.5">
+              Central Firebase Authentication • Live Multi-Device Sync
             </p>
           </div>
         </div>
 
         {/* PRIMARY CREDENTIALS FORM */}
         <form onSubmit={handlePrimaryLogin} className="space-y-4">
-          {/* Username / Staff ID */}
+          {/* Registered Email / Staff ID */}
           <div className="space-y-1">
-            <label className="text-xs font-bold text-slate-300 block">
-              Admin / Staff Username or Email:
+            <label className="text-xs font-bold text-slate-300 block flex items-center justify-between">
+              <span>Registered Staff Email / Staff ID:</span>
+              <span className="text-[10px] text-teal-400 font-mono font-normal">Unique Email Required</span>
             </label>
             <Input
-              placeholder="Enter Admin Username or Email"
+              type="text"
+              placeholder="e.g. debashis@labmedix.org or LMDX-STF-001"
               value={username}
               onChange={(e) => handleUsernameChange(e.target.value)}
               leftIcon={<User className="w-4 h-4 text-teal-400" />}
@@ -209,11 +214,11 @@ export const LoginPage: React.FC = () => {
             />
           </div>
 
-          {/* Password */}
+          {/* Password / PIN */}
           <div className="space-y-1">
             <div className="flex items-center justify-between">
               <label className="text-xs font-bold text-slate-300 block">
-                Password:
+                Account Password / Security PIN:
               </label>
               <button
                 type="button"
@@ -227,7 +232,7 @@ export const LoginPage: React.FC = () => {
             <div className="relative">
               <Input
                 type={showPassword ? 'text' : 'password'}
-                placeholder="Enter your password"
+                placeholder="Enter registered account password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 leftIcon={<Lock className="w-4 h-4 text-teal-400" />}
