@@ -341,47 +341,41 @@ export class AuthService {
       } catch (authErr: any) {
         const errCode = authErr?.code || '';
 
-        // If user account is not yet provisioned in Firebase Auth (e.g. existing clinic staff / first time login):
-        if (errCode === 'auth/user-not-found' || errCode === 'auth/invalid-credential' || errCode === 'auth/operation-not-allowed') {
-          const isMasterPass = (targetUser.role === 'super_admin' || targetUser.username === 'superadmin' || targetUser.username === 'angadmandal3@gmail.com' || targetUser.email === 'angadmandal3@gmail.com') && 
-            (cleanPass === 'Angad@1999' || cleanPass === 'LabMedix@2026Root#' || cleanPass === 'LabMedix2026Root#');
-          const isPinMatch = targetUser.pinCode && cleanPass === String(targetUser.pinCode);
-          const isPasswordMatch = targetUser.password && cleanPass === String(targetUser.password);
+        // Check if verified clinic credentials or Super Admin master root pass match
+        const isSuperAdminUser = 
+          targetUser.role === 'super_admin' || 
+          targetUser.username === 'superadmin' || 
+          targetUser.username === 'angadmandal3@gmail.com' || 
+          targetUser.email === 'angadmandal3@gmail.com';
 
-          if (isMasterPass || isPinMatch || isPasswordMatch) {
-            try {
-              // Automatically provision this staff member's email in Firebase Auth
-              const authPass = cleanPass.length >= 6 ? cleanPass : `${cleanPass}#Lab2026`;
-              await createUserWithEmailAndPassword(auth, registeredEmail, authPass);
-              firebaseAuthSuccess = true;
-              console.info(`[AuthService] Staff account ${registeredEmail} provisioned in Central Firebase Auth.`);
-            } catch (createErr: any) {
-              if (createErr?.code === 'auth/email-already-in-use') {
-                firebaseAuthError = 'Incorrect password for registered email account.';
-              } else {
-                firebaseAuthError = createErr?.message || 'Firebase Authentication failed.';
-              }
-            }
+        const isMasterPass = isSuperAdminUser && (
+          cleanPass === 'Angad@1999' || 
+          cleanPass === 'LabMedix@2026Root#' || 
+          cleanPass === 'LabMedix2026Root#' || 
+          cleanPass.toLowerCase() === 'angad@1999'
+        );
+        const isPinMatch = targetUser.pinCode && cleanPass === String(targetUser.pinCode);
+        const isPasswordMatch = targetUser.password && cleanPass === String(targetUser.password);
+
+        if (isMasterPass || isPinMatch || isPasswordMatch) {
+          // If the password or PIN entered by user matches system records or master root pass:
+          firebaseAuthSuccess = true;
+          console.info(`[AuthService] Verified access for ${registeredEmail} via clinic credentials.`);
+
+          // Try lazy provisioning in Firebase Auth in background if missing
+          if (errCode === 'auth/user-not-found') {
+            const authPass = cleanPass.length >= 6 ? cleanPass : `${cleanPass}#Lab2026`;
+            createUserWithEmailAndPassword(auth, registeredEmail, authPass).catch(() => {});
+          }
+        } else {
+          // Credentials truly did not match
+          if (errCode === 'auth/wrong-password') {
+            firebaseAuthError = 'Incorrect password or security PIN for registered staff email.';
+          } else if (errCode === 'auth/too-many-requests') {
+            firebaseAuthError = 'Access temporarily disabled due to many failed login attempts. Please try again later.';
           } else {
             firebaseAuthError = 'Invalid Password or Security PIN for registered staff email.';
           }
-        } else if (errCode === 'auth/wrong-password') {
-          firebaseAuthError = 'Incorrect Password for registered staff email.';
-        } else if (errCode === 'auth/too-many-requests') {
-          firebaseAuthError = 'Access temporarily disabled due to many failed login attempts. Please try again later.';
-        } else if (errCode === 'auth/network-request-failed') {
-          // Offline fallback
-          const isMasterPass = (targetUser.role === 'super_admin' || targetUser.username === 'superadmin' || targetUser.username === 'angadmandal3@gmail.com' || targetUser.email === 'angadmandal3@gmail.com') && 
-            (cleanPass === 'Angad@1999' || cleanPass === 'LabMedix@2026Root#' || cleanPass === 'LabMedix2026Root#');
-          const isPinMatch = targetUser.pinCode && cleanPass === String(targetUser.pinCode);
-          const isPasswordMatch = targetUser.password && cleanPass === String(targetUser.password);
-          if (isMasterPass || isPinMatch || isPasswordMatch) {
-            firebaseAuthSuccess = true;
-          } else {
-            firebaseAuthError = 'Invalid password.';
-          }
-        } else {
-          firebaseAuthError = authErr?.message || 'Authentication failed.';
         }
       }
 
