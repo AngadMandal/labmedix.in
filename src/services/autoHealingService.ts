@@ -1,5 +1,6 @@
 import { STORAGE_KEYS } from './storage';
 import { User, Patient, HealthCard, Membership, CompanyProfile } from '../types';
+import { ApiSyncService } from './apiSyncService';
 
 export interface AutoHealingIncident {
   id: string;
@@ -122,17 +123,24 @@ export class AutoHealingService {
         }
       }
 
-      const hasSuperAdmin = users.some(u => u && (u.role === 'super_admin' || u.id === 'usr_super_admin' || u.username === 'superadmin'));
+      const hasSuperAdmin = users.some(u => 
+        u && (u.role === 'super_admin' || u.id === 'usr_super_admin' || u.username === 'angadmandal3@gmail.com' || u.email === 'angadmandal3@gmail.com')
+      );
 
-      if (!hasSuperAdmin || neededHeal) {
+      // Check if existing super admin is legacy/corrupted
+      const currentAdmin = users.find(u => u && (u.id === 'usr_super_admin' || u.role === 'super_admin'));
+      const isLegacyAdmin = currentAdmin && (currentAdmin.email === 'admin@labmedix.org' || currentAdmin.username === 'superadmin' || currentAdmin.password === 'LabMedix@2026Root#');
+
+      if (!hasSuperAdmin || neededHeal || isLegacyAdmin) {
         const defaultSuperAdmin: User = {
           id: 'usr_super_admin',
           staffId: 'LMDX-STF-001',
           employeeNo: 'LMDX-EMP-001',
-          username: 'superadmin',
-          fullName: 'Dr. Labmedix Super Admin',
-          email: 'admin@labmedix.org',
+          username: 'angadmandal3@gmail.com',
+          fullName: 'Angad Mandal',
+          email: 'angadmandal3@gmail.com',
           role: 'super_admin',
+          companyId: 'LABMEDIX-MAIN-CLINIC',
           designation: 'Chief Medical Director & System Owner',
           photoUrl: 'https://images.unsplash.com/photo-1622253692010-333f2da6031d?w=400&auto=format&fit=crop&q=80',
           bloodGroup: 'O+',
@@ -147,23 +155,24 @@ export class AutoHealingService {
           cardThemeWish: 'premium_medical',
           cardMaterialWish: 'gold_foil',
           status: 'active',
-          pinCode: 'LabMedix@2026Root#',
-          password: 'LabMedix@2026Root#',
+          pinCode: 'Angad@1999',
+          password: 'Angad@1999',
           joiningDate: '2025-01-01',
           expiryDate: '2028-12-31',
           createdAt: '2025-01-01T00:00:00.000Z'
         };
 
-        const filtered = users.filter(u => u && u.id !== 'usr_super_admin' && u.username !== 'superadmin');
+        const filtered = users.filter(u => u && u.id !== 'usr_super_admin' && u.username !== 'superadmin' && u.username !== 'angadmandal3@gmail.com');
         filtered.unshift(defaultSuperAdmin);
 
         localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(filtered));
+        ApiSyncService.saveDocument('users', defaultSuperAdmin.id, defaultSuperAdmin).catch(() => {});
 
         this.recordHealingEvent({
           subsystem: 'AUTH',
           severity: 'CRITICAL',
-          issueDescription: 'Root Super Admin account was missing, corrupt, or unparseable.',
-          actionTaken: 'Resurrected official verified Super Admin credentials in 0ms.',
+          issueDescription: 'Root Super Admin account credentials verified and aligned with official default.',
+          actionTaken: 'Resurrected official verified Super Admin (Angad Mandal) credentials in 0ms.',
           recoveredSuccessfully: true,
           restoredFrom: 'Root Account Shield Vault'
         });

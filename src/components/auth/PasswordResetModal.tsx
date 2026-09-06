@@ -56,7 +56,8 @@ export const PasswordResetModal: React.FC<PasswordResetModalProps> = ({
     const pin = String(Math.floor(100000 + Math.random() * 900000));
     setForgotGeneratedPin(pin);
     setForgotTargetUser(user);
-    setForgotEmail(user.email || 'admin@labmedix.org');
+    const targetEmail = user.email || 'angadmandal3@gmail.com';
+    setForgotEmail(targetEmail);
 
     const emailSubject = '[LabMedix AutoHealth Enterprise] Staff Password Recovery PIN';
     const emailBody = `========================================================================\n` +
@@ -73,15 +74,15 @@ export const PasswordResetModal: React.FC<PasswordResetModalProps> = ({
       `========================================================================`;
 
     try {
-      await GmailService.sendEmail(undefined, user.email || 'admin@labmedix.org', emailSubject, emailBody);
+      await GmailService.sendEmail(undefined, targetEmail, emailSubject, emailBody);
       setForgotLoading(false);
       setForgotStep(2);
-      showToast('success', 'Recovery PIN Dispatched!', `A secure 6-digit verification code has been automatically sent to ${user.email || 'admin@labmedix.org'}. Please check your email inbox.`);
+      showToast('success', 'Recovery PIN Dispatched!', `A secure 6-digit verification code has been automatically sent to ${targetEmail}. Please check your email inbox.`);
     } catch (err) {
       console.warn('Email dispatch warning:', err);
       setForgotLoading(false);
       setForgotStep(2);
-      showToast('success', 'Recovery PIN Dispatched', `A secure 6-digit verification code has been automatically dispatched to ${user.email || 'admin@labmedix.org'}. Please check your email inbox.`);
+      showToast('success', 'Recovery PIN Dispatched', `A secure 6-digit verification code has been automatically dispatched to ${targetEmail}. Please check your email inbox.`);
     }
   };
 
@@ -155,7 +156,7 @@ export const PasswordResetModal: React.FC<PasswordResetModalProps> = ({
           <div className="space-y-1">
             <label className="font-bold text-slate-300 block">Staff Username, Staff ID or Email:</label>
             <Input
-              placeholder="e.g. superadmin, dr.subhashish or admin@labmedix.org"
+              placeholder="e.g. angadmandal3@gmail.com, superadmin, or LMDX-STF-001"
               value={forgotUsername}
               onChange={(e) => setForgotUsername(e.target.value)}
               leftIcon={<User className="w-4 h-4 text-teal-400" />}

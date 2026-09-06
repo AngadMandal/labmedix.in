@@ -95,7 +95,7 @@ export const LoginPage: React.FC = () => {
     setIsLoading(true);
 
     try {
-      const inputUser = username.trim() || 'superadmin';
+      const inputUser = username.trim() || 'angadmandal3@gmail.com';
 
       console.log('Attempting login for:', inputUser);
       const validation = await AuthService.validateCredentialsAsync(inputUser, password || '');
@@ -142,7 +142,7 @@ export const LoginPage: React.FC = () => {
         setOverrideTokenInput('');
         setOverridePinInput('');
         setOverrideMessage('');
-        login('superadmin');
+        login('angadmandal3@gmail.com');
         navigate('/dashboard');
       }, 1500);
     } else {
@@ -205,7 +205,7 @@ export const LoginPage: React.FC = () => {
             </label>
             <Input
               type="text"
-              placeholder="e.g. debashis@labmedix.org or LMDX-STF-001"
+              placeholder="e.g. angadmandal3@gmail.com or LMDX-STF-001"
               value={username}
               onChange={(e) => handleUsernameChange(e.target.value)}
               leftIcon={<User className="w-4 h-4 text-teal-400" />}
@@ -328,7 +328,7 @@ export const LoginPage: React.FC = () => {
             <label className="font-bold text-slate-300 block">Super Admin Security PIN (MFA):</label>
             <Input
               type="password"
-              placeholder="Enter 6-digit PIN (e.g. 1509442)"
+              placeholder="Enter PIN (e.g. Angad@1999)"
               value={overridePinInput}
               onChange={(e) => setOverridePinInput(e.target.value)}
               required

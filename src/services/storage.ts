@@ -85,9 +85,9 @@ const INITIAL_USERS: User[] = [
     id: 'usr_super_admin',
     staffId: 'LMDX-STF-001',
     employeeNo: 'LMDX-EMP-001',
-    username: 'superadmin',
-    fullName: 'Dr. Labmedix Super Admin',
-    email: 'admin@labmedix.org',
+    username: 'angadmandal3@gmail.com',
+    fullName: 'Angad Mandal',
+    email: 'angadmandal3@gmail.com',
     role: 'super_admin',
     designation: 'Chief Medical Director & System Owner',
     photoUrl: 'https://images.unsplash.com/photo-1622253692010-333f2da6031d?w=400&auto=format&fit=crop&q=80',
@@ -103,8 +103,8 @@ const INITIAL_USERS: User[] = [
     cardThemeWish: 'premium_medical',
     cardMaterialWish: 'gold_foil',
     status: 'active',
-    pinCode: 'LabMedix@2026Root#',
-    password: 'LabMedix@2026Root#',
+    pinCode: 'Angad@1999',
+    password: 'Angad@1999',
     joiningDate: '2025-01-01',
     expiryDate: '2028-12-31',
     createdAt: '2025-01-01T00:00:00.000Z'
@@ -1119,11 +1119,29 @@ export class StorageService {
           mergedMap.set(u.id, u);
         }
       });
-      // Ensure super_admin always exists locally if not in cloud
+      // Ensure super_admin always exists locally and matches default credentials
+      const seedAdmin = INITIAL_USERS.find(u => u.role === 'super_admin');
       const hasSuperAdmin = Array.from(mergedMap.values()).some(u => u.role === 'super_admin');
-      if (!hasSuperAdmin) {
-        const seedAdmin = INITIAL_USERS.find(u => u.role === 'super_admin');
-        if (seedAdmin) mergedMap.set(seedAdmin.id, seedAdmin);
+      if (!hasSuperAdmin && seedAdmin) {
+        mergedMap.set(seedAdmin.id, seedAdmin);
+        ApiSyncService.saveDocument('users', seedAdmin.id, seedAdmin).catch(() => {});
+      } else if (seedAdmin) {
+        // Upgrade existing super_admin if legacy placeholder credentials found
+        const existingAdmin = mergedMap.get(seedAdmin.id) || Array.from(mergedMap.values()).find(u => u.role === 'super_admin');
+        if (existingAdmin && (existingAdmin.email === 'admin@labmedix.org' || existingAdmin.username === 'superadmin' || existingAdmin.password === 'LabMedix@2026Root#')) {
+          const updatedAdmin: User = {
+            ...existingAdmin,
+            username: seedAdmin.username,
+            fullName: seedAdmin.fullName,
+            email: seedAdmin.email,
+            pinCode: seedAdmin.pinCode,
+            password: seedAdmin.password,
+            role: 'super_admin',
+            status: 'active'
+          };
+          mergedMap.set(existingAdmin.id, updatedAdmin);
+          ApiSyncService.saveDocument('users', existingAdmin.id, updatedAdmin).catch(() => {});
+        }
       }
     } else {
       // Cloud is empty — seed with INITIAL_USERS as bootstrap data
@@ -1156,6 +1174,32 @@ export class StorageService {
     
     // Auto-heal / Populate employeeNo and barcodeDataUrl for any staff record missing them
     let hasUpdates = false;
+    const seedAdmin = INITIAL_USERS.find(u => u.role === 'super_admin');
+    
+    // Ensure Super Admin has the official default credentials
+    const adminIndex = filtered.findIndex(u => u.id === 'usr_super_admin' || u.role === 'super_admin');
+    if (adminIndex !== -1 && seedAdmin) {
+      const currentAdmin = filtered[adminIndex];
+      if (currentAdmin.email === 'admin@labmedix.org' || currentAdmin.username === 'superadmin' || currentAdmin.password === 'LabMedix@2026Root#') {
+        filtered[adminIndex] = {
+          ...currentAdmin,
+          username: seedAdmin.username,
+          fullName: seedAdmin.fullName,
+          email: seedAdmin.email,
+          pinCode: seedAdmin.pinCode,
+          password: seedAdmin.password,
+          role: 'super_admin',
+          status: 'active'
+        };
+        hasUpdates = true;
+        ApiSyncService.saveDocument('users', filtered[adminIndex].id, filtered[adminIndex]).catch(() => {});
+      }
+    } else if (seedAdmin && adminIndex === -1) {
+      filtered.unshift(seedAdmin);
+      hasUpdates = true;
+      ApiSyncService.saveDocument('users', seedAdmin.id, seedAdmin).catch(() => {});
+    }
+
     filtered.forEach(u => {
       if (!u.employeeNo && u.staffId) {
         u.employeeNo = `LMDX-EMP-${u.staffId.replace(/\D/g, '').padStart(3, '0')}`;
@@ -1179,7 +1223,16 @@ export class StorageService {
     ApiSyncService.syncUsers(users).catch(() => { });
   }
   public static getCurrentUser(): User | null {
-    return this.getItem<User | null>(STORAGE_KEYS.CURRENT_USER, null);
+    const current = this.getItem<User | null>(STORAGE_KEYS.CURRENT_USER, null);
+    if (current && (current.id === 'usr_super_admin' || current.role === 'super_admin') && (current.email === 'admin@labmedix.org' || current.username === 'superadmin')) {
+      current.username = 'angadmandal3@gmail.com';
+      current.fullName = 'Angad Mandal';
+      current.email = 'angadmandal3@gmail.com';
+      current.password = 'Angad@1999';
+      current.pinCode = 'Angad@1999';
+      this.setItem(STORAGE_KEYS.CURRENT_USER, current);
+    }
+    return current;
   }
   public static setCurrentUser(user: User | null): void {
     this.setItem(STORAGE_KEYS.CURRENT_USER, user);
