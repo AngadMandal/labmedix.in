@@ -4,9 +4,10 @@ import fs from 'fs';
 import path from 'path';
 
 const config = JSON.parse(fs.readFileSync('./firebase-applet-config.json', 'utf8'));
+const databaseId = config.firestoreDatabaseId || 'ai-studio-labmedixautoheal-1ac13548-bbcc-4f91-96bd-c8c990bec0c8';
 
 const app = initializeApp(config);
-const db = getFirestore(app);
+const db = getFirestore(app, databaseId);
 
 async function main() {
   const email = 'angadmandal3@gmail.com';

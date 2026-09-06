@@ -54,7 +54,7 @@ export const FirestoreConnectionDiagnostic: React.FC<FirestoreConnectionDiagnost
   const [healthCheckDocCount, setHealthCheckDocCount] = useState<number>(0);
 
   const projectId = firebaseConfig.projectId || 'gen-lang-client-0076489895';
-  const databaseId = '(default)';
+  const databaseId = (firebaseConfig as any).firestoreDatabaseId || 'ai-studio-labmedixautoheal-1ac13548-bbcc-4f91-96bd-c8c990bec0c8';
   const databaseRestUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${databaseId}/documents`;
   const consoleUrl = `https://console.firebase.google.com/project/${projectId}/firestore`;
 

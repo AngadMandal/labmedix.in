@@ -1241,7 +1241,7 @@ export class ApiSyncService {
       status: !isOnline ? 'offline' : (this.isConnected ? 'connected' : 'connecting'),
       liveState,
       projectId: firebaseConfig.projectId || 'gen-lang-client-0076489895',
-      databaseId: '(default)',
+      databaseId: (firebaseConfig as any).firestoreDatabaseId || 'ai-studio-labmedixautoheal-1ac13548-bbcc-4f91-96bd-c8c990bec0c8',
       activeListenersCount: this.activeUnsubscribers.length || Object.keys(this.KEY_TO_FIRESTORE_MAP).length,
       lastSyncTime: this.lastSyncTimestamp,
       pendingQueueSize: this.workerQueue.length,
@@ -1258,7 +1258,7 @@ export class ApiSyncService {
       lastSyncTime: this.lastSyncTimestamp,
       isWorking: this.workerRunning,
       projectId: firebaseConfig.projectId || 'gen-lang-client-0076489895',
-      databaseId: '(default)'
+      databaseId: (firebaseConfig as any).firestoreDatabaseId || 'ai-studio-labmedixautoheal-1ac13548-bbcc-4f91-96bd-c8c990bec0c8'
     };
   }
 }

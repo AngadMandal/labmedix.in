@@ -3,6 +3,7 @@
   "appId": "1:451271134982:web:defaee0de0069f4732d887",
   "apiKey": "AIzaSyBNaCHTH6cWJ1AdygG42bKugjtHNRg05ys",
   "authDomain": "gen-lang-client-0076489895.firebaseapp.com",
+  "firestoreDatabaseId": "ai-studio-labmedixautoheal-1ac13548-bbcc-4f91-96bd-c8c990bec0c8",
   "storageBucket": "gen-lang-client-0076489895.firebasestorage.app",
   "messagingSenderId": "451271134982",
   "measurementId": "",

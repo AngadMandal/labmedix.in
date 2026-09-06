@@ -1043,7 +1043,8 @@ export class StorageService {
       cloudUsersCount = cloudUsers.length;
 
       const syncEntity = <T>(cloudItems: T[], key: string) => {
-        if (Array.isArray(cloudItems) && cloudItems.length > 0) {
+        if (Array.isArray(cloudItems)) {
+          // Cloud Firestore is the absolute single source of truth across all devices
           StorageService.updateCacheAndNotify(key, cloudItems);
         }
       };
@@ -1081,25 +1082,13 @@ export class StorageService {
         StorageService.updateCacheAndNotify(STORAGE_KEYS.VOUCHER_SETTINGS, cloudVoucherSettings);
       }
 
-      // Seed initial records to Firestore ONLY if remote cloud collections are completely empty
-      if (cloudPatients.length === 0) ApiSyncService.syncKeyToFirestore(STORAGE_KEYS.PATIENTS, StorageService.getPatients()).catch(() => {});
-      if (cloudCards.length === 0) ApiSyncService.syncKeyToFirestore(STORAGE_KEYS.CARDS, StorageService.getCards()).catch(() => {});
+      // Seed baseline system catalog ONLY if remote cloud catalog is completely empty
       if (effectiveMemberships.length === 0) {
-        // Seed both collections: memberships (legacy) and membershipTiers (canonical)
         ApiSyncService.syncKeyToFirestore(STORAGE_KEYS.MEMBERSHIPS, DEFAULT_MEMBERSHIPS).catch(() => {});
         ApiSyncService.upsertCollectionInFirestore('membershipTiers', DEFAULT_MEMBERSHIPS).catch(() => {});
         StorageService.updateCacheAndNotify(STORAGE_KEYS.MEMBERSHIPS, DEFAULT_MEMBERSHIPS);
         StorageService.updateCacheAndNotify('labmedix_membership_tiers_v1', DEFAULT_MEMBERSHIPS);
       }
-      if (cloudDoctors.length === 0) ApiSyncService.syncKeyToFirestore(STORAGE_KEYS.DOCTORS, StorageService.getDoctors()).catch(() => {});
-      if (cloudLabTests.length === 0) ApiSyncService.syncKeyToFirestore(STORAGE_KEYS.LAB_TESTS, StorageService.getLabTests()).catch(() => {});
-      if (cloudHealthPackages.length === 0) ApiSyncService.syncKeyToFirestore(STORAGE_KEYS.HEALTH_PACKAGES, StorageService.getHealthPackages()).catch(() => {});
-      if (cloudWallets.length === 0) ApiSyncService.syncKeyToFirestore(STORAGE_KEYS.WALLETS, StorageService.getWallets()).catch(() => {});
-      if (cloudTxns.length === 0) ApiSyncService.syncKeyToFirestore(STORAGE_KEYS.TRANSACTIONS, StorageService.getTransactions()).catch(() => {});
-      if (cloudCardDispatches.length === 0) ApiSyncService.syncKeyToFirestore(STORAGE_KEYS.CARD_DISPATCHES, StorageService.getCardDispatches()).catch(() => {});
-      if (cloudCardDispatchBatches.length === 0) ApiSyncService.syncKeyToFirestore(STORAGE_KEYS.CARD_DISPATCH_BATCHES, StorageService.getCardDispatchBatches()).catch(() => {});
-      if (cloudNgoPartners.length === 0) ApiSyncService.syncKeyToFirestore(STORAGE_KEYS.NGO_PARTNERS, StorageService.getNgoPartners()).catch(() => {});
-      if (cloudHealthCamps.length === 0) ApiSyncService.syncKeyToFirestore(STORAGE_KEYS.HEALTH_CAMPS, StorageService.getHealthCamps()).catch(() => {});
 
       if (cloudCompany && cloudCompany.name) {
         StorageService.updateCacheAndNotify(STORAGE_KEYS.COMPANY_PROFILE, cloudCompany);

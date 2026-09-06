@@ -11,11 +11,14 @@ import {
 } from 'firebase/firestore';
 import configFile from '../../firebase-applet-config.json';
 
+export const databaseId = (configFile as any).firestoreDatabaseId || "ai-studio-labmedixautoheal-1ac13548-bbcc-4f91-96bd-c8c990bec0c8";
+
 const config = {
   ...configFile,
   apiKey: configFile.apiKey || "AIzaSyBNaCHTH6cWJ1AdygG42bKugjtHNRg05ys",
   authDomain: configFile.authDomain || "gen-lang-client-0076489895.firebaseapp.com",
   projectId: configFile.projectId || "gen-lang-client-0076489895",
+  firestoreDatabaseId: databaseId,
   storageBucket: configFile.storageBucket || "gen-lang-client-0076489895.firebasestorage.app",
   messagingSenderId: configFile.messagingSenderId || "451271134982",
   appId: configFile.appId || "1:451271134982:web:defaee0de0069f4732d887"
@@ -54,18 +57,18 @@ try {
     // Memory-only: no localStorage writes, safe on all devices and quota conditions
     firestoreDb = initializeFirestore(app, {
       localCache: memoryLocalCache()
-    });
+    }, databaseId);
   } else {
     // Full persistent cache for desktop/tablet with sufficient storage
     firestoreDb = initializeFirestore(app, {
       localCache: persistentLocalCache({
         tabManager: persistentMultipleTabManager()
       })
-    });
+    }, databaseId);
   }
 } catch {
-  // Final fallback: plain Firestore without any explicit cache config
-  firestoreDb = getFirestore(app);
+  // Final fallback: plain Firestore with named database
+  firestoreDb = getFirestore(app, databaseId);
 }
 
 export const db = firestoreDb;
@@ -126,7 +129,7 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
 
 async function testConnection() {
   try {
-    const docRef = doc(db, 'system', 'status');
+    const docRef = doc(db, '_system_health', 'heartbeat');
     await getDocFromServer(docRef).catch(() => {});
   } catch (error) {
     // Silent catch
