@@ -29,26 +29,35 @@ export class MembershipTierService {
 
   /**
    * Real-time Multi-Channel Subscription:
-   * Combines hot in-memory cache, window events, cross-tab BroadcastChannel, and Firestore snapshots.
+   * Listens to the canonical `membershipTiers` Firestore collection.
+   * Falls back to `memberships` collection if tiers is empty (legacy compat).
+   * Also responds to local window events for instant cross-tab updates.
    */
   public static subscribeToTiers(callback: (tiers: Membership[]) => void): () => void {
-    // 1. Immediately emit current local storage tiers as optimistic baseline
+    // 1. Immediately emit cached tiers as optimistic baseline — avoid showing hardcoded defaults
     const initialTiers = StorageService.getMemberships();
-    callback(initialTiers && initialTiers.length > 0 ? initialTiers : DEFAULT_MEMBERSHIPS);
+    if (initialTiers && initialTiers.length > 0) {
+      callback(initialTiers);
+    } else {
+      // Pre-sync placeholder only — will be replaced by Firestore snapshot immediately
+      callback(DEFAULT_MEMBERSHIPS);
+    }
 
-    // 2. Listen to local/in-app data sync events
+    // 2. Listen to local/in-app data sync events (cross-tab and same-tab Firestore updates)
     const handleDataSynced = (e: any) => {
       const key = e?.detail?.key;
-      if (!key || key === 'labmedix_memberships_v1' || key.includes('membership')) {
+      const keys: string[] = e?.detail?.keys || (key ? [key] : []);
+      const relevant = keys.some(k => k === 'labmedix_memberships_v1' || k === 'labmedix_membership_tiers_v1' || k.includes('membership'));
+      if (!key || relevant) {
         const updated = StorageService.getMemberships();
-        callback(updated);
+        if (updated.length > 0) callback(updated);
       }
     };
 
     const handleStorageChange = (e: StorageEvent) => {
-      if (!e.key || e.key === 'labmedix_memberships_v1' || e.key.includes('membership')) {
+      if (!e.key || e.key === 'labmedix_memberships_v1' || e.key === 'labmedix_membership_tiers_v1' || e.key.includes('membership')) {
         const updated = StorageService.getMemberships();
-        callback(updated);
+        if (updated.length > 0) callback(updated);
       }
     };
 
@@ -57,31 +66,59 @@ export class MembershipTierService {
       window.addEventListener('storage', handleStorageChange);
     }
 
-    // 3. Firestore live snapshot listener
+    // 3. Firestore live snapshot on canonical `membershipTiers` collection
     let firestoreUnsub: (() => void) | null = null;
+    let legacyUnsub: (() => void) | null = null;
+
+    const handleTierSnapshot = (cloudTiers: Membership[]) => {
+      if (cloudTiers.length > 0) {
+        // Firestore is authoritative — update local cache and notify all subscribers
+        StorageService.updateCacheAndNotify('labmedix_memberships_v1', cloudTiers);
+        StorageService.updateCacheAndNotify('labmedix_membership_tiers_v1', cloudTiers);
+        callback(cloudTiers);
+      }
+    };
+
     try {
-      const q = collection(db, this.COLLECTION_NAME);
       firestoreUnsub = onSnapshot(
-        q,
+        collection(db, this.COLLECTION_NAME),
         (snapshot) => {
-          if (!snapshot.empty) {
-            const cloudTiers: Membership[] = [];
-            snapshot.forEach((d) => {
-              const data = d.data();
-              // Guard: skip any document missing required name field
-              if (!data || !data.name) return;
-              cloudTiers.push({ ...data, id: d.id } as Membership);
-            });
-            if (cloudTiers.length > 0) {
-              // Reconcile and save
-              StorageService.saveMemberships(cloudTiers);
-              callback(cloudTiers);
-            }
+          const cloudTiers: Membership[] = [];
+          snapshot.forEach((d) => {
+            const data = d.data();
+            if (!data || !data.name) return;
+            cloudTiers.push({ ...data, id: d.id } as Membership);
+          });
+
+          if (cloudTiers.length > 0) {
+            handleTierSnapshot(cloudTiers);
+          } else {
+            // membershipTiers is empty — try legacy `memberships` collection
+            legacyUnsub = onSnapshot(
+              collection(db, 'memberships'),
+              (legacySnap) => {
+                const legacyTiers: Membership[] = [];
+                legacySnap.forEach((d) => {
+                  const data = d.data();
+                  if (!data || !data.name) return;
+                  legacyTiers.push({ ...data, id: d.id } as Membership);
+                });
+                if (legacyTiers.length > 0) {
+                  handleTierSnapshot(legacyTiers);
+                  // Migrate legacy → canonical membershipTiers collection
+                  legacyTiers.forEach(t => {
+                    setDoc(doc(db, this.COLLECTION_NAME, t.id), this.sanitize(t)).catch(() => {});
+                  });
+                }
+              },
+              (err) => console.warn('[MembershipTierService] Legacy memberships snapshot error:', err)
+            );
           }
         },
         (error) => {
-          console.warn('[MembershipTierService] Firestore snapshot fallback:', error);
-          callback(StorageService.getMemberships());
+          console.warn('[MembershipTierService] Firestore membershipTiers snapshot error:', error);
+          const cached = StorageService.getMemberships();
+          if (cached.length > 0) callback(cached);
         }
       );
     } catch (e) {
@@ -93,9 +130,8 @@ export class MembershipTierService {
         window.removeEventListener('labmedix_data_synced', handleDataSynced);
         window.removeEventListener('storage', handleStorageChange);
       }
-      if (firestoreUnsub) {
-        firestoreUnsub();
-      }
+      if (firestoreUnsub) firestoreUnsub();
+      if (legacyUnsub) legacyUnsub();
     };
   }
 
@@ -142,8 +178,11 @@ export class MembershipTierService {
     StorageService.saveMemberships(local);
 
     try {
-      await setDoc(doc(db, this.COLLECTION_NAME, newId), this.sanitize(newMembership));
-      
+      // Write to canonical membershipTiers AND legacy memberships collection for full cross-device sync
+      const sanitized = this.sanitize(newMembership);
+      await setDoc(doc(db, this.COLLECTION_NAME, newId), sanitized);
+      setDoc(doc(db, 'memberships', newId), sanitized).catch(() => {});
+
       AuditService.log(
         'MEMBERSHIP_TIER_CREATED',
         'membership',
@@ -183,9 +222,11 @@ export class MembershipTierService {
     }
 
     try {
-      const docRef = doc(db, this.COLLECTION_NAME, id);
-      await setDoc(docRef, this.sanitize(payload), { merge: true });
-      
+      const sanitizedPayload = this.sanitize(payload);
+      // Write to canonical membershipTiers AND legacy memberships for full cross-device sync
+      await setDoc(doc(db, this.COLLECTION_NAME, id), sanitizedPayload, { merge: true });
+      setDoc(doc(db, 'memberships', id), sanitizedPayload, { merge: true }).catch(() => {});
+
       AuditService.log(
         'MEMBERSHIP_TIER_UPDATED',
         'membership',
@@ -218,13 +259,17 @@ export class MembershipTierService {
       throw new Error('SECURITY VIOLATION: Only Super Admin is authorized to delete tiers.');
     }
 
-    // Update local storage single source of truth synchronously
+    // Update local storage single source of truth synchronously across both keys
     const local = StorageService.getMemberships().filter(m => m.id !== id && m.slug !== id);
     StorageService.saveMemberships(local);
+    StorageService.updateCacheAndNotify('labmedix_memberships_v1', local);
+    StorageService.updateCacheAndNotify('labmedix_membership_tiers_v1', local);
 
     try {
       const docRef = doc(db, this.COLLECTION_NAME, id);
       await deleteDoc(docRef);
+      // Also delete from legacy memberships collection to prevent resurrection
+      deleteDoc(doc(db, 'memberships', id)).catch(() => {});
       
       AuditService.log(
         'MEMBERSHIP_TIER_DELETED',

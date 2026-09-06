@@ -174,7 +174,7 @@ export const OfflineFormPage: React.FC = () => {
   const [villageArea, setVillageArea] = useState('');
   const [postOffice, setPostOffice] = useState('');
   const [policeStation, setPoliceStation] = useState('');
-  const [district, setDistrict] = useState(() => StorageService.getCompanyProfile()?.city || 'Kolkata');
+  const [district, setDistrict] = useState(() => StorageService.getCompanyProfile()?.district || 'Kolkata');
   const [stateVal, setStateVal] = useState(() => StorageService.getCompanyProfile()?.state || 'West Bengal');
   const [pinCode, setPinCode] = useState(() => StorageService.getCompanyProfile()?.pinCode || '700001');
   const [fullAddress, setFullAddress] = useState('');
@@ -214,7 +214,7 @@ export const OfflineFormPage: React.FC = () => {
   const [campLocation, setCampLocation] = useState(() => {
     const co = StorageService.getCompanyProfile();
     if (co?.address) return co.address;
-    if (co?.city && co?.state) return `${co.city}, ${co.state}`;
+    if (co?.district && co?.state) return `${co.district}, ${co.state}`;
     return '';
   });
   const [volunteerName, setVolunteerName] = useState('');

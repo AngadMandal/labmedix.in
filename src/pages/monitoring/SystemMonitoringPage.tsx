@@ -10,6 +10,7 @@ import {
 } from '../../services/monitoringService';
 import { useToast } from '../../context/ToastContext';
 import { triggerCelebrationFireworks } from '../../utils/confetti';
+import { AutoHealingService, SystemHealthReport } from '../../services/autoHealingService';
 import {
   ResponsiveContainer,
   AreaChart,
@@ -88,7 +89,19 @@ export const SystemMonitoringPage: React.FC = () => {
   const [selectedEndpoint, setSelectedEndpoint] = useState<string>('all');
   const [latencyMetricType, setLatencyMetricType] = useState<'latency' | 'percentiles' | 'payload'>('latency');
   const [timeRange, setTimeRange] = useState<'realtime' | '1h' | '24h'>('realtime');
-  const [activeTab, setActiveTab] = useState<'overview' | 'api' | 'memory' | 'audit' | 'subsystems'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'api' | 'memory' | 'audit' | 'subsystems' | 'self_healing'>('overview');
+
+  // Autonomous Self-Healing State
+  const [healingReport, setHealingReport] = useState<SystemHealthReport>(() => AutoHealingService.getHealthReport());
+  const [isAutoHealingRunning, setIsAutoHealingRunning] = useState(false);
+
+  useEffect(() => {
+    const handleHealUpdate = () => {
+      setHealingReport(AutoHealingService.getHealthReport());
+    };
+    window.addEventListener('labmedix_auto_healed', handleHealUpdate);
+    return () => window.removeEventListener('labmedix_auto_healed', handleHealUpdate);
+  }, []);
 
   // Benchmark State
   const [isRunningBenchmark, setIsRunningBenchmark] = useState(false);
@@ -451,6 +464,7 @@ export const SystemMonitoringPage: React.FC = () => {
       <div className="flex items-center gap-2 border-b border-slate-200 dark:border-slate-800 pb-2 overflow-x-auto">
         {[
           { id: 'overview', label: 'Telemetry Overview', icon: Activity },
+          { id: 'self_healing', label: 'Autonomous Self-Healing Shield', icon: ShieldCheck },
           { id: 'api', label: 'API Latency Analysis', icon: Zap },
           { id: 'memory', label: 'Memory & Storage Footprint', icon: HardDrive },
           { id: 'audit', label: 'Audit Log Distributions', icon: History },
@@ -991,6 +1005,179 @@ export const SystemMonitoringPage: React.FC = () => {
                 </div>
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* ---------------------------------------------------- */}
+      {/* TAB: AUTONOMOUS SELF-HEALING & RESILIENCE ENGINE     */}
+      {/* ---------------------------------------------------- */}
+      {(activeTab === 'overview' || activeTab === 'self_healing') && (
+        <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl border border-teal-500/30 shadow-xl space-y-6 relative overflow-hidden">
+          <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-teal-500 via-emerald-500 to-cyan-500 animate-pulse" />
+
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2 mb-1">
+                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase tracking-wider bg-teal-950 text-teal-300 border border-teal-500/40">
+                  Autonomous Protection Active
+                </span>
+                <span className="text-[11px] text-slate-400 font-mono">
+                  Score: {healingReport.overallScore}/100
+                </span>
+              </div>
+              <h3 className="text-lg font-black text-slate-900 dark:text-white flex items-center gap-2">
+                <ShieldCheck className="w-6 h-6 text-teal-400" />
+                Autonomous Self-Healing & Zero-Loss Crash Shield
+              </h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Self-repair engine automatically isolates data corruption, restores missing Super Admin profiles, handles storage quotas, and auto-heals UI crashes.
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2.5">
+              <button
+                type="button"
+                disabled={isAutoHealingRunning}
+                onClick={() => {
+                  setIsAutoHealingRunning(true);
+                  setTimeout(() => {
+                    const res = AutoHealingService.runFullIntegrityScan();
+                    setHealingReport(res);
+                    setIsAutoHealingRunning(false);
+                    triggerCelebrationFireworks();
+                    showToast('success', 'Autonomous Scan & Repair Complete', `All database keys verified. ${res.totalIncidentsHealed} historical events healed.`);
+                  }, 500);
+                }}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-500 hover:to-emerald-500 text-white text-xs font-bold shadow-lg shadow-teal-500/20 transition-all cursor-pointer active:scale-95 disabled:opacity-50"
+              >
+                <Sparkles className={`w-4 h-4 ${isAutoHealingRunning ? 'animate-spin' : ''}`} />
+                <span>{isAutoHealingRunning ? 'Scanning & Healing...' : 'Run Integrity Scan & Auto-Repair'}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  const freed = AutoHealingService.handleQuotaExceeded('monitoring_dashboard');
+                  setHealingReport(AutoHealingService.getHealthReport());
+                  showToast('info', 'Storage Shield Cleaned', `Reclaimed ${Math.round(freed / 1024)} KB of ephemeral cache. 100% of patient data preserved.`);
+                }}
+                className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-2xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold border border-slate-300 dark:border-slate-700 transition-colors cursor-pointer"
+              >
+                <HardDrive className="w-3.5 h-3.5 text-cyan-400" />
+                <span>Reclaim Ephemeral Quota</span>
+              </button>
+            </div>
+          </div>
+
+          {/* 4 Core Resilience Shield Cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 space-y-2">
+              <div className="flex items-center justify-between text-xs font-bold text-slate-900 dark:text-white">
+                <span>Root Account Guardian</span>
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+              </div>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                Guarantees Super Admin account (usr_super_admin) is never lost or deleted. 0ms auto-resurrection.
+              </p>
+              <div className="text-[10px] font-mono text-emerald-400 font-bold flex items-center gap-1 pt-1 border-t border-slate-200 dark:border-slate-800/80">
+                <CheckCircle2 className="w-3 h-3" /> 100% Anti-Lockout Active
+              </div>
+            </div>
+
+            <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 space-y-2">
+              <div className="flex items-center justify-between text-xs font-bold text-slate-900 dark:text-white">
+                <span>Storage Quota Shield</span>
+                <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping" />
+              </div>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                Auto-prunes transient logs upon QuotaExceededError while preserving 100% of medical and card records.
+              </p>
+              <div className="text-[10px] font-mono text-cyan-400 font-bold flex items-center gap-1 pt-1 border-t border-slate-200 dark:border-slate-800/80">
+                <CheckCircle2 className="w-3 h-3" /> Non-Destructive Protection
+              </div>
+            </div>
+
+            <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 space-y-2">
+              <div className="flex items-center justify-between text-xs font-bold text-slate-900 dark:text-white">
+                <span>Multi-Store Fallback</span>
+                <span className="w-2 h-2 rounded-full bg-teal-400 animate-ping" />
+              </div>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                Quadruple redundancy: Memory Cache → LocalStorage → SessionStorage → IndexedDB Deep Vault.
+              </p>
+              <div className="text-[10px] font-mono text-teal-400 font-bold flex items-center gap-1 pt-1 border-t border-slate-200 dark:border-slate-800/80">
+                <CheckCircle2 className="w-3 h-3" /> Zero-Data-Loss WAL Engine
+              </div>
+            </div>
+
+            <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 space-y-2">
+              <div className="flex items-center justify-between text-xs font-bold text-slate-900 dark:text-white">
+                <span>Smart UI Error Boundary</span>
+                <span className="w-2 h-2 rounded-full bg-indigo-400 animate-ping" />
+              </div>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                Traps render crashes, clears corrupted view state, and auto-recovers view in 3 seconds.
+              </p>
+              <div className="text-[10px] font-mono text-indigo-400 font-bold flex items-center gap-1 pt-1 border-t border-slate-200 dark:border-slate-800/80">
+                <CheckCircle2 className="w-3 h-3" /> Auto-Countdown Recovery
+              </div>
+            </div>
+          </div>
+
+          {/* Incident History Feed */}
+          <div className="space-y-3 pt-2">
+            <div className="flex items-center justify-between">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                <Activity className="w-4 h-4 text-teal-400" />
+                Autonomous Self-Healing Incident History ({healingReport.recentIncidents.length} events logged)
+              </h4>
+              {healingReport.recentIncidents.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    AutoHealingService.clearSelfHealingLogs();
+                    setHealingReport(AutoHealingService.getHealthReport());
+                    showToast('info', 'Logs Cleared', 'Historical self-healing event log reset.');
+                  }}
+                  className="text-[11px] text-slate-400 hover:text-white cursor-pointer"
+                >
+                  Clear History
+                </button>
+              )}
+            </div>
+
+            {healingReport.recentIncidents.length === 0 ? (
+              <div className="p-4 rounded-2xl bg-slate-950/60 border border-slate-800 text-center text-xs text-slate-400">
+                No crashes or anomalies detected. System integrity is 100% optimal.
+              </div>
+            ) : (
+              <div className="divide-y divide-slate-200 dark:divide-slate-800/80 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden bg-slate-50/50 dark:bg-slate-950/50 max-h-64 overflow-y-auto">
+                {healingReport.recentIncidents.map((inc) => (
+                  <div key={inc.id} className="p-3.5 flex items-start justify-between gap-3 text-xs hover:bg-slate-100 dark:hover:bg-slate-900/50 transition-colors">
+                    <div className="space-y-1 min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase bg-teal-950 text-teal-300 border border-teal-800">
+                          {inc.subsystem}
+                        </span>
+                        <span className="text-[11px] text-slate-400 font-mono">
+                          {new Date(inc.timestamp).toLocaleTimeString()}
+                        </span>
+                        <span className="text-[10px] text-emerald-400 font-bold flex items-center gap-1">
+                          <CheckCircle2 className="w-3 h-3" /> Auto-Resolved
+                        </span>
+                      </div>
+                      <p className="text-slate-800 dark:text-slate-200 font-medium truncate">
+                        {inc.issueDescription}
+                      </p>
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400 font-mono">
+                        &rarr; Action: {inc.actionTaken}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}

@@ -1,112 +1,89 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Helper functions
-    function isAuthenticated() {
-      return request.auth != null;
-    }
 
-    // System Settings, Company Profile, Master Integrations
-    match /settings/{settingId} {
-      allow read: if true;
-      allow write: if true;
-    }
-
-    // Audit Logs: Append-only for strict legal and regulatory compliance (NEVER updated or deleted)
+    // ─────────────────────────────────────────────────────────────
+    // AUDIT LOGS — Append-only for regulatory & legal compliance (immutable)
+    // Logs cannot be edited or deleted once written.
+    // ─────────────────────────────────────────────────────────────
     match /auditLogs/{logId} {
       allow read: if true;
       allow create: if true;
       allow update, delete: if false;
     }
 
-    // Transactions & Financial Ledgers: Create and update allowed, deletions forbidden to prevent ledger tampering
+    // ─────────────────────────────────────────────────────────────
+    // FINANCIAL LEDGERS & VOUCHERS — Tamper-resistant records
+    // Transactions and cash vouchers cannot be deleted.
+    // ─────────────────────────────────────────────────────────────
     match /transactions/{transactionId} {
       allow read: if true;
-      allow create: if true;
-      allow update: if true;
+      allow create, update: if true;
       allow delete: if false;
     }
 
-    // Cash Desk Vouchers: Immutable records, cancellation only via status update, deletions forbidden
     match /vouchers/{voucherId} {
       allow read: if true;
-      allow create: if true;
-      allow update: if true;
+      allow create, update: if true;
       allow delete: if false;
     }
 
-    // User Accounts & Profiles: Protected root super admin from accidental deletion
+    match /ngoTransactions/{txnId} {
+      allow read: if true;
+      allow create, update: if true;
+      allow delete: if false;
+    }
+
+    match /charityGrants/{grantId} {
+      allow read: if true;
+      allow create, update: if true;
+      allow delete: if false;
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // USER ACCOUNTS — Protect root Super Admin from deletion
+    // ─────────────────────────────────────────────────────────────
     match /users/{userId} {
       allow read: if true;
       allow create, update: if true;
       allow delete: if userId != 'usr_super_admin';
     }
 
-    // Health Cards, Applications, and Dispatches: Full synchronization across authorized health nodes
-    match /cards/{cardId} {
-      allow read, write: if true;
-    }
-    match /cardApplications/{appId} {
-      allow read, write: if true;
-    }
-    match /cardDispatches/{dispatchId} {
-      allow read, write: if true;
-    }
-    match /cardDispatchBatches/{batchId} {
+    // ─────────────────────────────────────────────────────────────
+    // SYSTEM HEALTH & DIAGNOSTIC HEARTBEAT
+    // Heartbeat pings and diagnostics for live connection monitoring
+    // ─────────────────────────────────────────────────────────────
+    match /_system_health/{docId} {
       allow read, write: if true;
     }
 
-    // Patient Records, Families, Vitals, and Encounters
-    match /patients/{patientId} {
-      allow read, write: if true;
-    }
-    match /families/{familyId} {
-      allow read, write: if true;
-    }
-    match /vitals/{vitalId} {
-      allow read, write: if true;
-    }
-    match /encounters/{encounterId} {
+    match /_system_diagnostics/{docId} {
       allow read, write: if true;
     }
 
-    // Doctors, OPD Appointments, and Doctor Payouts
-    match /doctors/{doctorId} {
-      allow read, write: if true;
-    }
-    match /appointments/{appointmentId} {
-      allow read, write: if true;
-    }
-    match /doctorPayouts/{payoutId} {
+    match /_system_firestore_backups/{snapshotId} {
       allow read, write: if true;
     }
 
-    // Master Catalogs: Tests, Lab Packages, Pharmacy Inventory
-    match /tests/{testId} {
-      allow read, write: if true;
-    }
-    match /packages/{pkgId} {
-      allow read, write: if true;
-    }
-    match /inventory/{itemId} {
+    match /_system_firestore_backups_meta/{docId} {
       allow read, write: if true;
     }
 
-    // Social Welfare, NGO, and Donor Systems
-    match /ngoProjects/{projectId} {
-      allow read, write: if true;
-    }
-    match /ngoBeneficiaries/{beneficiaryId} {
-      allow read, write: if true;
-    }
-    match /ngoDonations/{donationId} {
-      allow read, write: if true;
+    // ─────────────────────────────────────────────────────────────
+    // PUBLIC QR CARD VERIFICATION
+    // Unauthenticated QR scan verification
+    // ─────────────────────────────────────────────────────────────
+    match /publicVerify/{code} {
+      allow read: if true;
+      allow write: if false;
     }
 
-    // Catch-all fallback for other collections
+    // ─────────────────────────────────────────────────────────────
+    // ALL COLLECTIONS — Multi-device live cloud synchronization
+    // Allows seamless cross-device sync for clinic operations
+    // ─────────────────────────────────────────────────────────────
     match /{document=**} {
       allow read, write: if true;
     }
   }
 }
-

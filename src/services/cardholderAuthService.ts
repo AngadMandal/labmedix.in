@@ -2,6 +2,7 @@ import { StorageService } from './storage';
 import { CardService } from './cardService';
 import { Patient, HealthCard, Membership } from '../types';
 import { AuditService } from './auditService';
+import { firestoreService } from './firestoreService';
 
 export const CARDHOLDER_SESSION_KEY = 'labmedix_portal_patient_session_id';
 export const CARDHOLDER_TOKEN_KEY = 'labmedix_portal_patient_auth_token';
@@ -276,12 +277,13 @@ export class CardholderAuthService {
     remainingSeconds?: number;
   }> {
     try {
-      const { firestoreService } = await import('./firestoreService');
-      const [remotePatients, remoteCards, remoteMemberships] = await Promise.all([
+      const [remotePatients, remoteCards, remoteTiers, remoteLegacyMemberships] = await Promise.all([
         firestoreService.getCollection<Patient>('patients').catch(() => []),
         firestoreService.getCollection<HealthCard>('cards').catch(() => []),
+        firestoreService.getCollection<Membership>('membershipTiers').catch(() => []),
         firestoreService.getCollection<Membership>('memberships').catch(() => [])
       ]);
+      const remoteMemberships = (remoteTiers && remoteTiers.length > 0) ? remoteTiers : remoteLegacyMemberships;
 
       if (remotePatients && remotePatients.length > 0) {
         const localPatients = StorageService.getPatients();

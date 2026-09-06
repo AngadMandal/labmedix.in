@@ -64,6 +64,33 @@ export class ApiSyncService {
   private static diagnosticLogs: DiagnosticLogEntry[] = [];
   private static diagnosticListeners: ((log: DiagnosticLogEntry) => void)[] = [];
 
+  static {
+    if (typeof window !== 'undefined') {
+      window.addEventListener('online', () => {
+        ApiSyncService.isConnected = true;
+        ApiSyncService.addDiagnosticLog({
+          type: 'INFO',
+          pathOrCollection: 'network/online',
+          details: 'Internet connection restored. Initiating autonomous cloud reconnection & WAL drain.'
+        });
+        if (ApiSyncService.activeUnsubscribers.length === 0) {
+          ApiSyncService.subscribeToAll();
+        }
+        ApiSyncService.triggerWorkerExecution();
+        FirestoreBackupService.flushWalQueue().catch(() => {});
+      });
+
+      window.addEventListener('offline', () => {
+        ApiSyncService.isConnected = false;
+        ApiSyncService.addDiagnosticLog({
+          type: 'INFO',
+          pathOrCollection: 'network/offline',
+          details: 'Operating in 100% resilient offline cache mode (Zero Data Loss WAL active).'
+        });
+      });
+    }
+  }
+
   private static checkAndRecordIdempotency(key: string): boolean {
     const now = Date.now();
     const last = this.recentWritesIdempotencyMap.get(key);
@@ -368,9 +395,16 @@ export class ApiSyncService {
             try {
               if (typeof window !== 'undefined' && (window as any).__labmedix_update_cache) {
                 (window as any).__labmedix_update_cache(key, items);
+                if (key === 'labmedix_membership_tiers_v1' && items.length > 0) {
+                  (window as any).__labmedix_update_cache('labmedix_memberships_v1', items);
+                }
               } else {
                 localStorage.setItem(key, JSON.stringify(items));
                 sessionStorage.setItem(key, JSON.stringify(items));
+                if (key === 'labmedix_membership_tiers_v1' && items.length > 0) {
+                  localStorage.setItem('labmedix_memberships_v1', JSON.stringify(items));
+                  sessionStorage.setItem('labmedix_memberships_v1', JSON.stringify(items));
+                }
                 window.dispatchEvent(new CustomEvent('labmedix_data_synced', { detail: { key, value: items } }));
               }
             } catch {}
@@ -398,6 +432,7 @@ export class ApiSyncService {
     'labmedix_patients_v1': { type: 'collection', path: 'patients' },
     'labmedix_cards_v1': { type: 'collection', path: 'cards' },
     'labmedix_memberships_v1': { type: 'collection', path: 'memberships' },
+    'labmedix_membership_tiers_v1': { type: 'collection', path: 'membershipTiers' },
     'labmedix_families_v1': { type: 'collection', path: 'families' },
     'labmedix_wallets_v1': { type: 'collection', path: 'wallets' },
     'labmedix_transactions_v1': { type: 'collection', path: 'transactions' },
@@ -777,9 +812,16 @@ export class ApiSyncService {
             try {
               if (typeof window !== 'undefined' && (window as any).__labmedix_update_cache) {
                 (window as any).__labmedix_update_cache(key, items);
+                if (key === 'labmedix_membership_tiers_v1' && items.length > 0) {
+                  (window as any).__labmedix_update_cache('labmedix_memberships_v1', items);
+                }
               } else {
                 localStorage.setItem(key, JSON.stringify(items));
                 sessionStorage.setItem(key, JSON.stringify(items));
+                if (key === 'labmedix_membership_tiers_v1' && items.length > 0) {
+                  localStorage.setItem('labmedix_memberships_v1', JSON.stringify(items));
+                  sessionStorage.setItem('labmedix_memberships_v1', JSON.stringify(items));
+                }
                 window.dispatchEvent(new CustomEvent('labmedix_data_synced', { detail: { key, value: items } }));
               }
             } catch (err) {

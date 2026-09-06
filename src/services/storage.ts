@@ -36,6 +36,7 @@ import { GoogleDriveService } from './googleDriveService';
 import { getGoogleAccessToken } from './googleAuth';
 import { ApiSyncService } from './apiSyncService';
 import { FirestoreBackupService } from './firestoreBackupService';
+import { AutoHealingService } from './autoHealingService';
 import { generateBarcodeDataUrl } from '../utils/barcode';
 
 export const STORAGE_KEYS = {
@@ -511,7 +512,8 @@ export class StorageService {
       }
     } catch (e: any) {
       if (e?.name === 'QuotaExceededError' || e?.code === 22 || String(e).includes('quota')) {
-        console.warn(`[LABMEDIX] localStorage quota exceeded for "${key}". Running aggressive prune…`);
+        console.warn(`[LABMEDIX] localStorage quota exceeded for "${key}". Running autonomous healing & prune…`);
+        AutoHealingService.handleQuotaExceeded(key);
         StorageService.aggressivePrune();
         try {
           localStorage.setItem(key, serialized);
@@ -520,7 +522,7 @@ export class StorageService {
           }
         } catch {
           // Data still in memory cache and IndexedDB — not lost
-          console.warn(`[LABMEDIX] localStorage still full after prune for "${key}". Stored in memory+IDB only.`);
+          console.warn(`[LABMEDIX] localStorage still full after autonomous prune for "${key}". Stored in memory+IDB only.`);
         }
       } else {
         console.error(`[LABMEDIX] localStorage write failed for ${key}:`, e);
@@ -638,8 +640,8 @@ export class StorageService {
             return parsed;
           }
         } catch (err) {
-          console.warn(`[LABMEDIX] Corrupted JSON in localStorage for key "${key}". Clearing entry.`, err);
-          try { localStorage.removeItem(key); } catch {}
+          console.warn(`[LABMEDIX] Corrupted JSON in localStorage for key "${key}". Running autonomous healing...`, err);
+          AutoHealingService.healCorruptedKey(key).catch(() => {});
         }
       }
     } catch { /* fall through */ }
@@ -657,8 +659,8 @@ export class StorageService {
             return parsed;
           }
         } catch (err) {
-          console.warn(`[LABMEDIX] Corrupted JSON in sessionStorage for key "${key}". Clearing entry.`, err);
-          try { sessionStorage.removeItem(key); } catch {}
+          console.warn(`[LABMEDIX] Corrupted JSON in sessionStorage for key "${key}". Running autonomous healing...`, err);
+          AutoHealingService.healCorruptedKey(key).catch(() => {});
         }
       }
     } catch { /* fall through */ }
@@ -957,6 +959,13 @@ export class StorageService {
   public static async initializeDatabase(): Promise<void> {
     StorageService.initPersistentEngine();
 
+    // Start Autonomous Resilience Watchdog (Protects Super Admin & detects data corruption)
+    try {
+      AutoHealingService.startAutonomousWatchdog();
+    } catch (err) {
+      console.warn('[Storage] AutoHealing watchdog start notice:', err);
+    }
+
     // 1. Cloud Firestore Cross-Device Hydration (Primary Source of Truth on startup)
     let cloudUsersCount = 0;
     try {
@@ -988,7 +997,8 @@ export class StorageService {
         cloudHealthCamps,
         cloudCampAttendees,
         cloudCharityGrants,
-        cloudNgoTxns
+        cloudNgoTxns,
+        cloudMembershipTiers
       ] = await Promise.all([
         ApiSyncService.fetchCollection<Patient>('patients').catch(() => []),
         ApiSyncService.fetchCollection<HealthCard>('cards').catch(() => []),
@@ -1017,8 +1027,13 @@ export class StorageService {
         ApiSyncService.fetchCollection<HealthCamp>('healthCamps').catch(() => []),
         ApiSyncService.fetchCollection<CampAttendee>('campAttendees').catch(() => []),
         ApiSyncService.fetchCollection<CharityGrant>('charityGrants').catch(() => []),
-        ApiSyncService.fetchCollection<NgoFundTransaction>('ngoTransactions').catch(() => [])
+        ApiSyncService.fetchCollection<NgoFundTransaction>('ngoTransactions').catch(() => []),
+        ApiSyncService.fetchCollection<Membership>('membershipTiers').catch(() => [])
       ]);
+
+      const effectiveMemberships = (cloudMembershipTiers && cloudMembershipTiers.length > 0)
+        ? cloudMembershipTiers
+        : cloudMemberships;
 
       cloudUsersCount = cloudUsers.length;
 
@@ -1035,7 +1050,8 @@ export class StorageService {
       syncEntity(cloudTxns, STORAGE_KEYS.TRANSACTIONS);
       syncEntity(cloudAudit, STORAGE_KEYS.AUDIT_LOGS);
       syncEntity(cloudUsers, STORAGE_KEYS.USERS);
-      syncEntity(cloudMemberships, STORAGE_KEYS.MEMBERSHIPS);
+      syncEntity(effectiveMemberships, STORAGE_KEYS.MEMBERSHIPS);
+      syncEntity(effectiveMemberships, 'labmedix_membership_tiers_v1');
       syncEntity(cloudAppointments, STORAGE_KEYS.APPOINTMENTS);
       syncEntity(cloudEncounters, STORAGE_KEYS.EMR_ENCOUNTERS);
       syncEntity(cloudDoctors, STORAGE_KEYS.DOCTORS);
@@ -1059,10 +1075,16 @@ export class StorageService {
         StorageService.updateCacheAndNotify(STORAGE_KEYS.VOUCHER_SETTINGS, cloudVoucherSettings);
       }
 
-      // Seed initial records to Firestore if remote cloud collections are currently empty
+      // Seed initial records to Firestore ONLY if remote cloud collections are completely empty
       if (cloudPatients.length === 0) ApiSyncService.syncKeyToFirestore(STORAGE_KEYS.PATIENTS, StorageService.getPatients()).catch(() => {});
       if (cloudCards.length === 0) ApiSyncService.syncKeyToFirestore(STORAGE_KEYS.CARDS, StorageService.getCards()).catch(() => {});
-      if (cloudMemberships.length === 0) ApiSyncService.syncKeyToFirestore(STORAGE_KEYS.MEMBERSHIPS, StorageService.getMemberships()).catch(() => {});
+      if (effectiveMemberships.length === 0) {
+        // Seed both collections: memberships (legacy) and membershipTiers (canonical)
+        ApiSyncService.syncKeyToFirestore(STORAGE_KEYS.MEMBERSHIPS, DEFAULT_MEMBERSHIPS).catch(() => {});
+        ApiSyncService.upsertCollectionInFirestore('membershipTiers', DEFAULT_MEMBERSHIPS).catch(() => {});
+        StorageService.updateCacheAndNotify(STORAGE_KEYS.MEMBERSHIPS, DEFAULT_MEMBERSHIPS);
+        StorageService.updateCacheAndNotify('labmedix_membership_tiers_v1', DEFAULT_MEMBERSHIPS);
+      }
       if (cloudDoctors.length === 0) ApiSyncService.syncKeyToFirestore(STORAGE_KEYS.DOCTORS, StorageService.getDoctors()).catch(() => {});
       if (cloudLabTests.length === 0) ApiSyncService.syncKeyToFirestore(STORAGE_KEYS.LAB_TESTS, StorageService.getLabTests()).catch(() => {});
       if (cloudHealthPackages.length === 0) ApiSyncService.syncKeyToFirestore(STORAGE_KEYS.HEALTH_PACKAGES, StorageService.getHealthPackages()).catch(() => {});
@@ -1085,14 +1107,34 @@ export class StorageService {
 
     const currentUsers = this.getItem<User[]>(STORAGE_KEYS.USERS, []);
     const mergedMap = new Map<string, User>();
-    // Preload all standard roles first
-    INITIAL_USERS.forEach(u => mergedMap.set(u.id, u));
-    // Merge existing users over initial, strictly filtering out excluded demo accounts
-    currentUsers.forEach(u => {
-      if (u && u.id && !StorageService.DEMO_USER_IDS_TO_EXCLUDE.includes(u.id)) {
-        mergedMap.set(u.id, { ...mergedMap.get(u.id), ...u });
+
+    // Priority order:
+    // 1. If Firestore returned users, they are authoritative (single source of truth).
+    // 2. INITIAL_USERS are only used as a bootstrap fallback when cloud is completely empty.
+    if (cloudUsersCount > 0) {
+      // Firestore is the source of truth — use cloud users as the base, never override with hardcoded data.
+      // Only add INITIAL_USERS entries that don't exist in cloud yet (e.g. super_admin bootstrap).
+      currentUsers.forEach(u => {
+        if (u && u.id && !StorageService.DEMO_USER_IDS_TO_EXCLUDE.includes(u.id)) {
+          mergedMap.set(u.id, u);
+        }
+      });
+      // Ensure super_admin always exists locally if not in cloud
+      const hasSuperAdmin = Array.from(mergedMap.values()).some(u => u.role === 'super_admin');
+      if (!hasSuperAdmin) {
+        const seedAdmin = INITIAL_USERS.find(u => u.role === 'super_admin');
+        if (seedAdmin) mergedMap.set(seedAdmin.id, seedAdmin);
       }
-    });
+    } else {
+      // Cloud is empty — seed with INITIAL_USERS as bootstrap data
+      INITIAL_USERS.forEach(u => mergedMap.set(u.id, u));
+      currentUsers.forEach(u => {
+        if (u && u.id && !StorageService.DEMO_USER_IDS_TO_EXCLUDE.includes(u.id)) {
+          mergedMap.set(u.id, { ...mergedMap.get(u.id), ...u });
+        }
+      });
+    }
+
     const finalUsers = Array.from(mergedMap.values());
     this.updateCacheSilently(STORAGE_KEYS.USERS, finalUsers);
 
@@ -1174,7 +1216,11 @@ export class StorageService {
 
   // Memberships
   public static getMemberships(): Membership[] {
-    const memberships = this.getItem<Membership[]>(STORAGE_KEYS.MEMBERSHIPS, DEFAULT_MEMBERSHIPS);
+    let memberships = this.getItem<Membership[]>('labmedix_membership_tiers_v1', []);
+    if (!memberships || !Array.isArray(memberships) || memberships.length === 0) {
+      memberships = this.getItem<Membership[]>(STORAGE_KEYS.MEMBERSHIPS, []);
+    }
+    // Only fall back to DEFAULT_MEMBERSHIPS if absolutely nothing is in cache or storage.
     if (!memberships || !Array.isArray(memberships) || memberships.length === 0) {
       return DEFAULT_MEMBERSHIPS;
     }
@@ -1189,7 +1235,9 @@ export class StorageService {
   }
   public static saveMemberships(memberships: Membership[]): void {
     this.setItem(STORAGE_KEYS.MEMBERSHIPS, memberships);
+    this.setItem('labmedix_membership_tiers_v1', memberships);
     ApiSyncService.syncMemberships(memberships).catch(() => { });
+    ApiSyncService.upsertCollectionInFirestore('membershipTiers', memberships).catch(() => { });
   }
 
   // Families
