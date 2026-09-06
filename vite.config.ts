@@ -2,7 +2,7 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
 export default defineConfig({
-  base: '/labmedix.in/',
+  base: './',
   plugins: [react()],
   server: {
     host: '0.0.0.0',
@@ -17,6 +17,7 @@ export default defineConfig({
       output: {
         manualChunks: {
           'vendor-react': ['react', 'react-dom', 'react-router-dom'],
+          'vendor-firebase': ['firebase/app', 'firebase/auth', 'firebase/firestore'],
           'vendor-icons': ['lucide-react'],
           'vendor-charts': ['recharts'],
           'vendor-export': ['jspdf', 'html2canvas', 'qrcode', 'jsqr'],

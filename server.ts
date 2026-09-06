@@ -5,6 +5,11 @@ import { google } from 'googleapis';
 import nodemailer from 'nodemailer';
 import { createServer as createViteServer } from 'vite';
 
+// Default NODE_ENV to production when executed as compiled bundle in dist
+if (!process.env.NODE_ENV && (typeof __filename !== 'undefined' && __filename.includes('dist'))) {
+  process.env.NODE_ENV = 'production';
+}
+
 const app = express();
 const PORT = 3000;
 
@@ -918,8 +923,8 @@ async function startServer() {
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
 
-    // Handle SPA fallback for all non-API routes
-    app.get('*', (req, res) => {
+    // Handle SPA fallback for all non-API routes (Express 5 compatible)
+    app.use((req, res) => {
       res.sendFile(path.join(distPath, 'index.html'));
     });
   }

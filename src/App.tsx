@@ -6,40 +6,52 @@ import { SettingsProvider } from './context/SettingsContext';
 import { ToastProvider } from './context/ToastContext';
 
 import { AppLayout } from './components/layout/AppLayout';
-import { LoginPage } from './pages/auth/LoginPage';
-import { DashboardPage } from './pages/dashboard/DashboardPage';
-import { PatientListPage } from './pages/patients/PatientListPage';
-import { PatientCreatePage } from './pages/patients/PatientCreatePage';
-import { PatientDetailPage } from './pages/patients/PatientDetailPage';
-import { PatientEditPage } from './pages/patients/PatientEditPage';
-import { CardListPage } from './pages/cards/CardListPage';
-import { CardStudioPage } from './pages/cards/CardStudioPage';
-import { CardPrintSheetPage } from './pages/cards/CardPrintSheetPage';
-import { CardPrintingDispatchPage } from './pages/cards/CardPrintingDispatchPage';
-import { MembershipListPage } from './pages/memberships/MembershipListPage';
-import { FamilyListPage } from './pages/families/FamilyListPage';
-import { WalletDashboardPage } from './pages/wallet/WalletDashboardPage';
-import { DoctorEMRPage } from './pages/emr/DoctorEMRPage';
-import { DoctorMasterPage } from './pages/doctors/DoctorMasterPage';
-import { DoctorLoginPage } from './pages/doctors/DoctorLoginPage';
-import { DoctorDashboardPage } from './pages/doctors/DoctorDashboardPage';
-import { TestMasterPage } from './pages/catalog/TestMasterPage';
-import { ReportsPage } from './pages/reports/ReportsPage';
-import { UserListPage } from './pages/users/UserListPage';
-import { ActivityLogPage } from './pages/activity/ActivityLogPage';
-import { BackupRestorePage } from './pages/backup/BackupRestorePage';
-import { SettingsPage } from './pages/settings/SettingsPage';
-import { IntegrationsPage } from './pages/integrations/IntegrationsPage';
-import { GmailIntegrationPage } from './pages/integrations/GmailIntegrationPage';
-import { WebsiteCmsPage } from './pages/cms/WebsiteCmsPage';
-import { CashDeskBillVouchersPage } from './pages/vouchers/CashDeskBillVouchersPage';
-import { SystemMonitoringPage } from './pages/monitoring/SystemMonitoringPage';
-import { MultiDeviceManagementPage } from './pages/devices/MultiDeviceManagementPage';
-import { PublicVerifyPage } from './pages/verify/PublicVerifyPage';
-import { PatientPortalPage } from './pages/portal/PatientPortalPage';
-import { NgoWelfare } from './pages/NgoWelfare';
-import { OfflineFormPage } from './pages/offline/OfflineFormPage';
-import { NotFoundPage } from './pages/not-found/NotFoundPage';
+
+// Route-level code-splitting with React.lazy for high-performance chunking
+const LoginPage = React.lazy(() => import('./pages/auth/LoginPage').then(m => ({ default: m.LoginPage })));
+const DoctorLoginPage = React.lazy(() => import('./pages/doctors/DoctorLoginPage').then(m => ({ default: m.DoctorLoginPage })));
+const DashboardPage = React.lazy(() => import('./pages/dashboard/DashboardPage').then(m => ({ default: m.DashboardPage })));
+const PatientListPage = React.lazy(() => import('./pages/patients/PatientListPage').then(m => ({ default: m.PatientListPage })));
+const PatientCreatePage = React.lazy(() => import('./pages/patients/PatientCreatePage').then(m => ({ default: m.PatientCreatePage })));
+const PatientDetailPage = React.lazy(() => import('./pages/patients/PatientDetailPage').then(m => ({ default: m.PatientDetailPage })));
+const PatientEditPage = React.lazy(() => import('./pages/patients/PatientEditPage').then(m => ({ default: m.PatientEditPage })));
+const CardListPage = React.lazy(() => import('./pages/cards/CardListPage').then(m => ({ default: m.CardListPage })));
+const CardStudioPage = React.lazy(() => import('./pages/cards/CardStudioPage').then(m => ({ default: m.CardStudioPage })));
+const CardPrintSheetPage = React.lazy(() => import('./pages/cards/CardPrintSheetPage').then(m => ({ default: m.CardPrintSheetPage })));
+const CardPrintingDispatchPage = React.lazy(() => import('./pages/cards/CardPrintingDispatchPage').then(m => ({ default: m.CardPrintingDispatchPage })));
+const MembershipListPage = React.lazy(() => import('./pages/memberships/MembershipListPage').then(m => ({ default: m.MembershipListPage })));
+const FamilyListPage = React.lazy(() => import('./pages/families/FamilyListPage').then(m => ({ default: m.FamilyListPage })));
+const WalletDashboardPage = React.lazy(() => import('./pages/wallet/WalletDashboardPage').then(m => ({ default: m.WalletDashboardPage })));
+const DoctorEMRPage = React.lazy(() => import('./pages/emr/DoctorEMRPage').then(m => ({ default: m.DoctorEMRPage })));
+const DoctorMasterPage = React.lazy(() => import('./pages/doctors/DoctorMasterPage').then(m => ({ default: m.DoctorMasterPage })));
+const DoctorDashboardPage = React.lazy(() => import('./pages/doctors/DoctorDashboardPage').then(m => ({ default: m.DoctorDashboardPage })));
+const TestMasterPage = React.lazy(() => import('./pages/catalog/TestMasterPage').then(m => ({ default: m.TestMasterPage })));
+const ReportsPage = React.lazy(() => import('./pages/reports/ReportsPage').then(m => ({ default: m.ReportsPage })));
+const UserListPage = React.lazy(() => import('./pages/users/UserListPage').then(m => ({ default: m.UserListPage })));
+const ActivityLogPage = React.lazy(() => import('./pages/activity/ActivityLogPage').then(m => ({ default: m.ActivityLogPage })));
+const BackupRestorePage = React.lazy(() => import('./pages/backup/BackupRestorePage').then(m => ({ default: m.BackupRestorePage })));
+const SettingsPage = React.lazy(() => import('./pages/settings/SettingsPage').then(m => ({ default: m.SettingsPage })));
+const IntegrationsPage = React.lazy(() => import('./pages/integrations/IntegrationsPage').then(m => ({ default: m.IntegrationsPage })));
+const GmailIntegrationPage = React.lazy(() => import('./pages/integrations/GmailIntegrationPage').then(m => ({ default: m.GmailIntegrationPage })));
+const WebsiteCmsPage = React.lazy(() => import('./pages/cms/WebsiteCmsPage').then(m => ({ default: m.WebsiteCmsPage })));
+const CashDeskBillVouchersPage = React.lazy(() => import('./pages/vouchers/CashDeskBillVouchersPage').then(m => ({ default: m.CashDeskBillVouchersPage })));
+const SystemMonitoringPage = React.lazy(() => import('./pages/monitoring/SystemMonitoringPage').then(m => ({ default: m.SystemMonitoringPage })));
+const MultiDeviceManagementPage = React.lazy(() => import('./pages/devices/MultiDeviceManagementPage').then(m => ({ default: m.MultiDeviceManagementPage })));
+const PublicVerifyPage = React.lazy(() => import('./pages/verify/PublicVerifyPage').then(m => ({ default: m.PublicVerifyPage })));
+const PatientPortalPage = React.lazy(() => import('./pages/portal/PatientPortalPage').then(m => ({ default: m.PatientPortalPage })));
+const NgoWelfare = React.lazy(() => import('./pages/NgoWelfare').then(m => ({ default: m.NgoWelfare })));
+const OfflineFormPage = React.lazy(() => import('./pages/offline/OfflineFormPage').then(m => ({ default: m.OfflineFormPage })));
+const NotFoundPage = React.lazy(() => import('./pages/not-found/NotFoundPage').then(m => ({ default: m.NotFoundPage })));
+
+const RouteLoadingSpinner: React.FC = () => (
+  <div className="flex flex-col items-center justify-center min-h-[50vh] p-8">
+    <div className="relative w-12 h-12">
+      <div className="absolute inset-0 rounded-full border-4 border-blue-500/20 animate-ping"></div>
+      <div className="w-12 h-12 rounded-full border-4 border-blue-600 border-t-transparent animate-spin"></div>
+    </div>
+    <p className="mt-4 text-xs font-semibold text-slate-400 tracking-wider uppercase">Loading Workspace Module...</p>
+  </div>
+);
 
 import { SystemModuleKey } from './constants/roles';
 import { ShieldAlert, Stethoscope, UserCheck } from 'lucide-react';
@@ -210,102 +222,104 @@ export const App: React.FC = () => {
         <AuthProvider>
           <ToastProvider>
             <HashRouter>
-              <Routes>
-                {/* Public Verification Route for QR Scanners */}
-                <Route path="/verify/:code" element={<PublicVerifyPage />} />
-                <Route path="/verify" element={<PublicVerifyPage />} />
+              <React.Suspense fallback={<RouteLoadingSpinner />}>
+                <Routes>
+                  {/* Public Verification Route for QR Scanners */}
+                  <Route path="/verify/:code" element={<PublicVerifyPage />} />
+                  <Route path="/verify" element={<PublicVerifyPage />} />
 
-                {/* Single Unified Patient & Cardholder Smart Portal (Primary Entry & ID Login) */}
-                <Route path="/" element={<PatientPortalPage />} />
-                <Route path="/portal" element={<PatientPortalPage />} />
-                <Route path="/home" element={<Navigate to="/" replace />} />
-                <Route path="/website" element={<Navigate to="/" replace />} />
-                <Route path="/patient-portal" element={<Navigate to="/" replace />} />
+                  {/* Single Unified Patient & Cardholder Smart Portal (Primary Entry & ID Login) */}
+                  <Route path="/" element={<PatientPortalPage />} />
+                  <Route path="/portal" element={<PatientPortalPage />} />
+                  <Route path="/home" element={<Navigate to="/" replace />} />
+                  <Route path="/website" element={<Navigate to="/" replace />} />
+                  <Route path="/patient-portal" element={<Navigate to="/" replace />} />
 
-                {/* Staff Login */}
-                <Route path="/login" element={<LoginPage />} />
-                <Route path="/doctor-login" element={<DoctorLoginPage />} />
+                  {/* Staff Login */}
+                  <Route path="/login" element={<LoginPage />} />
+                  <Route path="/doctor-login" element={<DoctorLoginPage />} />
 
-                {/* Protected Staff Operational Workspace */}
-                <Route
-                  element={
-                    <ProtectedRoute>
-                      <AppLayout />
-                    </ProtectedRoute>
-                  }
-                >
-                  <Route path="/dashboard" element={<DashboardPage />} />
+                  {/* Protected Staff Operational Workspace */}
+                  <Route
+                    element={
+                      <ProtectedRoute>
+                        <AppLayout />
+                      </ProtectedRoute>
+                    }
+                  >
+                    <Route path="/dashboard" element={<DashboardPage />} />
 
-                  {/* Patient Routes */}
-                  <Route path="/patients" element={<ModuleGuard moduleKey="patients"><PatientListPage /></ModuleGuard>} />
-                  <Route path="/patients/new" element={<ModuleGuard moduleKey="patients"><PatientCreatePage /></ModuleGuard>} />
-                  <Route path="/patients/offline" element={<ModuleGuard moduleKey="patients"><OfflineFormPage /></ModuleGuard>} />
-                  <Route path="/offline-form" element={<ModuleGuard moduleKey="patients"><OfflineFormPage /></ModuleGuard>} />
-                  <Route path="/patients/:id" element={<ModuleGuard moduleKey="patients"><PatientDetailPage /></ModuleGuard>} />
-                  <Route path="/patients/:id/edit" element={<ModuleGuard moduleKey="patients"><PatientEditPage /></ModuleGuard>} />
+                    {/* Patient Routes */}
+                    <Route path="/patients" element={<ModuleGuard moduleKey="patients"><PatientListPage /></ModuleGuard>} />
+                    <Route path="/patients/new" element={<ModuleGuard moduleKey="patients"><PatientCreatePage /></ModuleGuard>} />
+                    <Route path="/patients/offline" element={<ModuleGuard moduleKey="patients"><OfflineFormPage /></ModuleGuard>} />
+                    <Route path="/offline-form" element={<ModuleGuard moduleKey="patients"><OfflineFormPage /></ModuleGuard>} />
+                    <Route path="/patients/:id" element={<ModuleGuard moduleKey="patients"><PatientDetailPage /></ModuleGuard>} />
+                    <Route path="/patients/:id/edit" element={<ModuleGuard moduleKey="patients"><PatientEditPage /></ModuleGuard>} />
 
-                  {/* Card & Studio Routes */}
-                  <Route path="/cards" element={<ModuleGuard moduleKey="cards"><CardListPage /></ModuleGuard>} />
-                  <Route path="/card-studio" element={<ModuleGuard moduleKey="card_studio"><CardStudioPage /></ModuleGuard>} />
-                  <Route path="/cards/print-sheet" element={<ModuleGuard moduleKey="print_sheet"><CardPrintSheetPage /></ModuleGuard>} />
-                  <Route path="/cards/printing-dispatch" element={<ModuleGuard moduleKey="card_dispatch"><CardPrintingDispatchPage /></ModuleGuard>} />
-                  <Route path="/card-dispatch" element={<Navigate to="/cards/printing-dispatch" replace />} />
-                  <Route path="/dispatch" element={<Navigate to="/cards/printing-dispatch" replace />} />
-                  <Route path="/card-printing" element={<Navigate to="/cards/printing-dispatch" replace />} />
+                    {/* Card & Studio Routes */}
+                    <Route path="/cards" element={<ModuleGuard moduleKey="cards"><CardListPage /></ModuleGuard>} />
+                    <Route path="/card-studio" element={<ModuleGuard moduleKey="card_studio"><CardStudioPage /></ModuleGuard>} />
+                    <Route path="/cards/print-sheet" element={<ModuleGuard moduleKey="print_sheet"><CardPrintSheetPage /></ModuleGuard>} />
+                    <Route path="/cards/printing-dispatch" element={<ModuleGuard moduleKey="card_dispatch"><CardPrintingDispatchPage /></ModuleGuard>} />
+                    <Route path="/card-dispatch" element={<Navigate to="/cards/printing-dispatch" replace />} />
+                    <Route path="/dispatch" element={<Navigate to="/cards/printing-dispatch" replace />} />
+                    <Route path="/card-printing" element={<Navigate to="/cards/printing-dispatch" replace />} />
 
-                  {/* Memberships */}
-                  <Route path="/memberships" element={<ModuleGuard moduleKey="memberships"><MembershipListPage /></ModuleGuard>} />
+                    {/* Memberships */}
+                    <Route path="/memberships" element={<ModuleGuard moduleKey="memberships"><MembershipListPage /></ModuleGuard>} />
 
-                  {/* Families */}
-                  <Route path="/families" element={<ModuleGuard moduleKey="families"><FamilyListPage /></ModuleGuard>} />
+                    {/* Families */}
+                    <Route path="/families" element={<ModuleGuard moduleKey="families"><FamilyListPage /></ModuleGuard>} />
 
-                  {/* Wallet */}
-                  <Route path="/wallet" element={<ModuleGuard moduleKey="wallet"><WalletDashboardPage /></ModuleGuard>} />
+                    {/* Wallet */}
+                    <Route path="/wallet" element={<ModuleGuard moduleKey="wallet"><WalletDashboardPage /></ModuleGuard>} />
 
-                  {/* Doctor EMR & Clinical Prescriptions (Exclusive to Doctor Role) */}
-                  <Route path="/emr" element={<DoctorRouteGuard><DoctorEMRPage /></DoctorRouteGuard>} />
-                  <Route path="/doctor-dashboard" element={<DoctorRouteGuard><DoctorDashboardPage /></DoctorRouteGuard>} />
+                    {/* Doctor EMR & Clinical Prescriptions (Exclusive to Doctor Role) */}
+                    <Route path="/emr" element={<DoctorRouteGuard><DoctorEMRPage /></DoctorRouteGuard>} />
+                    <Route path="/doctor-dashboard" element={<DoctorRouteGuard><DoctorDashboardPage /></DoctorRouteGuard>} />
 
-                  {/* Doctor Master & Commission Governance (Super Admin) */}
-                  <Route path="/doctor-master" element={<ModuleGuard moduleKey="doctor_master"><DoctorMasterPage /></ModuleGuard>} />
+                    {/* Doctor Master & Commission Governance (Super Admin) */}
+                    <Route path="/doctor-master" element={<ModuleGuard moduleKey="doctor_master"><DoctorMasterPage /></ModuleGuard>} />
 
-                  {/* Diagnostic Test Master & Package Management */}
-                  <Route path="/test-master" element={<ModuleGuard moduleKey="test_master"><TestMasterPage /></ModuleGuard>} />
+                    {/* Diagnostic Test Master & Package Management */}
+                    <Route path="/test-master" element={<ModuleGuard moduleKey="test_master"><TestMasterPage /></ModuleGuard>} />
 
-                  {/* Branch Analytics & Reports */}
-                  <Route path="/reports" element={<ModuleGuard moduleKey="reports"><ReportsPage /></ModuleGuard>} />
+                    {/* Branch Analytics & Reports */}
+                    <Route path="/reports" element={<ModuleGuard moduleKey="reports"><ReportsPage /></ModuleGuard>} />
 
-                  {/* Staff User Management */}
-                  <Route path="/users" element={<ModuleGuard moduleKey="users"><UserListPage /></ModuleGuard>} />
+                    {/* Staff User Management */}
+                    <Route path="/users" element={<ModuleGuard moduleKey="users"><UserListPage /></ModuleGuard>} />
 
-                  {/* Super Admin Sovereign Cash Desk Voucher Engine */}
-                  <Route path="/cash-desk-vouchers" element={<ModuleGuard moduleKey="cash_desk_vouchers"><CashDeskBillVouchersPage /></ModuleGuard>} />
+                    {/* Super Admin Sovereign Cash Desk Voucher Engine */}
+                    <Route path="/cash-desk-vouchers" element={<ModuleGuard moduleKey="cash_desk_vouchers"><CashDeskBillVouchersPage /></ModuleGuard>} />
 
-                  {/* 3D Website Customizer & CMS Studio (Super Admin Exclusive) */}
-                  <Route path="/website-cms" element={<ModuleGuard moduleKey="website_cms"><WebsiteCmsPage /></ModuleGuard>} />
+                    {/* 3D Website Customizer & CMS Studio (Super Admin Exclusive) */}
+                    <Route path="/website-cms" element={<ModuleGuard moduleKey="website_cms"><WebsiteCmsPage /></ModuleGuard>} />
 
-                  {/* NGO & CSR Welfare Hub */}
-                  <Route path="/ngo-welfare" element={<ModuleGuard moduleKey="ngo_welfare"><NgoWelfare /></ModuleGuard>} />
+                    {/* NGO & CSR Welfare Hub */}
+                    <Route path="/ngo-welfare" element={<ModuleGuard moduleKey="ngo_welfare"><NgoWelfare /></ModuleGuard>} />
 
-                  {/* System & Audit */}
-                  <Route path="/activity" element={<ModuleGuard moduleKey="activity"><ActivityLogPage /></ModuleGuard>} />
-                  <Route path="/system-monitoring" element={<SuperAdminGuard><ModuleGuard moduleKey="system_monitoring"><SystemMonitoringPage /></ModuleGuard></SuperAdminGuard>} />
-                  <Route path="/monitoring" element={<Navigate to="/system-monitoring" replace />} />
-                  <Route path="/multi-device" element={<ModuleGuard moduleKey="system_monitoring"><MultiDeviceManagementPage /></ModuleGuard>} />
-                  <Route path="/devices" element={<Navigate to="/multi-device" replace />} />
-                  <Route path="/backup" element={<SuperAdminGuard><ModuleGuard moduleKey="backup"><BackupRestorePage /></ModuleGuard></SuperAdminGuard>} />
-                  <Route path="/integrations" element={<ModuleGuard moduleKey="integrations"><IntegrationsPage /></ModuleGuard>} />
-                  <Route path="/gmail-integration" element={<ModuleGuard moduleKey="integrations"><GmailIntegrationPage /></ModuleGuard>} />
-                  <Route path="/settings" element={<ModuleGuard moduleKey="settings"><SettingsPage /></ModuleGuard>} />
+                    {/* System & Audit */}
+                    <Route path="/activity" element={<ModuleGuard moduleKey="activity"><ActivityLogPage /></ModuleGuard>} />
+                    <Route path="/system-monitoring" element={<SuperAdminGuard><ModuleGuard moduleKey="system_monitoring"><SystemMonitoringPage /></ModuleGuard></SuperAdminGuard>} />
+                    <Route path="/monitoring" element={<Navigate to="/system-monitoring" replace />} />
+                    <Route path="/multi-device" element={<ModuleGuard moduleKey="system_monitoring"><MultiDeviceManagementPage /></ModuleGuard>} />
+                    <Route path="/devices" element={<Navigate to="/multi-device" replace />} />
+                    <Route path="/backup" element={<SuperAdminGuard><ModuleGuard moduleKey="backup"><BackupRestorePage /></ModuleGuard></SuperAdminGuard>} />
+                    <Route path="/integrations" element={<ModuleGuard moduleKey="integrations"><IntegrationsPage /></ModuleGuard>} />
+                    <Route path="/gmail-integration" element={<ModuleGuard moduleKey="integrations"><GmailIntegrationPage /></ModuleGuard>} />
+                    <Route path="/settings" element={<ModuleGuard moduleKey="settings"><SettingsPage /></ModuleGuard>} />
 
-                  {/* Super Admin Security Portal */}
-                  <Route path="/super-admin" element={<SuperAdminGuard><SettingsPage /></SuperAdminGuard>} />
+                    {/* Super Admin Security Portal */}
+                    <Route path="/super-admin" element={<SuperAdminGuard><SettingsPage /></SuperAdminGuard>} />
 
-                </Route>
+                  </Route>
 
-                {/* Fallback to Home */}
-                <Route path="*" element={<Navigate to="/" replace />} />
-              </Routes>
+                  {/* Fallback to Home */}
+                  <Route path="*" element={<Navigate to="/" replace />} />
+                </Routes>
+              </React.Suspense>
             </HashRouter>
           </ToastProvider>
         </AuthProvider>

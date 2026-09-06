@@ -8,9 +8,10 @@
     "build": "vite build",
     "build:server": "esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
     "build:all": "vite build && npm run build:server",
-    "start": "NODE_ENV=production node dist/server.cjs",
+    "start": "node dist/server.cjs",
     "preview": "vite preview --host 0.0.0.0 --port 3000",
     "lint": "tsc --noEmit",
+    "typecheck": "tsc --noEmit",
     "deploy": "node scripts/deploy.js",
     "deploy:main": "node scripts/deploy.js",
     "deploy:cf": "vite build && npx wrangler deploy"

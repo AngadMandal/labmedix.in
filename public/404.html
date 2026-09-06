@@ -4,12 +4,12 @@
     <meta charset="utf-8" />
     <title>LabMedix</title>
     <script>
-      // GitHub Pages SPA — redirect all 404s back to index with hash
-      var base = '/labmedix.in';
-      var path = window.location.pathname.replace(base, '').replace(/^\//, '');
+      // GitHub Pages & Static SPA — redirect all 404s back to index with hash
+      var base = window.location.pathname.startsWith('/labmedix.in') ? '/labmedix.in' : '';
+      var path = (base ? window.location.pathname.replace(base, '') : window.location.pathname).replace(/^\//, '');
       var search = window.location.search;
       var hash = window.location.hash;
-      var redirectUrl = window.location.origin + base + '/' + search + (path ? '#/' + path : '') + hash;
+      var redirectUrl = window.location.origin + (base ? base : '') + '/' + search + (path ? '#/' + path : '') + hash;
       window.location.replace(redirectUrl);
     </script>
   </head>
