@@ -21,7 +21,8 @@ import {
   CardDispatchBatch,
   PatientAppointment,
   ClinicalEncounter,
-  PatientBill
+  PatientBill,
+  StaffCardTransaction
 } from '../types';
 import { DEFAULT_COMPANY_PROFILE, DEFAULT_CARD_DESIGN, DEFAULT_CLINIC_REGISTRATION_SETTINGS } from '../constants/defaults';
 import { DEFAULT_MEMBERSHIPS } from '../constants/memberships';
@@ -79,7 +80,8 @@ export const STORAGE_KEYS = {
   CAMP_ATTENDEES: 'labmedix_camp_attendees_v1',
   CHARITY_GRANTS: 'labmedix_charity_grants_v1',
   NGO_FUND_TRANSACTIONS: 'labmedix_ngo_fund_transactions_v1',
-  BILLS: 'labmedix_bills_v1'
+  BILLS: 'labmedix_bills_v1',
+  CARD_REQUEST_TRANSACTIONS: 'labmedix_card_request_transactions_v1'
 };
 
 const INITIAL_USERS: User[] = [
@@ -1345,6 +1347,29 @@ export class StorageService {
   }
   public static getBillById(id: string): PatientBill | undefined {
     return this.getBills().find(b => b.id === id || b.billNumber === id);
+  }
+
+  // Staff Card Request Transactions
+  public static getCardRequestTransactions(): StaffCardTransaction[] {
+    return this.getItem<StaffCardTransaction[]>(STORAGE_KEYS.CARD_REQUEST_TRANSACTIONS, []);
+  }
+  public static saveCardRequestTransactions(txns: StaffCardTransaction[]): void {
+    this.setItem(STORAGE_KEYS.CARD_REQUEST_TRANSACTIONS, txns);
+    ApiSyncService.syncKeyToFirestore(STORAGE_KEYS.CARD_REQUEST_TRANSACTIONS, txns).catch(() => { });
+  }
+  public static saveCardRequestTransaction(txn: StaffCardTransaction): void {
+    const txns = this.getCardRequestTransactions();
+    const index = txns.findIndex(t => t.id === txn.id || t.transactionId === txn.transactionId);
+    if (index >= 0) {
+      txns[index] = txn;
+    } else {
+      txns.unshift(txn);
+    }
+    this.saveCardRequestTransactions(txns);
+    ApiSyncService.saveDocument('card_transactions', txn.id, txn).catch(() => { });
+  }
+  public static getCardRequestTransactionById(id: string): StaffCardTransaction | undefined {
+    return this.getCardRequestTransactions().find(t => t.id === id || t.transactionId === id || t.requestId === id);
   }
 
   // Company Profile

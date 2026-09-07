@@ -124,7 +124,21 @@ const PERMISSION_LABELS: Record<Permission, { label: string; category: string }>
   bill_create: { label: 'Create OPD Invoices & Diagnostic Lab Bills', category: 'Financial' },
   bill_view: { label: 'View OPD Billing & Transaction Slips', category: 'Financial' },
   bill_cancel: { label: 'Cancel Invoices & Authorize Refunds', category: 'Financial' },
-  payment_collect: { label: 'Collect Cash Desk POS & Bank UTR Payments', category: 'Financial' }
+  payment_collect: { label: 'Collect Cash Desk POS & Bank UTR Payments', category: 'Financial' },
+  card_request_edit: { label: 'Edit Draft Health Card Requests', category: 'Card Studio' },
+  card_request_submit: { label: 'Submit Card Requests to Super Admin', category: 'Card Studio' },
+  card_request_view_own: { label: 'View Own Submitted Card Requests', category: 'Card Studio' },
+  card_request_view_all: { label: 'View All Staff Card Requests', category: 'Card Studio' },
+  card_cancel: { label: 'Cancel / Void Card Requests', category: 'Card Studio' },
+  card_bill_print: { label: 'Print Patient Card Request Bill & Slip', category: 'Card Studio' },
+  card_transactions_view: { label: 'View Card Request Transactions', category: 'Financial' },
+  card_transactions_view_own: { label: 'View Own Submitted Transactions', category: 'Financial' },
+  card_transactions_view_all: { label: 'View All Staff Card Transactions', category: 'Financial' },
+  bill_view_own: { label: 'View Own Generated Bills', category: 'Financial' },
+  bill_view_all: { label: 'View All Clinic Invoices & Bills', category: 'Financial' },
+  bill_print: { label: 'Print Patient Invoices & Tax Receipts', category: 'Financial' },
+  bill_view_due: { label: 'Track Outstanding Balance & Due Amounts', category: 'Financial' },
+  transactions_manage: { label: 'Manage Financial Ledgers & Settlements', category: 'Financial' }
 };
 
 // Preset high-res clinical avatar gallery

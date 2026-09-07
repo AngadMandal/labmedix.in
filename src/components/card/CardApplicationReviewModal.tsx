@@ -9,6 +9,8 @@ import { formatCurrency, formatDate } from '../../utils/formatters';
 import { useToast } from '../../context/ToastContext';
 import { triggerCelebrationFireworks } from '../../utils/confetti';
 import { CardRequestSlipModal } from '../portal/CardRequestSlipModal';
+import { StaffCardRequestBillSlipModal } from './StaffCardRequestBillSlipModal';
+import { StaffCardRequestService } from '../../services/staffCardRequestService';
 import { checkUserPermission } from '../../constants/roles';
 import {
   CheckCircle2,
@@ -37,7 +39,10 @@ import {
   HelpCircle,
   Trash2,
   Clock,
-  FileText
+  FileText,
+  RotateCcw,
+  Receipt,
+  MessageSquarePlus
 } from 'lucide-react';
 
 export interface CardApplicationReviewModalProps {
@@ -60,6 +65,7 @@ export const CardApplicationReviewModal: React.FC<CardApplicationReviewModalProp
   const [copiedRef, setCopiedRef] = useState(false);
   const [isBankReconciled, setIsBankReconciled] = useState(false);
   const [isSlipOpen, setIsSlipOpen] = useState(false);
+  const [isBillSlipOpen, setIsBillSlipOpen] = useState(false);
   const company = StorageService.getCompanyProfile();
   const currentUser = StorageService.getCurrentUser();
   const isSuperAdmin = currentUser?.role === 'super_admin';
@@ -76,6 +82,57 @@ export const CardApplicationReviewModal: React.FC<CardApplicationReviewModalProp
   }, [application]);
 
   if (!application) return null;
+
+  const handleReturnForCorrection = async () => {
+    if (!canReject) {
+      showToast('error', 'Permission Denied', 'You do not have permission to return requests for correction.');
+      return;
+    }
+    const reason = prompt('Enter specific correction instructions for staff:', 'Please attach clear identity proof or rectify family member details.');
+    if (!reason || !reason.trim()) return;
+
+    setIsProcessing(true);
+    const res = await StaffCardRequestService.returnForCorrection(
+      application.id,
+      reason.trim(),
+      currentUser?.fullName || 'Super Administrator'
+    );
+    setIsProcessing(false);
+
+    if (res.success) {
+      showToast('info', 'Returned for Correction', `Request ${application.trackingId || application.applicationNo} returned to staff.`);
+      onRejected();
+      onClose();
+    } else {
+      showToast('error', 'Error', res.error || 'Failed to return request.');
+    }
+  };
+
+  const handleAddAdminNote = async () => {
+    const note = prompt('Add administrative / audit note to this card request:');
+    if (!note || !note.trim()) return;
+
+    setIsProcessing(true);
+    const res = await StaffCardRequestService.addAdminNote(
+      application.id,
+      note.trim(),
+      currentUser?.fullName || 'Super Administrator'
+    );
+    setIsProcessing(false);
+
+    if (res.success) {
+      showToast('success', 'Admin Note Added', 'Audit note recorded successfully.');
+      if (!application.adminNotes) application.adminNotes = [];
+      application.adminNotes.push({
+        id: `note_${Date.now()}`,
+        note: note.trim(),
+        addedBy: currentUser?.fullName || 'Super Administrator',
+        addedAt: new Date().toISOString()
+      });
+    } else {
+      showToast('error', 'Error', res.error || 'Failed to add admin note.');
+    }
+  };
 
   const isUtrPayment = application.paymentMethod?.toLowerCase().includes('utr') ||
                        application.paymentReference?.toUpperCase().startsWith('UTR:') ||
@@ -285,11 +342,23 @@ export const CardApplicationReviewModal: React.FC<CardApplicationReviewModalProp
               </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-slate-300 font-mono text-[11px]">
+            <div className="grid grid-cols-1 sm:grid-cols-4 gap-2 text-slate-300 font-mono text-[11px]">
               {application.submittedByStaffName && (
                 <div>
                   <span className="text-[9.5px] text-slate-400 uppercase block font-sans">Submitted By Staff:</span>
                   <strong className="text-white font-bold">{application.submittedByStaffName} ({application.submittedByStaffRole || 'Staff'})</strong>
+                </div>
+              )}
+              {application.submittedByStaffEmail && (
+                <div>
+                  <span className="text-[9.5px] text-slate-400 uppercase block font-sans">Staff Email:</span>
+                  <strong className="text-slate-300 truncate block">{application.submittedByStaffEmail}</strong>
+                </div>
+              )}
+              {application.billNumber && (
+                <div>
+                  <span className="text-[9.5px] text-slate-400 uppercase block font-sans">Generated Bill No:</span>
+                  <strong className="text-emerald-400 font-bold">{application.billNumber}</strong>
                 </div>
               )}
               {application.patientId && (
@@ -522,9 +591,16 @@ export const CardApplicationReviewModal: React.FC<CardApplicationReviewModalProp
               <span className="text-[10px] font-bold uppercase tracking-wider text-amber-300 flex items-center gap-1.5 font-mono">
                 👨‍👩‍👧‍👦 1-Card Family Shield Dependents ({application.familyMembers.length} Members Linked):
               </span>
-              <span className="px-2 py-0.5 rounded-full text-[9px] font-mono font-bold bg-amber-950 text-amber-300 border border-amber-500">
-                100% SHARED BENEFITS & FLOAT
-              </span>
+              <div className="flex items-center gap-2">
+                <span className="px-2 py-0.5 rounded-full text-[9px] font-mono font-bold bg-amber-950 text-amber-300 border border-amber-500">
+                  Included: {Math.min(application.familyMembers.length, 5)} / 5
+                </span>
+                {(application.extraFamilyMembersCount || 0) > 0 && (
+                  <span className="px-2 py-0.5 rounded-full text-[9px] font-mono font-bold bg-purple-950 text-purple-300 border border-purple-500">
+                    Extra: {application.extraFamilyMembersCount} (+{formatCurrency(application.extraFamilyMembersFee || 0)})
+                  </span>
+                )}
+              </div>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -533,12 +609,32 @@ export const CardApplicationReviewModal: React.FC<CardApplicationReviewModalProp
                   <div>
                     <strong className="text-white font-bold block">{fm.fullName}</strong>
                     <span className="text-[10px] text-slate-400 font-mono">
-                      {fm.relationship} • {fm.age} yrs • Blood: {fm.bloodGroup}
+                      {fm.relationship} • {fm.age} yrs • Blood: {fm.bloodGroup || 'Not Tested'}
                     </span>
                   </div>
                   <span className="text-[10px] font-mono text-teal-400 bg-slate-900 px-2 py-0.5 rounded border border-slate-800">
                     {fm.mobile || application.mobile}
                   </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Admin Audit & Correction Notes (if any) */}
+        {application.adminNotes && application.adminNotes.length > 0 && (
+          <div className="p-4 rounded-2xl bg-slate-950 border border-amber-500/40 space-y-2">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-amber-300 flex items-center gap-1.5 font-mono">
+              <FileCheck2 className="w-3.5 h-3.5 text-amber-400" />
+              Administrative Notes & Audit Trail:
+            </span>
+            <div className="space-y-1.5 max-h-36 overflow-y-auto">
+              {application.adminNotes.map((noteItem, idx) => (
+                <div key={noteItem.id || idx} className="p-2 rounded-xl bg-slate-900 border border-slate-800 text-[11px] font-mono text-slate-300">
+                  <span className="text-slate-500 font-sans text-[9.5px]">
+                    [{noteItem.addedAt ? new Date(noteItem.addedAt).toLocaleString() : ''}] {noteItem.addedBy}:{' '}
+                  </span>
+                  {noteItem.note}
                 </div>
               ))}
             </div>
@@ -580,11 +676,20 @@ export const CardApplicationReviewModal: React.FC<CardApplicationReviewModalProp
           </div>
         </div>
 
-        {/* Action Controls for Super Admin */}
-        <div className="flex items-center justify-between gap-3 pt-3 border-t border-slate-800">
-          <div className="flex items-center gap-2">
+        {/* Action Controls for Super Admin & Staff Review */}
+        <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-slate-800">
+          <div className="flex flex-wrap items-center gap-2">
             <Button type="button" variant="outline" onClick={onClose}>
               Close Window
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              leftIcon={<Receipt className="w-4 h-4 text-emerald-400" />}
+              onClick={() => setIsBillSlipOpen(true)}
+              className="border-emerald-500/40 text-emerald-300 hover:bg-emerald-950/50 font-bold"
+            >
+              View / Print Bill & Slip
             </Button>
             <Button
               type="button"
@@ -592,12 +697,33 @@ export const CardApplicationReviewModal: React.FC<CardApplicationReviewModalProp
               leftIcon={<Printer className="w-4 h-4 text-teal-400" />}
               onClick={() => setIsSlipOpen(true)}
             >
-              Print Card Request Slip
+              Print Card Slip
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              leftIcon={<MessageSquarePlus className="w-4 h-4 text-amber-400" />}
+              onClick={handleAddAdminNote}
+              className="border-amber-500/40 text-amber-300 hover:bg-amber-950/50"
+            >
+              Add Admin Note
             </Button>
           </div>
 
           {(canApprove || canReject) && application.status !== 'approved' && application.status !== 'issued' && (
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              {canReject && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="border-amber-500/50 text-amber-400 hover:bg-amber-950"
+                  onClick={handleReturnForCorrection}
+                  isLoading={isProcessing}
+                  leftIcon={<RotateCcw className="w-4 h-4" />}
+                >
+                  Return for Correction
+                </Button>
+              )}
               {canReject && (
                 <Button
                   type="button"
@@ -658,6 +784,12 @@ export const CardApplicationReviewModal: React.FC<CardApplicationReviewModalProp
         </div>
       </div>
     </Modal>
+
+    <StaffCardRequestBillSlipModal
+      isOpen={isBillSlipOpen}
+      onClose={() => setIsBillSlipOpen(false)}
+      application={application}
+    />
 
     <CardRequestSlipModal
       isOpen={isSlipOpen}

@@ -56,6 +56,18 @@ service cloud.firestore {
       allow delete: if isSuperAdmin();
     }
 
+    // ── BILLING & PATIENT INVOICES ───────────────────────────────
+    match /bills/{billId} {
+      allow read, create, update: if true;
+      allow delete: if isSuperAdmin();
+    }
+
+    // ── STAFF HEALTH CARD TRANSACTIONS ───────────────────────────
+    match /card_transactions/{txnId} {
+      allow read, create, update: if true;
+      allow delete: if isSuperAdmin();
+    }
+
     // ── CASH DESK VOUCHERS ───────────────────────────────────────
     match /cash_desk_vouchers/{voucherId} {
       allow read, create, update: if true;

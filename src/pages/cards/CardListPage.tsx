@@ -14,11 +14,13 @@ import { CardRenewalModal } from './CardRenewalModal';
 import { CardReplacementModal } from './CardReplacementModal';
 import { CardApplicationReviewModal } from '../../components/card/CardApplicationReviewModal';
 import { CreateCardRequestModal } from '../../components/card/CreateCardRequestModal';
+import { StaffCardRequestBillSlipModal } from '../../components/card/StaffCardRequestBillSlipModal';
 import { SuperAdminCardDeleteModal } from '../../components/card/SuperAdminCardDeleteModal';
 import { PatientRealMoneyTopUpModal } from '../../components/portal/PatientRealMoneyTopUpModal';
 import { DirectLabAndPackageBookingModal } from '../../components/portal/DirectLabAndPackageBookingModal';
 import { PatientReceiptModal } from '../../components/portal/PatientReceiptModal';
-import { HealthCard, CardStatus, CardApplicationRequest, Patient, Membership, Wallet } from '../../types';
+import { StaffCardRequestService } from '../../services/staffCardRequestService';
+import { HealthCard, CardStatus, CardApplicationRequest, Patient, Membership, Wallet, StaffCardTransaction } from '../../types';
 import { DEFAULT_MEMBERSHIPS } from '../../constants/memberships';
 import { formatDate, formatCurrency, formatDateTime } from '../../utils/formatters';
 
@@ -79,7 +81,8 @@ import {
   Heart,
   ChevronRight,
   ExternalLink,
-  Plus
+  Plus,
+  Receipt
 } from 'lucide-react';
 
 export const CardListPage: React.FC = () => {
@@ -89,8 +92,10 @@ export const CardListPage: React.FC = () => {
 
   const isSuperAdmin = currentUser?.role === 'super_admin';
 
-  // Navigation Tabs: Ultra 3D Deck, Operations Table, Archived 30-Day Hub, Applications Queue
-  const [activeMainView, setActiveMainView] = useState<'deck_3d' | 'table_view' | 'archived_hub' | 'applications_queue'>('deck_3d');
+  // Navigation Tabs: Ultra 3D Deck, Operations Table, Archived 30-Day Hub, Applications Queue, Staff Submissions Hub
+  const [activeMainView, setActiveMainView] = useState<'deck_3d' | 'table_view' | 'archived_hub' | 'applications_queue' | 'staff_requests_hub'>('deck_3d');
+  const [staffSubTab, setStaffSubTab] = useState<'requests' | 'transactions'>('requests');
+  const [staffStatusFilter, setStaffStatusFilter] = useState<string>('all');
 
   // Core Data & State
   const [cards, setCards] = useState<HealthCard[]>(() => CardService.getAll(true));
@@ -98,6 +103,7 @@ export const CardListPage: React.FC = () => {
   const [patients, setPatients] = useState<Patient[]>(() => StorageService.getPatients());
   const [memberships, setMemberships] = useState<Membership[]>(() => StorageService.getMemberships());
   const [wallets, setWallets] = useState<Wallet[]>(() => StorageService.getWallets());
+  const [staffTransactions, setStaffTransactions] = useState<StaffCardTransaction[]>(() => StaffCardRequestService.getStaffTransactions(currentUser));
 
   // Filters & Search
   const [statusFilter, setStatusFilter] = useState<string>('all');
@@ -108,6 +114,7 @@ export const CardListPage: React.FC = () => {
   // Interactive Modals State
   const [isCreateRequestModalOpen, setIsCreateRequestModalOpen] = useState(false);
   const [selectedApplicationForReview, setSelectedApplicationForReview] = useState<CardApplicationRequest | null>(null);
+  const [selectedAppForBillSlip, setSelectedAppForBillSlip] = useState<CardApplicationRequest | null>(null);
   const [selectedCardForRenew, setSelectedCardForRenew] = useState<HealthCard | null>(null);
   const [selectedCardForReplace, setSelectedCardForReplace] = useState<HealthCard | null>(null);
   const [selectedCardForDelete, setSelectedCardForDelete] = useState<HealthCard | null>(null);
@@ -122,6 +129,7 @@ export const CardListPage: React.FC = () => {
     setPatients(StorageService.getPatients());
     setMemberships(StorageService.getMemberships());
     setWallets(StorageService.getWallets());
+    setStaffTransactions(StaffCardRequestService.getStaffTransactions(currentUser));
     showToast('info', 'Cards & Patients Synchronized', 'Central database repository updated.');
   };
 
@@ -138,6 +146,9 @@ export const CardListPage: React.FC = () => {
     const unsubWallets = ApiSyncService.subscribeToCollection<Wallet>('wallets', (items) => {
       if (items) setWallets(StorageService.getWallets());
     });
+    const unsubTx = ApiSyncService.subscribeToCollection<StaffCardTransaction>('card_transactions', (items) => {
+      if (items) setStaffTransactions(StaffCardRequestService.getStaffTransactions(currentUser));
+    });
 
     const handleSync = (e: any) => {
       setCards(CardService.getAll(true));
@@ -145,6 +156,7 @@ export const CardListPage: React.FC = () => {
       setPatients(StorageService.getPatients());
       setMemberships(StorageService.getMemberships());
       setWallets(StorageService.getWallets());
+      setStaffTransactions(StaffCardRequestService.getStaffTransactions(currentUser));
     };
     window.addEventListener('labmedix_data_synced', handleSync as EventListener);
     return () => {
@@ -152,9 +164,10 @@ export const CardListPage: React.FC = () => {
       unsubPatients();
       unsubApps();
       unsubWallets();
+      unsubTx();
       window.removeEventListener('labmedix_data_synced', handleSync as EventListener);
     };
-  }, []);
+  }, [currentUser]);
 
   // Active / Archived Lists
   const activeCardsList = useMemo(() => cards.filter(c => !c.isDeleted && c.status !== 'deleted'), [cards]);
@@ -170,6 +183,61 @@ export const CardListPage: React.FC = () => {
     if (appFilter === 'rejected') return applications.filter(a => a.status === 'rejected' || a.status === 'cancelled');
     return applications;
   }, [applications, appFilter]);
+
+  const staffKpis = useMemo(() => StaffCardRequestService.getStaffKpis(currentUser), [applications, staffTransactions, currentUser]);
+  const staffRequests = useMemo(() => StaffCardRequestService.getStaffRequests(currentUser), [applications, currentUser]);
+
+  const filteredStaffRequests = useMemo(() => {
+    return staffRequests.filter((req) => {
+      if (staffStatusFilter !== 'all') {
+        if (staffStatusFilter === 'pending') {
+          const isPending = req.status === 'submitted' || req.status === 'pending_review' || req.status === 'under_review' || req.status === 'pending_approval';
+          if (!isPending) return false;
+        } else if (staffStatusFilter === 'approved') {
+          const isApproved = req.status === 'approved' || req.status === 'processing' || req.status === 'card_processing';
+          if (!isApproved) return false;
+        } else if (staffStatusFilter === 'issued') {
+          const isIssued = req.status === 'issued' || req.status === 'card_issued' || req.status === 'ready';
+          if (!isIssued) return false;
+        } else if (staffStatusFilter === 'rejected') {
+          if (req.status !== 'rejected') return false;
+        } else if (staffStatusFilter === 'returned') {
+          const isReturned = req.status === 'returned_for_correction' || req.status === 'info_required';
+          if (!isReturned) return false;
+        }
+      }
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase();
+        return (
+          (req.applicationNo && req.applicationNo.toLowerCase().includes(q)) ||
+          (req.trackingId && req.trackingId.toLowerCase().includes(q)) ||
+          (req.fullName && req.fullName.toLowerCase().includes(q)) ||
+          (req.mobile && req.mobile.includes(q)) ||
+          (req.submittedByStaffName && req.submittedByStaffName.toLowerCase().includes(q)) ||
+          (req.billNumber && req.billNumber.toLowerCase().includes(q))
+        );
+      }
+      return true;
+    });
+  }, [staffRequests, staffStatusFilter, searchQuery]);
+
+  const filteredStaffTransactions = useMemo(() => {
+    return staffTransactions.filter((tx) => {
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase();
+        return (
+          (tx.transactionNumber && tx.transactionNumber.toLowerCase().includes(q)) ||
+          (tx.transactionId && tx.transactionId.toLowerCase().includes(q)) ||
+          (tx.billNumber && tx.billNumber.toLowerCase().includes(q)) ||
+          (tx.requestNumber && tx.requestNumber.toLowerCase().includes(q)) ||
+          (tx.applicationNo && tx.applicationNo.toLowerCase().includes(q)) ||
+          (tx.patientName && tx.patientName.toLowerCase().includes(q)) ||
+          (tx.staffName && tx.staffName.toLowerCase().includes(q))
+        );
+      }
+      return true;
+    });
+  }, [staffTransactions, searchQuery]);
 
   // Filtered Active Cards
   const filteredActiveCards = useMemo(() => {
@@ -611,6 +679,26 @@ export const CardListPage: React.FC = () => {
               >
                 <Clock className="w-3.5 h-3.5" />
                 <span>Online Queue ({pendingAppsCount})</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setActiveMainView('staff_requests_hub')}
+                className={`px-3 py-1.5 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all ${
+                  activeMainView === 'staff_requests_hub'
+                    ? 'bg-gradient-to-r from-teal-500 to-emerald-500 text-slate-950 shadow-md font-black'
+                    : 'text-teal-400 hover:text-white'
+                }`}
+              >
+                <ShieldCheck className="w-3.5 h-3.5" />
+                <span>
+                  {isSuperAdmin ? 'Staff Requests & Bills' : 'My Requests & Bills'} ({staffRequests.length})
+                </span>
+                {staffKpis.pendingRequests > 0 && (
+                  <span className="px-1.5 py-0.2 rounded-full bg-amber-500 text-slate-950 text-[10px] font-mono font-black">
+                    {staffKpis.pendingRequests}
+                  </span>
+                )}
               </button>
             </div>
 
@@ -1415,6 +1503,554 @@ export const CardListPage: React.FC = () => {
         </div>
       )}
 
+      {/* 7. WORKSPACE VIEW 5: STAFF HEALTH CARD REQUESTS & TRANSACTIONS HUB */}
+      {activeMainView === 'staff_requests_hub' && (
+        <div className="space-y-6">
+          {/* Header & Sub-tab switcher */}
+          <div className="p-6 rounded-3xl bg-gradient-to-r from-slate-900 via-slate-900 to-teal-950/40 border border-slate-800 space-y-4 shadow-xl">
+            <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase font-mono bg-teal-950 text-teal-300 border border-teal-500/40">
+                    {isSuperAdmin ? 'SUPER ADMIN WORKFLOW & AUDIT' : 'STAFF SUBMISSION WORKFLOW'}
+                  </span>
+                  <span className="text-xs text-slate-400 font-mono">
+                    User: <strong className="text-white">{currentUser?.fullName}</strong> ({currentUser?.role?.replace(/_/g, ' ')})
+                  </span>
+                </div>
+                <h3 className="text-lg font-black text-white mt-1 flex items-center gap-2">
+                  <CreditCard className="w-5 h-5 text-teal-400" />
+                  {isSuperAdmin ? 'Hospital Staff Health Card Requests & Transactions' : 'My Staff Health Card Submissions & Slips'}
+                </h3>
+                <p className="text-xs text-slate-400 max-w-2xl mt-0.5">
+                  Secure staff-to-Super-Admin card requests, live Firestore status tracking, automated family surcharge calculation, and instant printable bills and slips.
+                </p>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                {(can('card_request_create') || can('card_create') || isSuperAdmin) && (
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    className="bg-gradient-to-r from-amber-500 via-teal-500 to-emerald-500 text-slate-950 font-black shadow-lg hover:brightness-110 text-xs py-2 px-4"
+                    leftIcon={<Plus className="w-4 h-4" />}
+                    onClick={() => setIsCreateRequestModalOpen(true)}
+                  >
+                    + Submit Health Card Request
+                  </Button>
+                )}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="border-slate-700 text-slate-300 hover:bg-slate-800 text-xs py-2"
+                  onClick={refreshList}
+                >
+                  <RefreshCw className="w-3.5 h-3.5 mr-1" />
+                  Sync Live
+                </Button>
+              </div>
+            </div>
+
+            {/* Sub-Tabs: Requests vs Financial Ledger */}
+            <div className="flex items-center gap-2 pt-2 border-t border-slate-800/80">
+              <button
+                type="button"
+                onClick={() => setStaffSubTab('requests')}
+                className={`px-4 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-2 ${
+                  staffSubTab === 'requests'
+                    ? 'bg-teal-600 text-white shadow-lg'
+                    : 'bg-slate-950 text-slate-400 hover:text-white border border-slate-800'
+                }`}
+              >
+                <Clock className="w-3.5 h-3.5" />
+                <span>Card Requests Queue ({staffRequests.length})</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setStaffSubTab('transactions')}
+                className={`px-4 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-2 ${
+                  staffSubTab === 'transactions'
+                    ? 'bg-emerald-600 text-white shadow-lg'
+                    : 'bg-slate-950 text-slate-400 hover:text-white border border-slate-800'
+                }`}
+              >
+                <Receipt className="w-3.5 h-3.5" />
+                <span>Financial Transactions & Bills ({staffTransactions.length})</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Real-time KPI Statistics Cards */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
+            {/* 1. Total Requests */}
+            <div className="p-3.5 rounded-2xl bg-slate-900 border border-slate-800 flex flex-col justify-between">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider font-mono">Total Requests</span>
+              <div className="mt-1">
+                <strong className="text-xl font-black text-white font-mono block">{staffKpis.totalRequests}</strong>
+                <span className="text-[10px] text-slate-400">All submissions</span>
+              </div>
+            </div>
+
+            {/* 2. Pending Review */}
+            <div className="p-3.5 rounded-2xl bg-slate-900 border border-amber-500/40 flex flex-col justify-between">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold text-amber-300 uppercase tracking-wider font-mono">Pending</span>
+                <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
+              </div>
+              <div className="mt-1">
+                <strong className="text-xl font-black text-amber-300 font-mono block">{staffKpis.pendingRequests}</strong>
+                <span className="text-[10px] text-amber-400">Under review</span>
+              </div>
+            </div>
+
+            {/* 3. Approved */}
+            <div className="p-3.5 rounded-2xl bg-slate-900 border border-teal-500/40 flex flex-col justify-between">
+              <span className="text-[10px] font-bold text-teal-300 uppercase tracking-wider font-mono">Approved</span>
+              <div className="mt-1">
+                <strong className="text-xl font-black text-teal-400 font-mono block">{staffKpis.approvedRequests}</strong>
+                <span className="text-[10px] text-teal-400">Minting ready</span>
+              </div>
+            </div>
+
+            {/* 4. Issued */}
+            <div className="p-3.5 rounded-2xl bg-slate-900 border border-emerald-500/40 flex flex-col justify-between">
+              <span className="text-[10px] font-bold text-emerald-300 uppercase tracking-wider font-mono">Card Issued</span>
+              <div className="mt-1">
+                <strong className="text-xl font-black text-emerald-400 font-mono block">{staffKpis.issuedRequests}</strong>
+                <span className="text-[10px] text-emerald-400">Active cashless</span>
+              </div>
+            </div>
+
+            {/* 5. Returned */}
+            <div className="p-3.5 rounded-2xl bg-slate-900 border border-orange-500/40 flex flex-col justify-between">
+              <span className="text-[10px] font-bold text-orange-300 uppercase tracking-wider font-mono">Correction</span>
+              <div className="mt-1">
+                <strong className="text-xl font-black text-orange-400 font-mono block">{staffKpis.returnedRequests}</strong>
+                <span className="text-[10px] text-orange-400">Action needed</span>
+              </div>
+            </div>
+
+            {/* 6. Rejected */}
+            <div className="p-3.5 rounded-2xl bg-slate-900 border border-rose-500/40 flex flex-col justify-between">
+              <span className="text-[10px] font-bold text-rose-300 uppercase tracking-wider font-mono">Rejected</span>
+              <div className="mt-1">
+                <strong className="text-xl font-black text-rose-400 font-mono block">{staffKpis.rejectedRequests}</strong>
+                <span className="text-[10px] text-rose-400">Declined</span>
+              </div>
+            </div>
+
+            {/* 7. Total Billed */}
+            <div className="p-3.5 rounded-2xl bg-slate-900 border border-blue-500/40 flex flex-col justify-between">
+              <span className="text-[10px] font-bold text-blue-300 uppercase tracking-wider font-mono">Total Billed</span>
+              <div className="mt-1">
+                <strong className="text-sm font-black text-blue-300 font-mono block truncate">{formatCurrency(staffKpis.totalBillingAmount)}</strong>
+                <span className="text-[10px] text-slate-400">{staffKpis.totalTransactions} bills</span>
+              </div>
+            </div>
+
+            {/* 8. Paid & Due */}
+            <div className="p-3.5 rounded-2xl bg-slate-900 border border-purple-500/40 flex flex-col justify-between">
+              <span className="text-[10px] font-bold text-purple-300 uppercase tracking-wider font-mono">Paid / Due</span>
+              <div className="mt-1">
+                <strong className="text-sm font-black text-emerald-400 font-mono block truncate">{formatCurrency(staffKpis.totalPaidAmount)}</strong>
+                <span className="text-[10px] font-mono text-rose-400 block truncate">Due: {formatCurrency(staffKpis.totalDueAmount)}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Sub-Tab 1: Requests Queue */}
+          {staffSubTab === 'requests' && (
+            <div className="space-y-4">
+              {/* Filter Pills & Search */}
+              <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 flex flex-col md:flex-row items-start md:items-center justify-between gap-3">
+                <div className="flex flex-wrap items-center gap-1.5 bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs">
+                  <button
+                    type="button"
+                    onClick={() => setStaffStatusFilter('all')}
+                    className={`px-3 py-1 rounded-lg font-bold transition-all ${
+                      staffStatusFilter === 'all' ? 'bg-teal-600 text-white shadow' : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    All ({staffRequests.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setStaffStatusFilter('pending')}
+                    className={`px-3 py-1 rounded-lg font-bold transition-all ${
+                      staffStatusFilter === 'pending' ? 'bg-amber-600 text-white shadow' : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    Pending Review ({staffKpis.pendingRequests})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setStaffStatusFilter('approved')}
+                    className={`px-3 py-1 rounded-lg font-bold transition-all ${
+                      staffStatusFilter === 'approved' ? 'bg-teal-600 text-white shadow' : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    Approved ({staffKpis.approvedRequests})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setStaffStatusFilter('issued')}
+                    className={`px-3 py-1 rounded-lg font-bold transition-all ${
+                      staffStatusFilter === 'issued' ? 'bg-emerald-600 text-white shadow' : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    Issued ({staffKpis.issuedRequests})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setStaffStatusFilter('returned')}
+                    className={`px-3 py-1 rounded-lg font-bold transition-all ${
+                      staffStatusFilter === 'returned' ? 'bg-orange-600 text-white shadow' : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    Correction ({staffKpis.returnedRequests})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setStaffStatusFilter('rejected')}
+                    className={`px-3 py-1 rounded-lg font-bold transition-all ${
+                      staffStatusFilter === 'rejected' ? 'bg-rose-600 text-white shadow' : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    Rejected ({staffKpis.rejectedRequests})
+                  </button>
+                </div>
+
+                <div className="relative w-full md:w-72">
+                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
+                  <input
+                    type="text"
+                    placeholder="Search Request No, Patient, Staff, Bill..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-full pl-8 pr-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-teal-500 font-mono"
+                  />
+                </div>
+              </div>
+
+              {/* Staff Requests List */}
+              {filteredStaffRequests.length === 0 ? (
+                <div className="p-12 text-center rounded-3xl bg-slate-900 border border-slate-800 space-y-3">
+                  <CreditCard className="w-12 h-12 text-slate-600 mx-auto" />
+                  <h4 className="text-base font-bold text-white">No card requests found</h4>
+                  <p className="text-xs text-slate-400 max-w-sm mx-auto">
+                    {staffStatusFilter !== 'all'
+                      ? `There are no requests matching the "${staffStatusFilter}" status filter.`
+                      : 'No health card requests have been submitted yet. Click "+ Submit Health Card Request" to create one.'}
+                  </p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {filteredStaffRequests.map((req) => {
+                    const familyCount = req.familyMembers ? req.familyMembers.length : 0;
+                    const extraCount = req.extraFamilyMembersCount || 0;
+                    const isPending = req.status === 'submitted' || req.status === 'pending_review' || req.status === 'under_review' || req.status === 'pending_approval';
+                    const isApproved = req.status === 'approved' || req.status === 'processing' || req.status === 'card_processing';
+                    const isIssued = req.status === 'issued' || req.status === 'card_issued' || req.status === 'ready';
+                    const isReturned = req.status === 'returned_for_correction' || req.status === 'info_required';
+                    const isRejected = req.status === 'rejected';
+
+                    return (
+                      <div
+                        key={req.id}
+                        className={`p-5 rounded-3xl bg-slate-900 border-2 transition-all flex flex-col justify-between space-y-4 shadow-xl ${
+                          isPending
+                            ? 'border-amber-500/50 bg-gradient-to-b from-slate-900 to-amber-950/20'
+                            : isReturned
+                            ? 'border-orange-500/50 bg-gradient-to-b from-slate-900 to-orange-950/20'
+                            : isApproved
+                            ? 'border-teal-500/40 bg-gradient-to-b from-slate-900 to-teal-950/20'
+                            : isIssued
+                            ? 'border-emerald-500/40 bg-gradient-to-b from-slate-900 to-emerald-950/20'
+                            : 'border-slate-800'
+                        }`}
+                      >
+                        <div className="space-y-3">
+                          {/* Header: Tracking ID & Live Status */}
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="px-2.5 py-1 rounded-xl text-xs font-mono font-black bg-slate-950 text-teal-400 border border-slate-700">
+                              {req.applicationNo || req.trackingId}
+                            </span>
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase font-mono border ${
+                              isIssued
+                                ? 'bg-emerald-950 text-emerald-300 border-emerald-500'
+                                : isApproved
+                                ? 'bg-teal-950 text-teal-300 border-teal-500'
+                                : isReturned
+                                ? 'bg-orange-950 text-orange-300 border-orange-500 animate-pulse'
+                                : isRejected
+                                ? 'bg-rose-950 text-rose-300 border-rose-500'
+                                : 'bg-amber-950 text-amber-300 border-amber-500'
+                            }`}>
+                              {req.status.replace(/_/g, ' ')}
+                            </span>
+                          </div>
+
+                          {/* Patient Profile Card */}
+                          <div className="flex items-center gap-3">
+                            <img
+                              src={req.photoUrl || '/logo.jpg'}
+                              alt=""
+                              className="w-12 h-12 rounded-xl object-cover border border-slate-700 shadow-md"
+                            />
+                            <div className="overflow-hidden">
+                              <strong className="text-sm font-black text-white block truncate">
+                                {req.fullName}
+                              </strong>
+                              <span className="text-xs text-slate-400 font-mono">{req.mobile}</span>
+                              <div className="text-[10.5px] text-teal-400 font-mono mt-0.5 flex items-center gap-2">
+                                <span>Plan: <strong>{req.membershipName}</strong></span>
+                                <span>• Blood: <strong className="text-white">{req.bloodGroup || 'Not Tested'}</strong></span>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Family Members Badge */}
+                          <div className="px-2.5 py-1.5 rounded-xl bg-slate-950/80 border border-slate-800 text-[11px] font-mono flex items-center justify-between text-slate-300">
+                            <span>Family Shield:</span>
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-bold text-amber-300">
+                                {Math.min(familyCount, 5)} / 5 Included
+                              </span>
+                              {extraCount > 0 && (
+                                <span className="px-1.5 py-0.2 rounded bg-purple-950 text-purple-300 border border-purple-500/40 text-[9.5px] font-bold">
+                                  +{extraCount} Extra
+                                </span>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Submitter Staff Attribution */}
+                          <div className="px-2.5 py-1.5 rounded-xl bg-slate-950/80 border border-slate-800 text-[10.5px] font-mono text-slate-400 flex items-center justify-between">
+                            <span>Staff: <strong className="text-slate-200">{req.submittedByStaffName || 'Authorized Staff'}</strong></span>
+                            <span className="text-slate-500 text-[10px]">{formatDate(req.createdAt)}</span>
+                          </div>
+
+                          {/* Financials Strip */}
+                          <div className="p-3 rounded-2xl bg-slate-950 border border-slate-800 text-xs font-mono space-y-1">
+                            <div className="flex justify-between text-slate-400">
+                              <span>Bill / Transaction:</span>
+                              <strong className="text-emerald-400">{formatCurrency(req.totalPaidAmount)}</strong>
+                            </div>
+                            <div className="flex justify-between text-slate-400 text-[10px]">
+                              <span>Bill No:</span>
+                              <span className="text-teal-300 font-bold">{req.billNumber || 'Auto-Generated'}</span>
+                            </div>
+                            <div className="flex justify-between text-slate-400 text-[10px]">
+                              <span>Payment:</span>
+                              <span className="text-amber-300">{req.paymentMethod}</span>
+                            </div>
+                          </div>
+
+                          {/* Remarks / Returned Correction Note */}
+                          {req.infoRequiredNote && (
+                            <div className="p-2.5 rounded-xl bg-orange-950/40 border border-orange-500/40 text-[10.5px] text-orange-200 space-y-1 font-mono">
+                              <span className="font-bold uppercase block text-orange-300">Correction Required:</span>
+                              <p className="italic">{req.infoRequiredNote}</p>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Action Buttons */}
+                        <div className="pt-3 border-t border-slate-800 flex flex-wrap items-center gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="flex-1 border-teal-500/40 text-teal-300 hover:bg-teal-950/50 text-xs font-bold"
+                            leftIcon={<Receipt className="w-3.5 h-3.5" />}
+                            onClick={() => setSelectedAppForBillSlip(req)}
+                          >
+                            Bill & Slip
+                          </Button>
+
+                          {(isSuperAdmin || can('card_request_approve')) && (
+                            <Button
+                              size="sm"
+                              variant="primary"
+                              className="flex-1 bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-black text-xs shadow-md"
+                              onClick={() => setSelectedApplicationForReview(req)}
+                            >
+                              Review & Mint
+                            </Button>
+                          )}
+
+                          {!isSuperAdmin && !can('card_request_approve') && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="flex-1 border-slate-700 text-slate-300 hover:bg-slate-800 text-xs"
+                              onClick={() => setSelectedApplicationForReview(req)}
+                            >
+                              View Details
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Sub-Tab 2: Financial Transactions & Billing Ledger */}
+          {staffSubTab === 'transactions' && (
+            <div className="space-y-4">
+              <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                <div>
+                  <h4 className="text-sm font-black text-white uppercase tracking-wider flex items-center gap-2">
+                    <Receipt className="w-4 h-4 text-emerald-400" />
+                    Card Request Financial Audit Ledger ({staffTransactions.length})
+                  </h4>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Itemized billing receipts, family plan enrollment fees, extra dependent surcharges, and payment references.
+                  </p>
+                </div>
+                <div className="relative w-full sm:w-72">
+                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
+                  <input
+                    type="text"
+                    placeholder="Search Tx No, Bill No, Patient..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-full pl-8 pr-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-teal-500 font-mono"
+                  />
+                </div>
+              </div>
+
+              {filteredStaffTransactions.length === 0 ? (
+                <div className="p-12 text-center rounded-3xl bg-slate-900 border border-slate-800 space-y-3">
+                  <Receipt className="w-12 h-12 text-slate-600 mx-auto" />
+                  <h4 className="text-base font-bold text-white">No transactions recorded</h4>
+                  <p className="text-xs text-slate-400 max-w-sm mx-auto">
+                    Transactions are created automatically when staff submit a new health card request with billing.
+                  </p>
+                </div>
+              ) : (
+                <div className="rounded-2xl bg-slate-900 border border-slate-800 overflow-hidden shadow-xl">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs text-left">
+                      <thead className="bg-slate-950 text-slate-400 text-[10.5px] uppercase font-mono border-b border-slate-800">
+                        <tr>
+                          <th className="py-3 px-4">Transaction / Bill</th>
+                          <th className="py-3 px-4">Request No</th>
+                          <th className="py-3 px-4">Patient Details</th>
+                          <th className="py-3 px-4">Staff Submitter</th>
+                          <th className="py-3 px-4 text-right">Plan Fee</th>
+                          <th className="py-3 px-4 text-right">Extra Members</th>
+                          <th className="py-3 px-4 text-right">Total Bill</th>
+                          <th className="py-3 px-4 text-right">Paid</th>
+                          <th className="py-3 px-4">Channel & Ref</th>
+                          <th className="py-3 px-4 text-center">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-850 font-mono">
+                        {filteredStaffTransactions.map((tx) => (
+                          <tr key={tx.id} className="hover:bg-slate-800/50 transition-colors">
+                            <td className="py-3 px-4">
+                              <strong className="text-white block">{tx.transactionNumber}</strong>
+                              <span className="text-[10px] text-teal-400">{tx.billNumber}</span>
+                            </td>
+                            <td className="py-3 px-4 text-slate-300">
+                              {tx.requestNumber || 'N/A'}
+                            </td>
+                            <td className="py-3 px-4 font-sans">
+                              <strong className="text-white block font-bold">{tx.patientName}</strong>
+                              <span className="text-[10.5px] text-slate-400 font-mono">{tx.patientMobile}</span>
+                            </td>
+                            <td className="py-3 px-4 font-sans">
+                              <span className="text-slate-200 block font-medium">{tx.staffName}</span>
+                              <span className="text-[10px] text-slate-500 capitalize">{tx.staffRole}</span>
+                            </td>
+                            <td className="py-3 px-4 text-right text-slate-300">
+                              {formatCurrency(tx.planFee || tx.baseAmount || 0)}
+                            </td>
+                            <td className="py-3 px-4 text-right">
+                              {(tx.extraMembersCount || 0) > 0 ? (
+                                <span className="text-purple-300 font-bold">
+                                  +{tx.extraMembersCount} ({formatCurrency(tx.extraMembersFee || tx.additionalMemberAmount || 0)})
+                                </span>
+                              ) : (
+                                <span className="text-slate-500">None (0)</span>
+                              )}
+                            </td>
+                            <td className="py-3 px-4 text-right">
+                              <strong className="text-blue-300 font-bold">{formatCurrency(tx.amount)}</strong>
+                            </td>
+                            <td className="py-3 px-4 text-right">
+                              <strong className="text-emerald-400 font-bold">{formatCurrency(tx.paidAmount)}</strong>
+                              {tx.dueAmount > 0 && (
+                                <span className="text-[9.5px] text-rose-400 block">Due: {formatCurrency(tx.dueAmount)}</span>
+                              )}
+                            </td>
+                            <td className="py-3 px-4 font-sans">
+                              <span className="text-slate-200 block capitalize">{tx.paymentMethod}</span>
+                              {tx.paymentReference && (
+                                <span className="text-[10px] text-slate-400 font-mono truncate max-w-[120px] block" title={tx.paymentReference}>
+                                  Ref: {tx.paymentReference}
+                                </span>
+                              )}
+                            </td>
+                            <td className="py-3 px-4 text-center font-sans">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="py-1 px-2.5 text-xs border-teal-500/40 text-teal-300 hover:bg-teal-950/50"
+                                leftIcon={<Printer className="w-3 h-3" />}
+                                onClick={() => {
+                                  const app = applications.find(a => a.id === tx.requestId || a.applicationNo === tx.requestNumber);
+                                  if (app) {
+                                    setSelectedAppForBillSlip(app);
+                                  } else {
+                                    setSelectedAppForBillSlip({
+                                      id: tx.requestId,
+                                      applicationNo: tx.requestNumber,
+                                      fullName: tx.patientName,
+                                      mobile: tx.patientMobile,
+                                      membershipName: tx.planName,
+                                      membershipPrice: tx.planFee,
+                                      totalPaidAmount: tx.paidAmount,
+                                      extraFamilyMembersCount: tx.extraMembersCount,
+                                      extraFamilyMembersFee: tx.extraMembersFee,
+                                      billId: tx.billId,
+                                      billNumber: tx.billNumber,
+                                      paymentMethod: tx.paymentMethod,
+                                      paymentReference: tx.paymentReference,
+                                      status: tx.status as any,
+                                      submittedByStaffName: tx.staffName,
+                                      submittedByStaffRole: tx.staffRole,
+                                      address: { fullAddress: '' },
+                                      emergencyContact: { name: '', relationship: '', mobile: '' },
+                                      medicalInfo: {},
+                                      gender: 'male',
+                                      age: 30,
+                                      bloodGroup: 'Unknown / Not Known',
+                                      companyId: tx.companyId,
+                                      createdAt: tx.createdAt,
+                                      updatedAt: tx.updatedAt
+                                    } as any);
+                                  }
+                                }}
+                              >
+                                Print Slip
+                              </Button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* 7. CARD RENEWAL MODAL */}
       {selectedCardForRenew && (
         <CardRenewalModal
@@ -1523,8 +2159,15 @@ export const CardListPage: React.FC = () => {
         onClose={() => setIsCreateRequestModalOpen(false)}
         onRequestCreated={() => {
           refreshList();
-          setActiveMainView('applications_queue');
+          setActiveMainView('staff_requests_hub');
         }}
+      />
+
+      {/* 15. STAFF CARD REQUEST BILL & SLIP PRINTABLE MODAL */}
+      <StaffCardRequestBillSlipModal
+        isOpen={!!selectedAppForBillSlip}
+        onClose={() => setSelectedAppForBillSlip(null)}
+        application={selectedAppForBillSlip}
       />
     </div>
   );

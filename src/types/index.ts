@@ -62,7 +62,21 @@ export type Permission =
   | 'bill_create'
   | 'bill_view'
   | 'bill_cancel'
-  | 'payment_collect';
+  | 'payment_collect'
+  | 'card_request_edit'
+  | 'card_request_submit'
+  | 'card_request_view_own'
+  | 'card_request_view_all'
+  | 'card_cancel'
+  | 'card_bill_print'
+  | 'card_transactions_view'
+  | 'card_transactions_view_own'
+  | 'card_transactions_view_all'
+  | 'bill_view_own'
+  | 'bill_view_all'
+  | 'bill_print'
+  | 'bill_view_due'
+  | 'transactions_manage';
 
 export interface User {
   id: string;
@@ -902,21 +916,27 @@ export interface CardApplicationRequest {
     | 'cancelled'
     | 'refunded';
   status:
+    | 'draft'
     | 'submitted'
+    | 'pending_review'
     | 'under_review'
     | 'pending_approval'
     | 'pending_verification'
     | 'info_required'
+    | 'returned_for_correction'
     | 'approved'
     | 'processing'
+    | 'card_processing'
     | 'ready'
     | 'issued'
+    | 'card_issued'
     | 'rejected'
     | 'payment_pending'
     | 'payment_failed'
     | 'cancelled';
   rejectionReason?: string;
   infoRequiredNote?: string;
+  adminNotes?: Array<{ id: string; note: string; addedBy: string; addedAt: string }>;
   processingHistory?: CardApplicationHistoryItem[];
   approvedPatientId?: string;
   approvedCardNumber?: string;
@@ -930,10 +950,56 @@ export interface CardApplicationRequest {
   submittedByStaffId?: string;
   submittedByStaffName?: string;
   submittedByStaffRole?: string;
+  submittedByStaffEmail?: string;
   patientId?: string;
+  extraFamilyMembersCount?: number;
+  extraFamilyMembersFee?: number;
+  billId?: string;
+  billNumber?: string;
+  transactionId?: string;
   urgency?: 'normal' | 'urgent' | 'emergency';
   justificationNotes?: string;
   dispatchPreference?: 'collect_at_clinic' | 'courier' | 'digital_only';
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface StaffCardTransaction {
+  id: string; // txn_xxxx or TXN-REQ-XXXX
+  transactionId: string;
+  transactionNumber?: string;
+  requestId: string;
+  requestNumber?: string;
+  applicationNo: string;
+  staffUserId: string;
+  staffEmail: string;
+  staffName: string;
+  staffRole: string;
+  patientId: string;
+  patientName: string;
+  patientMobile?: string;
+  cardId?: string;
+  cardNumber?: string;
+  membershipId: string;
+  membershipName: string;
+  planName?: string;
+  planFee?: number;
+  extraMembersCount?: number;
+  extraMembersFee?: number;
+  amount: number;
+  baseAmount: number;
+  additionalMemberAmount: number;
+  discountAmount: number;
+  paidAmount: number;
+  dueAmount: number;
+  paymentStatus: 'paid' | 'pending' | 'partially_paid' | 'waived' | 'failed';
+  status?: string;
+  paymentMethod: string;
+  paymentReference?: string;
+  billNumber: string;
+  billId: string;
+  companyId?: string;
+  notes?: string;
   createdAt: string;
   updatedAt: string;
 }

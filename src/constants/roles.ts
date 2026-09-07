@@ -24,13 +24,14 @@ export const ROLE_CONFIGS: Record<Role, RoleConfig> = {
     permissions: [
       'patient_create', 'patient_read', 'patient_update', 'patient_delete', 'patient_print', 'patient_export',
       'card_create', 'card_read', 'card_update', 'card_print', 'card_export', 'card_status_change', 'card_renew', 'card_replace', 'card_delete', 'card_issue',
-      'card_request_create', 'card_request_view', 'card_request_approve', 'card_request_reject',
+      'card_request_create', 'card_request_edit', 'card_request_submit', 'card_request_view', 'card_request_view_own', 'card_request_view_all', 'card_request_approve', 'card_request_reject', 'card_cancel', 'card_bill_print',
       'wallet_read', 'wallet_credit', 'wallet_debit', 'wallet_adjust',
       'membership_manage', 'family_manage', 'backup_manage', 'settings_manage', 'audit_view',
       'reports_view', 'catalog_manage', 'package_manage',
       'ngo_manage', 'ngo_view', 'camp_manage', 'grant_manage', 'users_manage',
       'doctor_view', 'doctor_manage', 'test_view',
-      'bill_create', 'bill_view', 'bill_cancel', 'payment_collect'
+      'bill_create', 'bill_view', 'bill_view_own', 'bill_view_all', 'bill_cancel', 'bill_print', 'bill_view_due', 'payment_collect',
+      'card_transactions_view', 'card_transactions_view_own', 'card_transactions_view_all', 'transactions_manage'
     ]
   },
   doctor: {
@@ -39,7 +40,7 @@ export const ROLE_CONFIGS: Record<Role, RoleConfig> = {
     badgeColor: 'bg-teal-100 text-teal-800 border-teal-300 dark:bg-teal-950/50 dark:text-teal-300 dark:border-teal-800',
     description: 'Exclusive clinical authority to diagnose, prescribe medications, modify dosages, order investigations, and sign official medical prescriptions.',
     permissions: [
-      'patient_read', 'patient_update', 'card_read', 'card_request_create', 'card_request_view', 'wallet_read',
+      'patient_read', 'patient_update', 'card_read', 'card_request_create', 'card_request_submit', 'card_request_view', 'card_request_view_own', 'card_bill_print', 'wallet_read',
       'emr_read', 'emr_create', 'emr_edit', 'emr_prescribe', 'doctor_view'
     ]
   },
@@ -51,10 +52,11 @@ export const ROLE_CONFIGS: Record<Role, RoleConfig> = {
     permissions: [
       'patient_create', 'patient_read', 'patient_update', 'patient_print', 'patient_export',
       'card_create', 'card_read', 'card_update', 'card_print', 'card_export', 'card_status_change', 'card_renew', 'card_replace', 'card_issue',
-      'card_request_create', 'card_request_view', 'card_request_approve', 'card_request_reject',
+      'card_request_create', 'card_request_edit', 'card_request_submit', 'card_request_view', 'card_request_view_own', 'card_request_view_all', 'card_request_approve', 'card_request_reject', 'card_bill_print',
       'wallet_read', 'wallet_credit', 'wallet_debit',
       'membership_manage', 'family_manage', 'audit_view', 'reports_view', 'catalog_manage', 'package_manage',
-      'doctor_view', 'test_view', 'bill_create', 'bill_view', 'payment_collect'
+      'doctor_view', 'test_view', 'bill_create', 'bill_view', 'bill_view_own', 'bill_view_all', 'bill_print', 'bill_view_due', 'payment_collect',
+      'card_transactions_view', 'card_transactions_view_own', 'card_transactions_view_all'
     ]
   },
   reception: {
@@ -65,10 +67,11 @@ export const ROLE_CONFIGS: Record<Role, RoleConfig> = {
     permissions: [
       'patient_create', 'patient_read', 'patient_update', 'patient_print',
       'card_create', 'card_read', 'card_print', 'card_export',
-      'card_request_create', 'card_request_view',
+      'card_request_create', 'card_request_submit', 'card_request_view', 'card_request_view_own', 'card_bill_print',
       'wallet_read', 'wallet_credit',
       'family_manage',
-      'bill_create', 'bill_view', 'payment_collect'
+      'bill_create', 'bill_view', 'bill_view_own', 'bill_print', 'payment_collect',
+      'card_transactions_view_own'
     ]
   },
   cashier: {
@@ -77,9 +80,10 @@ export const ROLE_CONFIGS: Record<Role, RoleConfig> = {
     badgeColor: 'bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-950/50 dark:text-amber-300 dark:border-amber-800',
     description: 'Manages OPD billing, cash desk POS deductions, wallet top-ups, cash desk vouchers, and daily revenue reconciliation.',
     permissions: [
-      'patient_read', 'patient_print', 'card_read', 'card_request_view',
+      'patient_read', 'patient_print', 'card_read', 'card_request_view', 'card_request_view_own',
       'wallet_read', 'wallet_credit', 'wallet_debit', 'voucher_redeem', 'reports_view',
-      'bill_create', 'bill_view', 'bill_cancel', 'payment_collect'
+      'bill_create', 'bill_view', 'bill_view_own', 'bill_cancel', 'bill_print', 'bill_view_due', 'payment_collect',
+      'card_transactions_view_own'
     ]
   },
   lab_staff: {
@@ -106,7 +110,7 @@ export const ROLE_CONFIGS: Record<Role, RoleConfig> = {
     badgeColor: 'bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-950/50 dark:text-amber-300 dark:border-amber-800',
     description: 'Promotes health packages, tracks campaign registrations, and views card metrics.',
     permissions: [
-      'patient_read', 'card_read', 'card_request_view', 'reports_view'
+      'patient_read', 'card_read', 'card_request_view', 'card_request_view_own', 'reports_view'
     ]
   },
   card_operator: {
@@ -115,7 +119,8 @@ export const ROLE_CONFIGS: Record<Role, RoleConfig> = {
     badgeColor: 'bg-cyan-100 text-cyan-800 border-cyan-300 dark:bg-cyan-950/50 dark:text-cyan-300 dark:border-cyan-800',
     description: 'Specialist in high-resolution PVC CR80 card generation, batch printing, and exports.',
     permissions: [
-      'patient_read', 'card_create', 'card_read', 'card_print', 'card_export', 'card_renew', 'card_replace', 'card_issue', 'card_request_view'
+      'patient_read', 'card_create', 'card_read', 'card_print', 'card_export', 'card_renew', 'card_replace', 'card_issue',
+      'card_request_view', 'card_request_view_own', 'card_bill_print'
     ]
   },
   read_only: {
@@ -124,7 +129,8 @@ export const ROLE_CONFIGS: Record<Role, RoleConfig> = {
     badgeColor: 'bg-slate-100 text-slate-800 border-slate-300 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700',
     description: 'View-only access for compliance, inspection, and verification without edit privileges.',
     permissions: [
-      'patient_read', 'card_read', 'card_request_view', 'wallet_read', 'audit_view', 'reports_view'
+      'patient_read', 'card_read', 'card_request_view', 'card_request_view_own', 'wallet_read', 'audit_view', 'reports_view',
+      'bill_view_own', 'card_transactions_view_own'
     ]
   }
 };
@@ -371,7 +377,19 @@ export function hasPermission(userRole: Role, permission: Permission): boolean {
   const config = ROLE_CONFIGS[userRole];
   if (!config) return false;
   if (config.permissions.includes('all')) return true;
-  return config.permissions.includes(permission);
+  if (config.permissions.includes(permission)) return true;
+
+  // Granular compatibility aliases
+  if (permission === 'card_request_view' && (config.permissions.includes('card_request_view_own') || config.permissions.includes('card_request_view_all'))) return true;
+  if (permission === 'card_request_view_own' && (config.permissions.includes('card_request_view') || config.permissions.includes('card_request_view_all') || config.permissions.includes('card_request_create'))) return true;
+  if (permission === 'card_request_submit' && config.permissions.includes('card_request_create')) return true;
+  if (permission === 'card_bill_print' && (config.permissions.includes('bill_print') || config.permissions.includes('bill_view') || config.permissions.includes('card_request_create'))) return true;
+  if (permission === 'bill_print' && (config.permissions.includes('card_bill_print') || config.permissions.includes('bill_view'))) return true;
+  if (permission === 'bill_view' && (config.permissions.includes('bill_view_own') || config.permissions.includes('bill_view_all'))) return true;
+  if (permission === 'bill_view_own' && (config.permissions.includes('bill_view') || config.permissions.includes('bill_view_all') || config.permissions.includes('bill_create'))) return true;
+  if (permission === 'card_transactions_view_own' && (config.permissions.includes('card_transactions_view') || config.permissions.includes('card_transactions_view_all') || config.permissions.includes('card_request_create'))) return true;
+
+  return false;
 }
 
 export function checkUserPermission(user: { role: Role; customPermissions?: Permission[]; allowedModules?: string[] } | null | undefined, permission: Permission): boolean {
