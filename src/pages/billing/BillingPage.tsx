@@ -62,14 +62,26 @@ export const BillingPage: React.FC = () => {
   const [notes, setNotes] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Real-time Firestore sync
+  // Real-time Firestore sync & cross-tab events
   useEffect(() => {
     const unsub = ApiSyncService.subscribeToCollection<PatientBill>('bills', (items) => {
       if (items) {
         setBills(StorageService.getBills());
       }
     });
-    return () => unsub();
+
+    const handleSync = (e: CustomEvent) => {
+      if (!e.detail?.key || e.detail.key === 'labmedix_bills_v1' || e.detail.key === 'labmedix_patients_v1') {
+        setBills(StorageService.getBills());
+        setPatients(StorageService.getPatients());
+      }
+    };
+    window.addEventListener('labmedix_data_synced', handleSync as EventListener);
+
+    return () => {
+      unsub();
+      window.removeEventListener('labmedix_data_synced', handleSync as EventListener);
+    };
   }, []);
 
   const handleRefresh = async () => {
@@ -122,21 +134,22 @@ export const BillingPage: React.FC = () => {
     return cards.find(c => c.patientId === selectedPatientId && c.status === 'active');
   }, [selectedPatientId, cards]);
 
+  // Search filtered patients for modal picker
   const filteredPatientsForPicker = useMemo(() => {
-    if (!patientSearchTerm.trim()) return patients.slice(0, 5);
-    const q = patientSearchTerm.toLowerCase();
+    if (!patientSearchTerm.trim()) return patients.slice(0, 15);
+    const q = patientSearchTerm.toLowerCase().trim();
     return patients.filter(p =>
       p.fullName.toLowerCase().includes(q) ||
-      p.mobileNumber.includes(q) ||
-      (p.uhid && p.uhid.toLowerCase().includes(q))
-    ).slice(0, 8);
-  }, [patientSearchTerm, patients]);
+      (p.mobile || '').includes(q) ||
+      p.id.toLowerCase().includes(q)
+    ).slice(0, 15);
+  }, [patients, patientSearchTerm]);
 
-  // Handle Save New Bill
-  const handleSaveBill = (e: React.FormEvent) => {
+  // Handle Create Invoice
+  const handleCreateInvoice = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedPatient) {
-      showToast('error', 'Patient Required', 'Please select a patient for this bill.');
+    if (!selectedPatientId || !selectedPatient) {
+      showToast('error', 'Patient Required', 'Please select a patient for this invoice.');
       return;
     }
     if (lineItems.some(i => !i.description.trim() || i.unitPrice <= 0)) {
@@ -147,6 +160,7 @@ export const BillingPage: React.FC = () => {
     setIsSubmitting(true);
     try {
       const billNumber = BillService.generateBillNumber();
+      const transactionId = `TXN-BILL-${Date.now().toString(36).toUpperCase()}`;
       const now = new Date().toISOString();
       const items = lineItems.map(i => ({
         description: i.description,
@@ -161,7 +175,7 @@ export const BillingPage: React.FC = () => {
         date: now,
         patientId: selectedPatient.id,
         patientName: selectedPatient.fullName,
-        patientMobile: selectedPatient.mobileNumber,
+        patientMobile: selectedPatient.mobile,
         patientAddress: selectedPatient.address?.fullAddress || 'In-Clinic Walkin',
         healthCardId: patientCard?.id,
         healthCardNumber: patientCard?.cardNumber,
@@ -176,6 +190,7 @@ export const BillingPage: React.FC = () => {
         paidAmount: modalNetPayable,
         paymentStatus: 'paid',
         paymentMethod,
+        transactionId,
         billCategory,
         items,
         notes: notes.trim() || `${billCategory.replace('_', ' ').toUpperCase()} Hospital Invoice`,
@@ -188,6 +203,8 @@ export const BillingPage: React.FC = () => {
       };
 
       StorageService.saveBill(newBill);
+      BillService.recordBillTransaction(newBill, currentUser);
+
       setBills(StorageService.getBills());
       setIsNewBillModalOpen(false);
       setPrintBill(newBill);
@@ -488,9 +505,9 @@ export const BillingPage: React.FC = () => {
           isOpen={isNewBillModalOpen}
           onClose={() => setIsNewBillModalOpen(false)}
           title="Create Hospital Invoice & Receipt"
-          maxWidth="max-w-2xl"
+          maxWidth="2xl"
         >
-          <form onSubmit={handleSaveBill} className="space-y-4 text-xs">
+          <form onSubmit={handleCreateInvoice} className="space-y-4 text-xs">
             {/* Patient Picker */}
             <div className="space-y-1.5">
               <label className="block text-slate-300 font-bold">Select Patient *</label>
@@ -519,7 +536,7 @@ export const BillingPage: React.FC = () => {
                   >
                     <div>
                       <span className="font-bold text-white">{p.fullName}</span>
-                      <span className="text-[10px] text-slate-400 ml-2">{p.mobileNumber}</span>
+                      <span className="text-[10px] text-slate-400 ml-2">{p.mobile}</span>
                     </div>
                     {cards.some(c => c.patientId === p.id && c.status === 'active') && (
                       <span className="px-2 py-0.5 rounded text-[9px] font-black bg-amber-500/20 text-amber-300">
@@ -664,14 +681,14 @@ export const BillingPage: React.FC = () => {
           isOpen={!!printBill}
           onClose={() => setPrintBill(null)}
           title="Hospital Tax Invoice Slip"
-          maxWidth="max-w-xl"
+          maxWidth="xl"
         >
           <div className="p-6 bg-white text-slate-900 rounded-2xl space-y-4 shadow-inner text-xs font-sans">
             {/* Header */}
             <div className="border-b border-slate-200 pb-4 text-center space-y-1">
               <h2 className="text-xl font-black tracking-tight text-slate-900">{company.name || 'LABMEDIX HEALTHCARE'}</h2>
               <p className="text-slate-500">{company.address || 'Central Healthcare Facility & Diagnostic Center'}</p>
-              <p className="text-[11px] text-slate-400">GSTIN: 19AAACL1234F1Z5 • Helpline: {company.supportPhone || '+91 98300 00000'}</p>
+              <p className="text-[11px] text-slate-400">GSTIN: {company.gstin || '19AAACL1234F1Z5'} • Helpline: {company.helpline || company.phone || '+91 98300 00000'}</p>
             </div>
 
             {/* Bill Details */}

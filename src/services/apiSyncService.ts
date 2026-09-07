@@ -984,6 +984,11 @@ export class ApiSyncService {
     }
   }
 
+  /** Re-engage real-time subscriptions and pull freshest Firestore state into cache */
+  public static async pullAll(): Promise<void> {
+    this.subscribeToAll();
+  }
+
   public static async syncPatients(patients: Patient[]): Promise<void> {
     await this.syncKeyToFirestore('labmedix_patients_v1', patients);
   }

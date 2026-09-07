@@ -53,14 +53,25 @@ export const PharmacyPage: React.FC = () => {
   const [activePatientForOrder, setActivePatientForOrder] = useState<Patient | null>(null);
   const [patientSearchTerm, setPatientSearchTerm] = useState('');
 
-  // Real-time Firestore sync
+  // Real-time Firestore sync & cross-tab events
   useEffect(() => {
     const unsub = ApiSyncService.subscribeToCollection<MedicineOrder>('pharmacyOrders', (items) => {
       if (items) {
         setOrders(PortalService.getPharmacyOrders());
       }
     });
-    return () => unsub();
+
+    const handleSync = (e: CustomEvent) => {
+      if (!e.detail?.key || e.detail.key === 'labmedix_portal_pharmacy_orders_v1') {
+        setOrders(PortalService.getPharmacyOrders());
+      }
+    };
+    window.addEventListener('labmedix_data_synced', handleSync as EventListener);
+
+    return () => {
+      unsub();
+      window.removeEventListener('labmedix_data_synced', handleSync as EventListener);
+    };
   }, []);
 
   const handleRefresh = async () => {
@@ -81,12 +92,13 @@ export const PharmacyPage: React.FC = () => {
   // Status Progression
   const handleAdvanceStatus = (order: MedicineOrder) => {
     let nextStatus: MedicineOrder['status'] = 'packed';
-    if (order.status === 'placed') nextStatus = 'packed';
-    else if (order.status === 'packed') nextStatus = order.deliveryType === 'home_delivery' ? 'out_for_delivery' : 'delivered';
+    if (order.status === 'order_placed') nextStatus = 'packed';
+    else if (order.status === 'packed') nextStatus = order.deliveryMode === 'express_home_delivery' ? 'out_for_delivery' : 'delivered';
     else if (order.status === 'out_for_delivery') nextStatus = 'delivered';
 
     const updated = PortalService.updatePharmacyOrderStatus(order.id, nextStatus);
     if (updated) {
+      ApiSyncService.saveDocument('pharmacyOrders', updated.id, updated).catch(() => {});
       setOrders(PortalService.getPharmacyOrders());
       showToast('success', 'Status Advanced', `Order ${order.orderNo} is now ${nextStatus.replace(/_/g, ' ')}.`);
     }
@@ -96,14 +108,14 @@ export const PharmacyPage: React.FC = () => {
   const filteredOrders = useMemo(() => {
     return orders.filter((ord) => {
       if (statusFilter !== 'all' && ord.status !== statusFilter) return false;
-      if (deliveryFilter !== 'all' && ord.deliveryType !== deliveryFilter) return false;
+      if (deliveryFilter !== 'all' && ord.deliveryMode !== deliveryFilter) return false;
 
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase().trim();
         const matchesNo = (ord.orderNo || '').toLowerCase().includes(q);
         const matchesPatient = (ord.patientName || '').toLowerCase().includes(q);
-        const matchesPhone = (ord.deliveryPhone || '').toLowerCase().includes(q);
-        const matchesMed = (ord.items || []).some(item => item.name.toLowerCase().includes(q) || item.genericComposition?.toLowerCase().includes(q));
+        const matchesPhone = (ord.patientPhone || '').toLowerCase().includes(q);
+        const matchesMed = (ord.items || []).some(item => (item.medicineName || '').toLowerCase().includes(q) || item.genericComposition?.toLowerCase().includes(q));
         if (!matchesNo && !matchesPatient && !matchesPhone && !matchesMed) {
           return false;
         }
@@ -115,13 +127,11 @@ export const PharmacyPage: React.FC = () => {
   // Metrics
   const metrics = useMemo(() => {
     const total = orders.length;
-    const placed = orders.filter(o => o.status === 'placed').length;
+    const placed = orders.filter(o => o.status === 'order_placed').length;
     const packed = orders.filter(o => o.status === 'packed').length;
     const outForDelivery = orders.filter(o => o.status === 'out_for_delivery').length;
     const delivered = orders.filter(o => o.status === 'delivered').length;
-    const revenue = orders
-      .filter(o => o.status !== 'cancelled')
-      .reduce((sum, o) => sum + (Number(o.netAmount || o.grossAmount || 0)), 0);
+    const revenue = orders.reduce((sum, o) => sum + (Number(o.netTotal || o.grossTotal || 0)), 0);
 
     return { total, placed, packed, outForDelivery, delivered, revenue };
   }, [orders]);
@@ -131,9 +141,9 @@ export const PharmacyPage: React.FC = () => {
     if (!patientSearchTerm.trim()) return patients.slice(0, 5);
     const q = patientSearchTerm.toLowerCase();
     return patients.filter(p =>
-      p.fullName.toLowerCase().includes(q) ||
-      p.mobileNumber.includes(q) ||
-      (p.uhid && p.uhid.toLowerCase().includes(q))
+      (p.fullName || '').toLowerCase().includes(q) ||
+      (p.mobile || '').includes(q) ||
+      (p.id && p.id.toLowerCase().includes(q))
     ).slice(0, 8);
   }, [patientSearchTerm, patients]);
 
@@ -257,11 +267,10 @@ export const PharmacyPage: React.FC = () => {
           className="px-3 py-2.5 rounded-xl bg-slate-800 border border-slate-700 text-xs text-white font-medium focus:outline-none focus:border-emerald-500"
         >
           <option value="all">All Statuses</option>
-          <option value="placed">Placed / New</option>
+          <option value="order_placed">Placed / New</option>
           <option value="packed">Packed & Ready</option>
           <option value="out_for_delivery">Out for Delivery</option>
           <option value="delivered">Dispensed / Delivered</option>
-          <option value="cancelled">Cancelled</option>
         </select>
 
         <select
@@ -270,8 +279,8 @@ export const PharmacyPage: React.FC = () => {
           className="px-3 py-2.5 rounded-xl bg-slate-800 border border-slate-700 text-xs text-white font-medium focus:outline-none focus:border-emerald-500"
         >
           <option value="all">All Delivery Types</option>
-          <option value="hospital_pickup">Hospital Pharmacy Pickup</option>
-          <option value="home_delivery">Doorstep Express Delivery</option>
+          <option value="counter_pickup">Hospital Pharmacy Pickup</option>
+          <option value="express_home_delivery">Doorstep Express Delivery</option>
         </select>
       </div>
 
@@ -314,11 +323,10 @@ export const PharmacyPage: React.FC = () => {
               <tbody className="divide-y divide-slate-800">
                 {filteredOrders.map((ord) => {
                   const statusBadges: Record<string, { label: string; color: string }> = {
-                    placed: { label: 'New / Placed', color: 'bg-amber-950 text-amber-300 border-amber-500/30' },
+                    order_placed: { label: 'New / Placed', color: 'bg-amber-950 text-amber-300 border-amber-500/30' },
                     packed: { label: 'Packed & Ready', color: 'bg-teal-950 text-teal-300 border-teal-500/30' },
                     out_for_delivery: { label: 'Out for Delivery', color: 'bg-blue-950 text-blue-300 border-blue-500/30 animate-pulse' },
-                    delivered: { label: 'Dispensed / Delivered', color: 'bg-emerald-950 text-emerald-300 border-emerald-500/30' },
-                    cancelled: { label: 'Cancelled', color: 'bg-rose-950 text-rose-300 border-rose-500/30' }
+                    delivered: { label: 'Dispensed / Delivered', color: 'bg-emerald-950 text-emerald-300 border-emerald-500/30' }
                   };
                   const badge = statusBadges[ord.status] || { label: ord.status, color: 'bg-slate-800 text-slate-300 border-slate-700' };
 
@@ -333,13 +341,13 @@ export const PharmacyPage: React.FC = () => {
                       {/* Patient */}
                       <td className="px-4 py-3 font-medium text-white">
                         <div>{ord.patientName}</div>
-                        <div className="text-[10px] text-slate-400">{ord.deliveryPhone || 'N/A'}</div>
+                        <div className="text-[10px] text-slate-400">{ord.patientPhone || 'N/A'}</div>
                       </td>
 
                       {/* Delivery Mode */}
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-1.5">
-                          {ord.deliveryType === 'home_delivery' ? (
+                          {ord.deliveryMode === 'express_home_delivery' ? (
                             <span className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-blue-950 text-blue-300 border border-blue-500/30">
                               <Truck className="w-3 h-3" /> Doorstep Delivery
                             </span>
@@ -357,23 +365,23 @@ export const PharmacyPage: React.FC = () => {
                           {ord.items.length} item(s)
                         </div>
                         <div className="text-[10px] text-slate-400 max-w-xs truncate">
-                          {ord.items.map(i => `${i.name} (x${i.quantity})`).join(', ')}
+                          {ord.items.map(i => `${i.medicineName} (x${i.quantity})`).join(', ')}
                         </div>
                       </td>
 
                       {/* Amount */}
                       <td className="px-4 py-3 font-black text-white">
-                        {formatCurrency(Number(ord.netAmount || ord.grossAmount || 0))}
+                        {formatCurrency(Number(ord.netTotal || ord.grossTotal || 0))}
                       </td>
 
                       {/* Payment */}
                       <td className="px-4 py-3">
                         <span className={`px-2 py-0.5 rounded text-[9px] font-extrabold uppercase ${
-                          ord.paymentStatus === 'paid'
+                          ord.paymentStatus === 'paid_wallet'
                             ? 'bg-emerald-950 text-emerald-300 border border-emerald-500/30'
                             : 'bg-amber-950 text-amber-300 border border-amber-500/30'
                         }`}>
-                          {ord.paymentStatus || 'pending'} ({ord.paymentMode || 'cash'})
+                          {ord.paymentStatus === 'paid_wallet' ? 'Paid (Wallet)' : 'Pay on Delivery'}
                         </span>
                       </td>
 
@@ -397,12 +405,12 @@ export const PharmacyPage: React.FC = () => {
                           </button>
 
                           {/* Progression Action */}
-                          {ord.status !== 'delivered' && ord.status !== 'cancelled' && (
+                          {ord.status !== 'delivered' && (
                             <button
                               onClick={() => handleAdvanceStatus(ord)}
                               className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[10px] transition"
                             >
-                              {ord.status === 'placed' ? 'Pack Order' : ord.status === 'packed' ? (ord.deliveryType === 'home_delivery' ? 'Dispatch' : 'Dispense') : 'Mark Delivered'}
+                              {ord.status === 'order_placed' ? 'Pack Order' : ord.status === 'packed' ? (ord.deliveryMode === 'express_home_delivery' ? 'Dispatch' : 'Dispense') : 'Mark Delivered'}
                             </button>
                           )}
                         </div>
@@ -422,7 +430,7 @@ export const PharmacyPage: React.FC = () => {
           isOpen={isNewOrderModalOpen}
           onClose={() => setIsNewOrderModalOpen(false)}
           title="Select Patient for Medicine Order"
-          maxWidth="max-w-lg"
+          maxWidth="lg"
         >
           <div className="space-y-4 text-xs">
             <div className="relative">
@@ -431,7 +439,7 @@ export const PharmacyPage: React.FC = () => {
                 type="text"
                 value={patientSearchTerm}
                 onChange={(e) => setPatientSearchTerm(e.target.value)}
-                placeholder="Search patient by name, mobile, or UHID..."
+                placeholder="Search patient by name, mobile, or ID..."
                 className="w-full pl-9 pr-3 py-2.5 rounded-xl bg-slate-800 border border-slate-700 text-white placeholder-slate-400 focus:border-emerald-500"
               />
             </div>
@@ -445,7 +453,7 @@ export const PharmacyPage: React.FC = () => {
                 >
                   <div>
                     <div className="font-bold text-white">{p.fullName}</div>
-                    <div className="text-[10px] text-slate-400">{p.mobileNumber} • Age {p.age || 'N/A'}</div>
+                    <div className="text-[10px] text-slate-400">{p.mobile} • Age {p.age || 'N/A'}</div>
                   </div>
                   <button className="px-3 py-1 rounded-lg bg-emerald-600 text-white font-bold text-xs">
                     Select
@@ -483,7 +491,7 @@ export const PharmacyPage: React.FC = () => {
           isOpen={!!inspectOrder}
           onClose={() => setInspectOrder(null)}
           title={`Prescription Order #${inspectOrder.orderNo}`}
-          maxWidth="max-w-xl"
+          maxWidth="xl"
         >
           <div className="space-y-4 text-xs">
             <div className="p-4 rounded-2xl bg-slate-800/80 border border-slate-700 space-y-2">
@@ -497,7 +505,7 @@ export const PharmacyPage: React.FC = () => {
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-400">Contact Phone:</span>
-                <span className="text-slate-300">{inspectOrder.deliveryPhone}</span>
+                <span className="text-slate-300">{inspectOrder.patientPhone}</span>
               </div>
             </div>
 
@@ -507,7 +515,7 @@ export const PharmacyPage: React.FC = () => {
                 {inspectOrder.items.map((item, idx) => (
                   <div key={idx} className="p-3 flex items-center justify-between">
                     <div>
-                      <div className="font-bold text-white">{item.name}</div>
+                      <div className="font-bold text-white">{item.medicineName}</div>
                       <div className="text-[10px] text-slate-400">{item.dosage} • {item.genericComposition}</div>
                     </div>
                     <div className="text-right">
@@ -521,7 +529,7 @@ export const PharmacyPage: React.FC = () => {
 
             <div className="p-3 rounded-xl bg-emerald-950/40 border border-emerald-500/30 flex justify-between items-center text-sm font-black text-white">
               <span>Total Invoice Amount:</span>
-              <span>{formatCurrency(Number(inspectOrder.netAmount || inspectOrder.grossAmount || 0))}</span>
+              <span>{formatCurrency(Number(inspectOrder.netTotal || inspectOrder.grossTotal || 0))}</span>
             </div>
 
             <div className="flex justify-end gap-2 pt-2">

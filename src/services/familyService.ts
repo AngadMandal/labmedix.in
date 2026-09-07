@@ -164,7 +164,7 @@ export class FamilyService {
       age: data.age || 25,
       gender: data.gender || 'female',
       mobile: data.mobile?.trim() || primaryHead?.mobile || '+91 98000 00000',
-      bloodGroup: data.bloodGroup || 'B+',
+      bloodGroup: data.bloodGroup || 'Unknown / Not Known',
       photoUrl: data.photoUrl || '/logo.jpg',
       address: primaryHead?.address || {
         villageArea: 'Kolkata Central',
@@ -181,7 +181,7 @@ export class FamilyService {
         mobile: primaryHead?.mobile || '+91 98000 00000'
       },
       medicalInfo: {
-        bloodGroup: data.bloodGroup || 'B+',
+        bloodGroup: data.bloodGroup || 'Unknown / Not Known',
         allergies: 'None recorded',
         importantNotes: `Covered under ${family.familyName} Family Shield`
       },

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
-import { PortalService, BloodTestBooking } from '../../services/portalService';
+import { PortalService, BloodTestBooking, LabTestResultParameter } from '../../services/portalService';
 import { CatalogService, LabTestItem, HealthPackageItem } from '../../services/catalogService';
 import { StorageService } from '../../services/storage';
 import { ApiSyncService } from '../../services/apiSyncService';
@@ -69,14 +69,27 @@ export const LaboratoryPage: React.FC = () => {
   const [patientSearchTerm, setPatientSearchTerm] = useState('');
   const [selectedTestIds, setSelectedTestIds] = useState<string[]>([]);
 
-  // Real-time Firestore sync
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Real-time Firestore sync & cross-tab events
   useEffect(() => {
     const unsub = ApiSyncService.subscribeToCollection<BloodTestBooking>('labBookings', (items) => {
       if (items) {
         setLabOrders(PortalService.getLabBookings());
       }
     });
-    return () => unsub();
+
+    const handleSync = (e: CustomEvent) => {
+      if (!e.detail?.key || e.detail.key === 'labmedix_portal_lab_bookings_v1') {
+        setLabOrders(PortalService.getLabBookings());
+      }
+    };
+    window.addEventListener('labmedix_data_synced', handleSync as EventListener);
+
+    return () => {
+      unsub();
+      window.removeEventListener('labmedix_data_synced', handleSync as EventListener);
+    };
   }, []);
 
   const handleRefresh = async () => {
@@ -104,6 +117,7 @@ export const LaboratoryPage: React.FC = () => {
       phlebotomist: currentUser?.fullName || 'Central Lab Phlebotomist'
     });
     if (updated) {
+      ApiSyncService.saveDocument('labBookings', updated.id, updated).catch(() => {});
       setLabOrders(PortalService.getLabBookings());
       showToast('success', 'Specimen Accessioned', `Sample collected with Barcode: ${code}`);
     }
@@ -112,19 +126,21 @@ export const LaboratoryPage: React.FC = () => {
   const handleReceiveInLab = (order: BloodTestBooking) => {
     const updated = PortalService.receiveSampleInLab(order.id, currentUser?.fullName || 'Senior Lab Technologist');
     if (updated) {
+      ApiSyncService.saveDocument('labBookings', updated.id, updated).catch(() => {});
       setLabOrders(PortalService.getLabBookings());
       showToast('success', 'Sample Received in Lab', `Order ${order.bookingNo} is now undergoing clinical analysis.`);
     }
   };
 
   const handleReleaseReport = (order: BloodTestBooking) => {
-    const defaultParams = [
-      { parameterName: 'Hemoglobin (Hb)', resultValue: '14.2', referenceRange: '13.0 - 17.0', unit: 'g/dL', status: 'normal' as const },
-      { parameterName: 'Total Leukocyte Count (TLC)', resultValue: '7,800', referenceRange: '4,000 - 11,000', unit: 'cells/mcL', status: 'normal' as const },
-      { parameterName: 'Platelet Count', resultValue: '2.5', referenceRange: '1.5 - 4.5', unit: 'Lakhs/mcL', status: 'normal' as const }
+    const defaultParams: LabTestResultParameter[] = [
+      { parameterName: 'Hemoglobin (Hb)', observedValue: '14.2', referenceRange: '13.0 - 17.0', unit: 'g/dL', flag: 'normal' },
+      { parameterName: 'Total Leukocyte Count (TLC)', observedValue: '7,800', referenceRange: '4,000 - 11,000', unit: 'cells/mcL', flag: 'normal' },
+      { parameterName: 'Platelet Count', observedValue: '2.5', referenceRange: '1.5 - 4.5', unit: 'Lakhs/mcL', flag: 'normal' }
     ];
     const updated = PortalService.updateTestResults(order.id, defaultParams, 'All haematological parameters within normal biological reference intervals.');
     if (updated) {
+      ApiSyncService.saveDocument('labBookings', updated.id, updated).catch(() => {});
       setLabOrders(PortalService.getLabBookings());
       showToast('success', 'Report Released', `Diagnostic report ready for ${order.patientName}.`);
     }
@@ -195,7 +211,7 @@ export const LaboratoryPage: React.FC = () => {
   // Metrics
   const metrics = useMemo(() => {
     const total = labOrders.length;
-    const pending = labOrders.filter(o => o.status === 'confirmed' || o.status === 'pending_sample').length;
+    const pending = labOrders.filter(o => o.status === 'confirmed' || o.status === 'phlebotomist_assigned').length;
     const collected = labOrders.filter(o => o.status === 'sample_collected').length;
     const processing = labOrders.filter(o => o.status === 'processing').length;
     const ready = labOrders.filter(o => o.status === 'report_ready').length;

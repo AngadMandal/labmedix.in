@@ -239,6 +239,10 @@ export class DoctorMasterService {
     return list;
   }
 
+  public static getAll(): DoctorMasterItem[] {
+    return this.getAllDoctors();
+  }
+
   public static saveDoctors(doctors: DoctorMasterItem[]): void {
     StorageService.saveDoctors(doctors);
   }

@@ -47,14 +47,25 @@ export const TransactionsPage: React.FC = () => {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [selectedTxnForReceipt, setSelectedTxnForReceipt] = useState<StaffCardTransaction | null>(null);
 
-  // Real-time Firestore sync
+  // Real-time Firestore sync & cross-tab events
   useEffect(() => {
     const unsub = ApiSyncService.subscribeToCollection<StaffCardTransaction>('card_transactions', (items) => {
       if (items) {
         setAllTransactions(StorageService.getCardRequestTransactions());
       }
     });
-    return () => unsub();
+
+    const handleSync = (e: CustomEvent) => {
+      if (!e.detail?.key || e.detail.key === 'labmedix_card_request_transactions_v1' || e.detail.key === 'labmedix_bills_v1') {
+        setAllTransactions(StorageService.getCardRequestTransactions());
+      }
+    };
+    window.addEventListener('labmedix_data_synced', handleSync as EventListener);
+
+    return () => {
+      unsub();
+      window.removeEventListener('labmedix_data_synced', handleSync as EventListener);
+    };
   }, []);
 
   const handleRefresh = async () => {
@@ -94,7 +105,8 @@ export const TransactionsPage: React.FC = () => {
       }
 
       // Status Filter
-      if (statusFilter !== 'all' && txn.status !== statusFilter) {
+      const txnStatus = txn.paymentStatus || txn.status || 'paid';
+      if (statusFilter !== 'all' && txnStatus !== statusFilter) {
         return false;
       }
 
@@ -117,7 +129,7 @@ export const TransactionsPage: React.FC = () => {
         const matchesPatient = (txn.patientName || '').toLowerCase().includes(q);
         const matchesStaff = (txn.staffName || '').toLowerCase().includes(q);
         const matchesBill = (txn.billNumber || '').toLowerCase().includes(q);
-        const matchesRef = (txn.referenceNo || '').toLowerCase().includes(q);
+        const matchesRef = (txn.paymentReference || '').toLowerCase().includes(q);
         if (!matchesId && !matchesPatient && !matchesStaff && !matchesBill && !matchesRef) {
           return false;
         }
@@ -163,12 +175,12 @@ export const TransactionsPage: React.FC = () => {
       formatDateTime(t.createdAt),
       t.patientName,
       t.billNumber || 'N/A',
-      t.category || 'Health Card',
+      t.membershipName || t.notes || 'Health Card',
       t.amount,
       t.paidAmount,
       t.dueAmount,
       t.paymentMethod,
-      t.referenceNo || 'N/A',
+      t.paymentReference || 'N/A',
       t.staffName,
       t.status
     ]);
@@ -391,7 +403,7 @@ export const TransactionsPage: React.FC = () => {
 
                       <td className="px-4 py-3 font-medium text-white">
                         <div>{txn.patientName}</div>
-                        <div className="text-[10px] text-slate-400">{txn.category || 'Hospital Service'}</div>
+                        <div className="text-[10px] text-slate-400">{txn.membershipName || txn.notes || 'Hospital Service'}</div>
                       </td>
 
                       <td className="px-4 py-3 font-mono text-cyan-300">
@@ -420,11 +432,16 @@ export const TransactionsPage: React.FC = () => {
                       </td>
 
                       <td className="px-4 py-3">
-                        <span className={`px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase border ${
-                          statusColors[txn.status] || 'bg-slate-800 text-slate-300 border-slate-700'
-                        }`}>
-                          {txn.status}
-                        </span>
+                        {(() => {
+                          const displayStatus = txn.paymentStatus || txn.status || 'paid';
+                          return (
+                            <span className={`px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase border ${
+                              statusColors[displayStatus] || 'bg-slate-800 text-slate-300 border-slate-700'
+                            }`}>
+                              {displayStatus}
+                            </span>
+                          );
+                        })()}
                       </td>
 
                       <td className="px-4 py-3 text-right">
@@ -451,7 +468,7 @@ export const TransactionsPage: React.FC = () => {
           isOpen={!!selectedTxnForReceipt}
           onClose={() => setSelectedTxnForReceipt(null)}
           title="Payment Receipt Slip"
-          maxWidth="max-w-md"
+          maxWidth="md"
         >
           <div className="p-4 space-y-4 text-center bg-white text-slate-900 rounded-2xl shadow-inner font-sans text-xs">
             <div className="border-b border-slate-200 pb-3">

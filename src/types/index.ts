@@ -903,6 +903,8 @@ export interface CardApplicationRequest {
   medicalInfo: MedicalInfo;
   portalPassword?: string;
   clinicalVitals?: ClinicalVitals;
+  governmentIdType?: string;
+  governmentIdNumber?: string;
   referralSource?: string;
   referralDetails?: Record<string, any>;
   doctorRecommendation?: string;

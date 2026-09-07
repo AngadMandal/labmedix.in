@@ -559,4 +559,12 @@ export class CatalogService {
   public static getMedicines(): PharmacyMedicineItem[] {
     return this.getPharmacyMedicines();
   }
+
+  public static getTests(): LabTestItem[] {
+    return this.getLabTests();
+  }
+
+  public static getPackages(): HealthPackageItem[] {
+    return this.getHealthPackages();
+  }
 }

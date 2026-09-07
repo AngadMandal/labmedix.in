@@ -1,6 +1,7 @@
-import { PatientBill, Patient, HealthCard, Membership, User } from '../types';
+import { PatientBill, Patient, HealthCard, Membership, User, StaffCardTransaction } from '../types';
 import { StorageService } from './storage';
 import { AuditService } from './auditService';
+import { ApiSyncService } from './apiSyncService';
 import { generateUuid } from '../utils/idGenerator';
 
 export interface CreateRegistrationBillParams {
@@ -81,7 +82,7 @@ export class BillService {
   }
 
   /**
-   * Generates and stores a complete patient enrollment bill
+   * Generates and stores a complete patient enrollment bill with linked financial ledger transaction
    */
   public static createRegistrationBill(params: CreateRegistrationBillParams): PatientBill {
     const company = StorageService.getCompanyProfile();
@@ -120,6 +121,8 @@ export class BillService {
       paymentStatus = 'waived';
     }
 
+    const transactionId = `TXN-BILL-${Date.now().toString(36).toUpperCase()}`;
+
     const bill: PatientBill = {
       id: billId,
       billNumber,
@@ -142,8 +145,9 @@ export class BillService {
       paidAmount: paid,
       paymentStatus,
       paymentMethod: params.paymentMethod || 'cash',
-      transactionId: `TXN-BILL-${Date.now().toString(36).toUpperCase()}`,
+      transactionId,
       authorizedStaff,
+      billCategory: 'registration',
       notes: params.notes || (params.isCardIssued
         ? `Health Card enrollment bill for ${params.patient.fullName} (${params.membership?.name || 'Standard'})`
         : `Patient registration bill for ${params.patient.fullName} (No Card)`),
@@ -152,6 +156,9 @@ export class BillService {
 
     // Save locally and sync to central Firestore
     StorageService.saveBill(bill);
+
+    // Atomically record matching financial transaction in the central ledger
+    this.recordBillTransaction(bill, staffUser);
 
     // Audit trail
     AuditService.log(
@@ -165,12 +172,73 @@ export class BillService {
         cardIssued: bill.isCardIssued,
         cardNumber: bill.healthCardNumber,
         netPayable: bill.netPayable,
-        paymentStatus: bill.paymentStatus
+        paymentStatus: bill.paymentStatus,
+        transactionId
       },
       'financial'
     );
 
     return bill;
+  }
+
+  /**
+   * Records a corresponding StaffCardTransaction in the hospital financial ledger for any PatientBill
+   */
+  public static recordBillTransaction(bill: PatientBill, staffUser?: User | null): StaffCardTransaction {
+    const user = staffUser || StorageService.getCurrentUser();
+    const txnNumber = bill.transactionId || `TXN-BILL-${Date.now().toString(36).toUpperCase()}`;
+    const txnId = `txn_${txnNumber.replace(/[^a-zA-Z0-9_-]/g, '_').toLowerCase()}`;
+    const now = bill.createdAt || new Date().toISOString();
+
+    const dueAmount = Math.max(0, (bill.netPayable || 0) - (bill.paidAmount || 0));
+
+    // Check if transaction already exists (idempotency guard)
+    const existingTxns = StorageService.getCardRequestTransactions();
+    const existing = existingTxns.find(t => t.id === txnId || t.transactionId === txnNumber || t.billId === bill.id || t.billNumber === bill.billNumber);
+    if (existing) {
+      return existing;
+    }
+
+    const transaction: StaffCardTransaction = {
+      id: txnId,
+      transactionId: txnNumber,
+      requestId: bill.id,
+      applicationNo: bill.billNumber,
+      staffUserId: bill.authorizedStaff?.id || user?.id || 'staff_desk',
+      staffEmail: user?.email || 'billing@labmedix.org',
+      staffName: bill.authorizedStaff?.name || user?.fullName || 'Cashier Desk',
+      staffRole: bill.authorizedStaff?.role || user?.role || 'cashier',
+      patientId: bill.patientId,
+      patientName: bill.patientName,
+      patientMobile: bill.patientMobile,
+      cardId: bill.healthCardId,
+      cardNumber: bill.healthCardNumber,
+      membershipId: 'hospital_invoice',
+      membershipName: bill.membershipName || (bill.billCategory ? bill.billCategory.replace(/_/g, ' ').toUpperCase() : 'Hospital Invoice'),
+      amount: bill.netPayable || 0,
+      baseAmount: bill.baseCardCharge || bill.netPayable || 0,
+      additionalMemberAmount: bill.additionalMemberCharge || 0,
+      discountAmount: bill.discountAmount || 0,
+      paidAmount: bill.paidAmount || 0,
+      dueAmount,
+      paymentStatus: bill.paymentStatus === 'paid' ? 'paid' : bill.paymentStatus === 'waived' ? 'waived' : 'pending',
+      paymentMethod: bill.paymentMethod || 'cash',
+      paymentReference: txnNumber,
+      billNumber: bill.billNumber,
+      billId: bill.id,
+      notes: bill.notes || `Invoice ${bill.billNumber} for ${bill.patientName}`,
+      createdAt: now,
+      updatedAt: now
+    };
+
+    StorageService.saveCardRequestTransaction(transaction);
+    ApiSyncService.saveDocument('card_transactions', transaction.id, transaction).catch(() => {});
+
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('labmedix_data_synced', { detail: { key: 'labmedix_card_request_transactions_v1' } }));
+    }
+
+    return transaction;
   }
 
   public static getAll(): PatientBill[] {

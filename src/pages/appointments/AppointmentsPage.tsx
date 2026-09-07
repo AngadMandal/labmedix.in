@@ -56,6 +56,7 @@ export const AppointmentsPage: React.FC = () => {
   // Modals state
   const [isNewModalOpen, setIsNewModalOpen] = useState(false);
   const [activeTokenAppointment, setActiveTokenAppointment] = useState<PatientAppointment | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // New Appointment Form State
   const [selectedPatientId, setSelectedPatientId] = useState('');
@@ -64,11 +65,11 @@ export const AppointmentsPage: React.FC = () => {
   const [wishDate, setWishDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [wishSlot, setWishSlot] = useState('Morning OPD (09:00 AM - 01:00 PM)');
   const [wishTime, setWishTime] = useState('10:30 AM');
-  const [consultationMode, setConsultationMode] = useState<'physical_opd' | 'telemedicine'>('physical_opd');
+  const [consultationMode, setConsultationMode] = useState<'physical_opd' | 'telemedicine_video'>('physical_opd');
   const [chiefComplaint, setChiefComplaint] = useState('');
   const [consultationFee, setConsultationFee] = useState<number>(500);
 
-  // Real-time Firestore sync
+  // Real-time Firestore sync & cross-tab events
   useEffect(() => {
     const unsubApts = ApiSyncService.subscribeToCollection<PatientAppointment>('appointments', (items) => {
       if (items) {
@@ -76,8 +77,17 @@ export const AppointmentsPage: React.FC = () => {
       }
     });
 
+    const handleSync = (e: CustomEvent) => {
+      if (!e.detail?.key || e.detail.key === 'labmedix_patient_appointments_v1' || e.detail.key === 'labmedix_patients_v1') {
+        setAppointments(EMRService.getAllAppointments());
+        setPatients(StorageService.getPatients());
+      }
+    };
+    window.addEventListener('labmedix_data_synced', handleSync as EventListener);
+
     return () => {
       unsubApts();
+      window.removeEventListener('labmedix_data_synced', handleSync as EventListener);
     };
   }, []);
 
@@ -102,7 +112,7 @@ export const AppointmentsPage: React.FC = () => {
     if (selectedDoctorId) {
       const doc = doctors.find(d => d.id === selectedDoctorId);
       if (doc) {
-        setConsultationFee(consultationMode === 'telemedicine' ? doc.telemedicineFee : doc.standardFee);
+        setConsultationFee(consultationMode === 'telemedicine_video' ? doc.telemedicineFee : doc.standardFee);
       }
     }
   }, [selectedDoctorId, consultationMode, doctors]);
@@ -119,17 +129,17 @@ export const AppointmentsPage: React.FC = () => {
 
   // Search filtered patients for modal picker
   const filteredPatientsForPicker = useMemo(() => {
-    if (!patientSearchTerm.trim()) return patients.slice(0, 5);
-    const q = patientSearchTerm.toLowerCase();
+    if (!patientSearchTerm.trim()) return patients.slice(0, 15);
+    const q = patientSearchTerm.toLowerCase().trim();
     return patients.filter(p => 
       p.fullName.toLowerCase().includes(q) || 
-      p.mobileNumber.includes(q) || 
-      (p.uhid && p.uhid.toLowerCase().includes(q))
-    ).slice(0, 8);
+      (p.mobile || '').includes(q) || 
+      (p.id && p.id.toLowerCase().includes(q))
+    ).slice(0, 15);
   }, [patientSearchTerm, patients]);
 
   // Handle Create Appointment
-  const handleSaveNewAppointment = (e: React.FormEvent) => {
+  const handleSaveNewAppointment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedPatientId || !selectedPatient) {
       showToast('error', 'Patient Required', 'Please select a patient.');
@@ -138,11 +148,12 @@ export const AppointmentsPage: React.FC = () => {
 
     const doc = doctors.find(d => d.id === selectedDoctorId) || doctors[0];
 
+    setIsSubmitting(true);
     try {
       const saved = EMRService.saveAppointment({
         patientId: selectedPatient.id,
         patientName: selectedPatient.fullName,
-        patientPhone: selectedPatient.mobileNumber,
+        patientPhone: selectedPatient.mobile,
         cardNo: patientCard?.cardNumber,
         cardTier: patientCard ? 'Gold Cardholder' : 'Standard Patient',
         doctorId: doc?.id || 'doc_1',
@@ -158,11 +169,16 @@ export const AppointmentsPage: React.FC = () => {
         status: isDoctor || isAdmin ? 'doctor_confirmed' : 'pending_doctor_approval'
       });
 
+      // Direct multi-device Firestore push for instant sync
+      await ApiSyncService.saveDocument('appointments', saved.id, saved).catch(() => {});
+
       setAppointments(EMRService.getAllAppointments());
       setIsNewModalOpen(false);
       showToast('success', 'Appointment Scheduled', `Token #${saved.appointmentNo} created successfully.`);
     } catch (err: any) {
       showToast('error', 'Booking Failed', err.message || 'Could not schedule appointment.');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -170,6 +186,8 @@ export const AppointmentsPage: React.FC = () => {
   const handleUpdateStatus = (aptId: string, newStatus: PatientAppointment['status']) => {
     const updated = EMRService.updateAppointmentStatus(aptId, newStatus);
     if (updated) {
+      // Direct multi-device Firestore push
+      ApiSyncService.saveDocument('appointments', updated.id, updated).catch(() => {});
       setAppointments(EMRService.getAllAppointments());
       showToast('success', 'Status Updated', `Appointment ${updated.appointmentNo} is now ${newStatus.replace('_', ' ')}.`);
     }
@@ -458,7 +476,7 @@ export const AppointmentsPage: React.FC = () => {
                       {/* Mode & Department */}
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-1.5">
-                          {apt.consultationMode === 'telemedicine' ? (
+                          {apt.consultationMode === 'telemedicine_video' ? (
                             <span className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-purple-950 text-purple-300 border border-purple-500/30">
                               <Video className="w-3 h-3" /> Telemed
                             </span>
@@ -548,7 +566,7 @@ export const AppointmentsPage: React.FC = () => {
           isOpen={isNewModalOpen}
           onClose={() => setIsNewModalOpen(false)}
           title="Schedule New OPD Consultation"
-          maxWidth="max-w-2xl"
+          maxWidth="2xl"
         >
           <form onSubmit={handleSaveNewAppointment} className="space-y-4 text-xs">
             {/* Patient Search / Selection */}
@@ -583,7 +601,7 @@ export const AppointmentsPage: React.FC = () => {
                     >
                       <div>
                         <span className="font-bold text-white">{p.fullName}</span>
-                        <span className="text-[10px] text-slate-400 ml-2 font-mono">{p.mobileNumber}</span>
+                        <span className="text-[10px] text-slate-400 ml-2 font-mono">{p.mobile}</span>
                       </div>
                       {hasCard && (
                         <span className="px-2 py-0.5 rounded text-[9px] font-black bg-teal-500/20 text-teal-300 border border-teal-500/30">
@@ -646,7 +664,7 @@ export const AppointmentsPage: React.FC = () => {
                   className="w-full p-2 rounded-xl bg-slate-800 border border-slate-700 text-white"
                 >
                   <option value="physical_opd">Physical In-Clinic OPD</option>
-                  <option value="telemedicine">Telemedicine Video Call</option>
+                  <option value="telemedicine_video">Telemedicine Video Call</option>
                 </select>
               </div>
             </div>
@@ -688,9 +706,10 @@ export const AppointmentsPage: React.FC = () => {
               </button>
               <button
                 type="submit"
-                className="px-5 py-2 rounded-xl bg-teal-600 hover:bg-teal-500 text-white text-xs font-black shadow-lg shadow-teal-600/30"
+                disabled={isSubmitting}
+                className="px-5 py-2 rounded-xl bg-teal-600 hover:bg-teal-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-black shadow-lg shadow-teal-600/30 flex items-center gap-2"
               >
-                Confirm & Issue Token
+                {isSubmitting ? 'Issuing Token...' : 'Confirm & Issue Token'}
               </button>
             </div>
           </form>
@@ -703,7 +722,7 @@ export const AppointmentsPage: React.FC = () => {
           isOpen={!!activeTokenAppointment}
           onClose={() => setActiveTokenAppointment(null)}
           title="Hospital OPD Appointment Token"
-          maxWidth="max-w-md"
+          maxWidth="md"
         >
           <div className="p-4 space-y-4 text-center bg-white text-slate-900 rounded-2xl shadow-inner font-sans">
             <div className="border-b border-slate-200 pb-3">

@@ -35,6 +35,7 @@ import {
   CheckCircle2
 } from 'lucide-react';
 import { triggerCelebrationFireworks } from '../../utils/confetti';
+import { BLOOD_GROUP_OPTIONS } from '../../constants/defaults';
 
 export const FamilyListPage: React.FC = () => {
   const { can, currentUser } = useAuth();
@@ -80,7 +81,7 @@ export const FamilyListPage: React.FC = () => {
   const [depRelation, setDepRelation] = useState('Spouse');
   const [depGender, setDepGender] = useState<'male' | 'female' | 'other'>('female');
   const [depAge, setDepAge] = useState<number>(28);
-  const [depBloodGroup, setDepBloodGroup] = useState('B+');
+  const [depBloodGroup, setDepBloodGroup] = useState('Unknown / Not Known');
   const [depMobile, setDepMobile] = useState('');
   const [depPhotoUrl, setDepPhotoUrl] = useState('https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400&auto=format&fit=crop&q=80');
 
@@ -832,16 +833,7 @@ export const FamilyListPage: React.FC = () => {
                       label="Blood Group"
                       value={depBloodGroup}
                       onChange={(e) => setDepBloodGroup(e.target.value)}
-                      options={[
-                        { value: 'B+', label: 'B+' },
-                        { value: 'O+', label: 'O+' },
-                        { value: 'A+', label: 'A+' },
-                        { value: 'AB+', label: 'AB+' },
-                        { value: 'B-', label: 'B-' },
-                        { value: 'O-', label: 'O-' },
-                        { value: 'A-', label: 'A-' },
-                        { value: 'AB-', label: 'AB-' }
-                      ]}
+                      options={BLOOD_GROUP_OPTIONS.map(b => ({ value: b.value, label: b.label }))}
                     />
 
                     <div className="sm:col-span-2">

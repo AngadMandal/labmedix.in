@@ -56,7 +56,7 @@ export const CardRequestsPage: React.FC = () => {
   const [reviewApp, setReviewApp] = useState<CardApplicationRequest | null>(null);
   const [billSlipApp, setBillSlipApp] = useState<CardApplicationRequest | null>(null);
 
-  // Real-time Firestore sync
+  // Real-time Firestore sync & cross-tab events
   useEffect(() => {
     const unsubApps = ApiSyncService.subscribeToCollection<CardApplicationRequest>('cardApplications', (items) => {
       if (items) {
@@ -65,8 +65,17 @@ export const CardRequestsPage: React.FC = () => {
       }
     });
 
+    const handleSync = (e: CustomEvent) => {
+      if (!e.detail?.key || e.detail.key === 'labmedix_portal_card_applications_v1' || e.detail.key === 'labmedix_card_request_transactions_v1') {
+        setApplications(PortalService.getCardApplications());
+        setStaffTransactions(StaffCardRequestService.getStaffTransactions(currentUser));
+      }
+    };
+    window.addEventListener('labmedix_data_synced', handleSync as EventListener);
+
     return () => {
       unsubApps();
+      window.removeEventListener('labmedix_data_synced', handleSync as EventListener);
     };
   }, [currentUser]);
 
@@ -90,34 +99,34 @@ export const CardRequestsPage: React.FC = () => {
       // Scope Filter (Mine vs All)
       if (scopeFilter === 'mine') {
         const staffIdentifier = currentUser?.id || currentUser?.uid;
-        const isOwner = app.staffId === staffIdentifier || 
-          app.submittedByStaffId === staffIdentifier ||
+        const isOwner = app.submittedByStaffId === staffIdentifier ||
           app.submittedByStaffName?.toLowerCase() === currentUser?.fullName?.toLowerCase();
         if (!isOwner) return false;
       }
 
       // Status Filter
       if (statusFilter !== 'all') {
-        if (statusFilter === 'pending' && app.status !== 'pending') return false;
-        if (statusFilter === 'approved' && app.status !== 'approved') return false;
-        if (statusFilter === 'rejected' && app.status !== 'rejected') return false;
-        if (statusFilter === 'card_issued' && app.status !== 'card_issued') return false;
-        if (statusFilter === 'needs_info' && app.status !== 'needs_info') return false;
+        const s = (app.status || '').toLowerCase();
+        if (statusFilter === 'pending' && !['pending', 'submitted', 'pending_approval', 'pending_review', 'under_review'].includes(s)) return false;
+        if (statusFilter === 'approved' && !['approved', 'ready', 'card_issued'].includes(s)) return false;
+        if (statusFilter === 'rejected' && s !== 'rejected') return false;
+        if (statusFilter === 'card_issued' && !['card_issued', 'issued'].includes(s)) return false;
+        if (statusFilter === 'needs_info' && !['needs_info', 'info_required', 'returned_for_correction'].includes(s)) return false;
       }
 
       // Tier Filter
-      if (tierFilter !== 'all' && (app.membershipTier || '').toLowerCase() !== tierFilter.toLowerCase()) {
+      if (tierFilter !== 'all' && (app.membershipName || app.membershipId || '').toLowerCase() !== tierFilter.toLowerCase()) {
         return false;
       }
 
       // Search Query
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase().trim();
-        const matchesId = (app.requestId || app.applicationNumber || app.id || '').toLowerCase().includes(q);
-        const matchesName = (app.fullName || app.patientName || '').toLowerCase().includes(q);
-        const matchesPhone = (app.mobileNumber || app.phone || '').toLowerCase().includes(q);
+        const matchesId = (app.applicationNo || app.trackingId || app.id || '').toLowerCase().includes(q);
+        const matchesName = (app.fullName || '').toLowerCase().includes(q);
+        const matchesPhone = (app.mobile || '').toLowerCase().includes(q);
         const matchesStaff = (app.submittedByStaffName || '').toLowerCase().includes(q);
-        const matchesCardNo = (app.issuedCardNumber || '').toLowerCase().includes(q);
+        const matchesCardNo = (app.approvedCardNumber || '').toLowerCase().includes(q);
         if (!matchesId && !matchesName && !matchesPhone && !matchesStaff && !matchesCardNo) {
           return false;
         }
@@ -130,16 +139,16 @@ export const CardRequestsPage: React.FC = () => {
   // Summary Metrics
   const metrics = useMemo(() => {
     const list = scopeFilter === 'mine' 
-      ? applications.filter(a => a.staffId === currentUser?.id || a.submittedByStaffId === currentUser?.id || a.submittedByStaffName === currentUser?.fullName)
+      ? applications.filter(a => a.submittedByStaffId === currentUser?.id || a.submittedByStaffName === currentUser?.fullName)
       : applications;
     
     const total = list.length;
-    const pending = list.filter(a => a.status === 'pending' || a.status === 'under_review').length;
+    const pending = list.filter(a => ['pending', 'submitted', 'pending_approval', 'pending_review', 'under_review'].includes(a.status as string)).length;
     const approved = list.filter(a => a.status === 'approved').length;
-    const issued = list.filter(a => a.status === 'card_issued').length;
+    const issued = list.filter(a => a.status === 'card_issued' || a.status === 'issued').length;
     const revenue = list
       .filter(a => a.paymentStatus === 'paid')
-      .reduce((sum, a) => sum + (Number(a.paymentAmount || a.tierPrice || 0)), 0);
+      .reduce((sum, a) => sum + (Number(a.totalPaidAmount || a.membershipPrice || 0)), 0);
 
     return { total, pending, approved, issued, revenue };
   }, [applications, scopeFilter, currentUser]);
@@ -148,12 +157,12 @@ export const CardRequestsPage: React.FC = () => {
   const handleQuickApproveAndIssue = async (app: CardApplicationRequest) => {
     if (!isAdmin && !isManager) return;
     try {
-      const res = await StaffCardRequestService.approveAndIssueCard(app.id, currentUser);
+      const res = await PortalService.approveCardApplication(app.id, currentUser?.fullName || 'Super Administrator');
       if (res.success) {
         showToast('success', 'Health Card Minted & Issued', `Card #${res.card?.cardNumber} has been activated.`);
         setApplications(PortalService.getCardApplications());
       } else {
-        showToast('error', 'Issuance Failed', res.message || 'Could not issue card.');
+        showToast('error', 'Issuance Failed', res.error || 'Could not issue card.');
       }
     } catch (err: any) {
       showToast('error', 'Issuance Error', err.message || 'An unexpected error occurred.');
@@ -373,7 +382,7 @@ export const CardRequestsPage: React.FC = () => {
               </thead>
               <tbody className="divide-y divide-slate-800">
                 {filteredRequests.map((app) => {
-                  const reqId = app.requestId || app.applicationNumber || `LMX-REQ-${app.id.slice(0, 8)}`;
+                  const reqId = app.applicationNo || app.trackingId || `LMX-REQ-${app.id.slice(0, 8)}`;
                   const statusColors: Record<string, string> = {
                     pending: 'bg-amber-950/60 text-amber-300 border-amber-500/40',
                     under_review: 'bg-blue-950/60 text-blue-300 border-blue-500/40',
@@ -397,18 +406,18 @@ export const CardRequestsPage: React.FC = () => {
 
                       {/* Patient Name */}
                       <td className="px-4 py-3 font-medium text-white">
-                        <div>{app.fullName || app.patientName}</div>
+                        <div>{app.fullName}</div>
                         <div className="text-[10px] text-slate-400">
                           {app.gender || 'N/A'} • {app.age ? `${app.age} yrs` : 'Age N/A'}
                         </div>
                       </td>
 
-                      {/* Mobile & Aadhaar */}
+                      {/* Mobile & Gov ID */}
                       <td className="px-4 py-3">
-                        <div className="font-mono text-slate-200">{app.mobileNumber || app.phone || 'N/A'}</div>
-                        {app.aadhaarLastFour && (
+                        <div className="font-mono text-slate-200">{app.mobile || 'N/A'}</div>
+                        {app.governmentIdNumber && (
                           <div className="text-[10px] text-slate-400 font-mono">
-                            UIDAI: •••• {app.aadhaarLastFour}
+                            {app.governmentIdType || 'ID'}: •••• {app.governmentIdNumber.slice(-4)}
                           </div>
                         )}
                       </td>
@@ -416,21 +425,21 @@ export const CardRequestsPage: React.FC = () => {
                       {/* Tier */}
                       <td className="px-4 py-3">
                         <span className="px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider bg-slate-800 text-blue-300 border border-slate-700">
-                          {app.membershipTier || 'Standard'}
+                          {app.membershipName || app.membershipId || 'Standard'}
                         </span>
                       </td>
 
                       {/* Fee & Payment */}
                       <td className="px-4 py-3">
                         <div className="font-black text-white">
-                          {formatCurrency(Number(app.paymentAmount || app.tierPrice || 0))}
+                          {formatCurrency(Number(app.totalPaidAmount || app.membershipPrice || 0))}
                         </div>
                         <span className={`px-2 py-0.5 rounded text-[9px] font-extrabold uppercase ${
                           app.paymentStatus === 'paid'
                             ? 'bg-emerald-950 text-emerald-300 border border-emerald-500/30'
                             : 'bg-amber-950 text-amber-300 border border-amber-500/30'
                         }`}>
-                          {app.paymentStatus || 'pending'} ({app.paymentMode || 'cash'})
+                          {app.paymentStatus || 'pending'} ({app.paymentMethod || 'cash'})
                         </span>
                       </td>
 
@@ -440,7 +449,7 @@ export const CardRequestsPage: React.FC = () => {
                           {app.submittedByStaffName || 'Staff Intake'}
                         </div>
                         <div className="text-[10px] text-slate-400 font-mono">
-                          {app.submittedByRole || 'Front Desk'}
+                          {app.submittedByStaffRole || 'Front Desk'}
                         </div>
                       </td>
 
@@ -451,9 +460,9 @@ export const CardRequestsPage: React.FC = () => {
                         }`}>
                           {app.status?.replace('_', ' ')}
                         </span>
-                        {app.issuedCardNumber && (
+                        {app.approvedCardNumber && (
                           <div className="text-[10px] font-mono text-purple-300 mt-1">
-                            Card: {app.issuedCardNumber}
+                            Card: {app.approvedCardNumber}
                           </div>
                         )}
                       </td>
@@ -505,7 +514,7 @@ export const CardRequestsPage: React.FC = () => {
         <CreateCardRequestModal
           isOpen={isCreateModalOpen}
           onClose={() => setIsCreateModalOpen(false)}
-          onSuccess={() => {
+          onRequestCreated={() => {
             setApplications(PortalService.getCardApplications());
             setStaffTransactions(StaffCardRequestService.getStaffTransactions(currentUser));
             setIsCreateModalOpen(false);
