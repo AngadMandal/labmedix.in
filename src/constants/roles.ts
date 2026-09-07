@@ -22,12 +22,15 @@ export const ROLE_CONFIGS: Record<Role, RoleConfig> = {
     badgeColor: 'bg-blue-100 text-blue-800 border-blue-300 dark:bg-blue-950/50 dark:text-blue-300 dark:border-blue-800',
     description: 'Full operational control over patients, cards, memberships, wallets, reports, EMR scheduling, and staff users.',
     permissions: [
-      'patient_create', 'patient_read', 'patient_update', 'patient_delete',
-      'card_create', 'card_read', 'card_print', 'card_export', 'card_status_change', 'card_renew', 'card_replace',
+      'patient_create', 'patient_read', 'patient_update', 'patient_delete', 'patient_print', 'patient_export',
+      'card_create', 'card_read', 'card_update', 'card_print', 'card_export', 'card_status_change', 'card_renew', 'card_replace', 'card_delete', 'card_issue',
+      'card_request_create', 'card_request_view', 'card_request_approve', 'card_request_reject',
       'wallet_read', 'wallet_credit', 'wallet_debit', 'wallet_adjust',
       'membership_manage', 'family_manage', 'backup_manage', 'settings_manage', 'audit_view',
       'reports_view', 'catalog_manage', 'package_manage',
-      'ngo_manage', 'ngo_view', 'camp_manage', 'grant_manage', 'users_manage'
+      'ngo_manage', 'ngo_view', 'camp_manage', 'grant_manage', 'users_manage',
+      'doctor_view', 'doctor_manage', 'test_view',
+      'bill_create', 'bill_view', 'bill_cancel', 'payment_collect'
     ]
   },
   doctor: {
@@ -36,8 +39,8 @@ export const ROLE_CONFIGS: Record<Role, RoleConfig> = {
     badgeColor: 'bg-teal-100 text-teal-800 border-teal-300 dark:bg-teal-950/50 dark:text-teal-300 dark:border-teal-800',
     description: 'Exclusive clinical authority to diagnose, prescribe medications, modify dosages, order investigations, and sign official medical prescriptions.',
     permissions: [
-      'patient_read', 'card_read', 'wallet_read',
-      'emr_read', 'emr_create', 'emr_edit', 'emr_prescribe'
+      'patient_read', 'patient_update', 'card_read', 'card_request_create', 'card_request_view', 'wallet_read',
+      'emr_read', 'emr_create', 'emr_edit', 'emr_prescribe', 'doctor_view'
     ]
   },
   manager: {
@@ -46,10 +49,12 @@ export const ROLE_CONFIGS: Record<Role, RoleConfig> = {
     badgeColor: 'bg-indigo-100 text-indigo-800 border-indigo-300 dark:bg-indigo-950/50 dark:text-indigo-300 dark:border-indigo-800',
     description: 'Oversees daily patient operations, branch revenue, approvals, and staff audit reports.',
     permissions: [
-      'patient_create', 'patient_read', 'patient_update',
-      'card_create', 'card_read', 'card_print', 'card_export', 'card_status_change', 'card_renew', 'card_replace',
+      'patient_create', 'patient_read', 'patient_update', 'patient_print', 'patient_export',
+      'card_create', 'card_read', 'card_update', 'card_print', 'card_export', 'card_status_change', 'card_renew', 'card_replace', 'card_issue',
+      'card_request_create', 'card_request_view', 'card_request_approve', 'card_request_reject',
       'wallet_read', 'wallet_credit', 'wallet_debit',
-      'membership_manage', 'family_manage', 'audit_view', 'reports_view', 'catalog_manage', 'package_manage'
+      'membership_manage', 'family_manage', 'audit_view', 'reports_view', 'catalog_manage', 'package_manage',
+      'doctor_view', 'test_view', 'bill_create', 'bill_view', 'payment_collect'
     ]
   },
   reception: {
@@ -58,10 +63,12 @@ export const ROLE_CONFIGS: Record<Role, RoleConfig> = {
     badgeColor: 'bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-950/50 dark:text-emerald-300 dark:border-emerald-800',
     description: 'Fast-track walk-in registrations, quick searches, card requests, and wallet deposits.',
     permissions: [
-      'patient_create', 'patient_read', 'patient_update',
+      'patient_create', 'patient_read', 'patient_update', 'patient_print',
       'card_create', 'card_read', 'card_print', 'card_export',
+      'card_request_create', 'card_request_view',
       'wallet_read', 'wallet_credit',
-      'family_manage'
+      'family_manage',
+      'bill_create', 'bill_view', 'payment_collect'
     ]
   },
   cashier: {
@@ -70,7 +77,9 @@ export const ROLE_CONFIGS: Record<Role, RoleConfig> = {
     badgeColor: 'bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-950/50 dark:text-amber-300 dark:border-amber-800',
     description: 'Manages OPD billing, cash desk POS deductions, wallet top-ups, cash desk vouchers, and daily revenue reconciliation.',
     permissions: [
-      'patient_read', 'card_read', 'wallet_read', 'wallet_credit', 'wallet_debit', 'voucher_redeem', 'reports_view'
+      'patient_read', 'patient_print', 'card_read', 'card_request_view',
+      'wallet_read', 'wallet_credit', 'wallet_debit', 'voucher_redeem', 'reports_view',
+      'bill_create', 'bill_view', 'bill_cancel', 'payment_collect'
     ]
   },
   lab_staff: {
@@ -79,7 +88,7 @@ export const ROLE_CONFIGS: Record<Role, RoleConfig> = {
     badgeColor: 'bg-teal-100 text-teal-800 border-teal-300 dark:bg-teal-950/50 dark:text-teal-300 dark:border-teal-800',
     description: 'Verifies patient card membership for laboratory diagnostic testing discounts.',
     permissions: [
-      'patient_read', 'card_read', 'wallet_read', 'wallet_debit', 'catalog_manage'
+      'patient_read', 'card_read', 'wallet_read', 'wallet_debit', 'catalog_manage', 'test_view'
     ]
   },
   phlebotomist: {
@@ -88,7 +97,7 @@ export const ROLE_CONFIGS: Record<Role, RoleConfig> = {
     badgeColor: 'bg-rose-100 text-rose-800 border-rose-300 dark:bg-rose-950/50 dark:text-rose-300 dark:border-rose-800',
     description: 'Specialist in blood and clinical specimen collection, barcode labeling, sample accessioning, and test routing.',
     permissions: [
-      'patient_read', 'card_read', 'catalog_manage'
+      'patient_read', 'card_read', 'catalog_manage', 'test_view'
     ]
   },
   marketing: {
@@ -97,7 +106,7 @@ export const ROLE_CONFIGS: Record<Role, RoleConfig> = {
     badgeColor: 'bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-950/50 dark:text-amber-300 dark:border-amber-800',
     description: 'Promotes health packages, tracks campaign registrations, and views card metrics.',
     permissions: [
-      'patient_read', 'card_read', 'reports_view'
+      'patient_read', 'card_read', 'card_request_view', 'reports_view'
     ]
   },
   card_operator: {
@@ -106,7 +115,7 @@ export const ROLE_CONFIGS: Record<Role, RoleConfig> = {
     badgeColor: 'bg-cyan-100 text-cyan-800 border-cyan-300 dark:bg-cyan-950/50 dark:text-cyan-300 dark:border-cyan-800',
     description: 'Specialist in high-resolution PVC CR80 card generation, batch printing, and exports.',
     permissions: [
-      'patient_read', 'card_create', 'card_read', 'card_print', 'card_export', 'card_renew', 'card_replace'
+      'patient_read', 'card_create', 'card_read', 'card_print', 'card_export', 'card_renew', 'card_replace', 'card_issue', 'card_request_view'
     ]
   },
   read_only: {
@@ -115,7 +124,7 @@ export const ROLE_CONFIGS: Record<Role, RoleConfig> = {
     badgeColor: 'bg-slate-100 text-slate-800 border-slate-300 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700',
     description: 'View-only access for compliance, inspection, and verification without edit privileges.',
     permissions: [
-      'patient_read', 'card_read', 'wallet_read', 'audit_view', 'reports_view'
+      'patient_read', 'card_read', 'card_request_view', 'wallet_read', 'audit_view', 'reports_view'
     ]
   }
 };
@@ -171,7 +180,7 @@ export const SYSTEM_MODULES: SystemModuleInfo[] = [
     href: '/patients',
     category: 'clinical',
     description: 'Patient directory, registration, search & medical profiles.',
-    associatedPermissions: ['patient_read', 'patient_create', 'patient_update', 'patient_delete']
+    associatedPermissions: ['patient_read', 'patient_create', 'patient_update', 'patient_delete', 'patient_print', 'patient_export']
   },
   {
     key: 'emr',
@@ -187,7 +196,7 @@ export const SYSTEM_MODULES: SystemModuleInfo[] = [
     href: '/doctor-master',
     category: 'clinical',
     description: 'Physician master directory, auto credentials generator, consultation fees matrix, and blood commission ledger.',
-    associatedPermissions: ['all', 'users_manage', 'emr_read']
+    associatedPermissions: ['all', 'users_manage', 'doctor_manage', 'doctor_view', 'emr_read']
   },
   {
     key: 'test_master',
@@ -195,7 +204,7 @@ export const SYSTEM_MODULES: SystemModuleInfo[] = [
     href: '/test-master',
     category: 'clinical',
     description: 'Master diagnostic tests directory, rates, bulk upload, and Auto Health Package bundling engine.',
-    associatedPermissions: ['all', 'catalog_manage', 'package_manage', 'patient_read']
+    associatedPermissions: ['all', 'catalog_manage', 'package_manage', 'test_view', 'patient_read']
   },
   {
     key: 'ngo_welfare',
@@ -211,7 +220,7 @@ export const SYSTEM_MODULES: SystemModuleInfo[] = [
     href: '/cards',
     category: 'cards',
     description: 'Smart digital health cards directory, renewal & status control.',
-    associatedPermissions: ['card_read', 'card_create', 'card_update', 'card_status_change', 'card_renew', 'card_replace']
+    associatedPermissions: ['card_read', 'card_create', 'card_update', 'card_status_change', 'card_renew', 'card_replace', 'card_delete', 'card_issue', 'card_request_create', 'card_request_view', 'card_request_approve', 'card_request_reject']
   },
   {
     key: 'card_studio',

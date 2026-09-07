@@ -109,7 +109,22 @@ const PERMISSION_LABELS: Record<Permission, { label: string; category: string }>
   ngo_manage: { label: 'Manage NGO Partners & CSR Fund Deposits', category: 'Welfare & NGO' },
   ngo_view: { label: 'View NGO Programs & Beneficiary Records', category: 'Welfare & NGO' },
   camp_manage: { label: 'Organize & Operate Rural Health Camps', category: 'Welfare & NGO' },
-  grant_manage: { label: 'Approve & Disburse Patient Charity Grants', category: 'Welfare & NGO' }
+  grant_manage: { label: 'Approve & Disburse Patient Charity Grants', category: 'Welfare & NGO' },
+  patient_print: { label: 'Print Patient Profiles & Barcodes', category: 'Patient Care' },
+  patient_export: { label: 'Export Patient Database Records', category: 'Patient Care' },
+  card_delete: { label: 'Delete & Permanently Revoke Health Cards', category: 'Card Studio' },
+  card_issue: { label: 'Directly Mint & Activate CR80 Health Cards', category: 'Card Studio' },
+  card_request_create: { label: 'Submit Health Card Requests to Super Admin', category: 'Card Studio' },
+  card_request_view: { label: 'View Health Card Application Requests', category: 'Card Studio' },
+  card_request_approve: { label: 'Approve Card Creation Requests & Mint Cards', category: 'Card Studio' },
+  card_request_reject: { label: 'Reject or Request Info on Card Applications', category: 'Card Studio' },
+  doctor_view: { label: 'View Doctor Directory & Commission Ledger', category: 'Clinical Admin' },
+  doctor_manage: { label: 'Manage Physicians & Consultation Fee Matrix', category: 'Clinical Admin' },
+  test_view: { label: 'View Diagnostic Tests & Health Packages Catalog', category: 'Clinical Admin' },
+  bill_create: { label: 'Create OPD Invoices & Diagnostic Lab Bills', category: 'Financial' },
+  bill_view: { label: 'View OPD Billing & Transaction Slips', category: 'Financial' },
+  bill_cancel: { label: 'Cancel Invoices & Authorize Refunds', category: 'Financial' },
+  payment_collect: { label: 'Collect Cash Desk POS & Bank UTR Payments', category: 'Financial' }
 };
 
 // Preset high-res clinical avatar gallery

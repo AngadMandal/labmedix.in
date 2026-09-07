@@ -375,11 +375,12 @@ export class PortalService {
     all.unshift(newApp);
     StorageService.setItem(this.CARD_APPLICATIONS_KEY, all);
     ApiSyncService.saveDocument('cardApplications', newApp.id, newApp).catch(() => {});
+    ApiSyncService.syncCardApplications(all).catch(() => {});
 
     AuditService.log(
       'CARD_APPLICATION_SUBMITTED',
       'patient',
-      `New Online Health Card Registration submitted by ${newApp.fullName} (${newApp.membershipName}) [Tracking ID: ${newApp.trackingId}, Paid: ₹${newApp.totalPaidAmount}]`,
+      `New Health Card Request submitted for ${newApp.fullName} (${newApp.membershipName}) [Tracking ID: ${newApp.trackingId}, Source: ${newApp.requestSource || 'staff_portal'}]`,
       newApp.id
     );
 
@@ -404,20 +405,27 @@ export class PortalService {
           all.unshift(txResult.application);
           StorageService.setItem(this.CARD_APPLICATIONS_KEY, all);
         }
+        ApiSyncService.syncCardApplications(all).catch(() => {});
 
         if (txResult.patient) {
           const patients = StorageService.getPatients();
-          if (!patients.some(p => p.id === txResult.patient.id)) {
+          const pIdx = patients.findIndex(p => p.id === txResult.patient.id);
+          if (pIdx !== -1) {
+            patients[pIdx] = txResult.patient;
+          } else {
             patients.unshift(txResult.patient);
-            StorageService.savePatients(patients);
           }
+          StorageService.savePatients(patients);
         }
         if (txResult.card) {
           const cards = StorageService.getCards();
-          if (!cards.some(c => c.id === txResult.card.id)) {
+          const cIdx = cards.findIndex(c => c.id === txResult.card.id);
+          if (cIdx !== -1) {
+            cards[cIdx] = txResult.card;
+          } else {
             cards.unshift(txResult.card);
-            StorageService.saveCards(cards);
           }
+          StorageService.saveCards(cards);
         }
 
         AuditService.log(
@@ -449,17 +457,23 @@ export class PortalService {
           }
           if (data.patient) {
             const patients = StorageService.getPatients();
-            if (!patients.some(p => p.id === data.patient.id)) {
+            const pIdx = patients.findIndex(p => p.id === data.patient.id);
+            if (pIdx !== -1) {
+              patients[pIdx] = data.patient;
+            } else {
               patients.unshift(data.patient);
-              StorageService.savePatients(patients);
             }
+            StorageService.savePatients(patients);
           }
           if (data.card) {
             const cards = StorageService.getCards();
-            if (!cards.some(c => c.id === data.card.id)) {
+            const cIdx = cards.findIndex(c => c.id === data.card.id);
+            if (cIdx !== -1) {
+              cards[cIdx] = data.card;
+            } else {
               cards.unshift(data.card);
-              StorageService.saveCards(cards);
             }
+            StorageService.saveCards(cards);
           }
           return { success: true, application: data.application, patient: data.patient, card: data.card };
         }
@@ -477,40 +491,57 @@ export class PortalService {
         return { success: false, error: 'Application has already been approved and issued.' };
       }
 
-      const patientId = `lmdx-p-${Math.floor(1000 + Math.random() * 9000)}`;
+      const patientId = app.patientId || `lmdx-p-${Math.floor(1000 + Math.random() * 9000)}`;
       const cardId = `card_${Math.floor(1000 + Math.random() * 9000)}`;
       const cardNumber = `LHC-2026-${Math.floor(100000 + Math.random() * 900000)}`;
       const now = new Date().toISOString();
       const expiryDate = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
-      const newPatient = {
-        id: patientId,
-        walletId: `wal_${patientId}`,
-        fullName: app.fullName,
-        dob: app.dob || '1995-01-01',
-        age: app.age || 30,
-        gender: app.gender || 'male',
-        mobile: app.mobile,
-        whatsapp: app.whatsapp || app.mobile,
-        email: app.email || `${app.mobile}@labmedix.org`,
-        bloodGroup: app.bloodGroup || 'O+',
-        photoUrl: app.photoUrl || '/logo.jpg',
-        address: app.address || { villageArea: '', postOffice: '', policeStation: '', district: '', state: '', pinCode: '', fullAddress: '' },
-        emergencyContact: app.emergencyContact || { name: '', relation: '', phone: '' },
-        medicalInfo: app.medicalInfo || { chronicConditions: [], allergies: [], regularMedications: [] },
-        healthCardId: cardId,
-        membershipId: app.membershipId || 'silver',
-        status: 'active' as const,
-        isDeleted: false,
-        createdBy: approvedBy,
-        createdAt: now,
-        updatedAt: now
-      };
+      let patientRecord: any;
+      const patients = StorageService.getPatients();
+      const existingPatient = app.patientId ? patients.find(p => p.id === app.patientId) : null;
+
+      if (existingPatient) {
+        existingPatient.healthCardId = cardId;
+        existingPatient.membershipId = app.membershipId || existingPatient.membershipId || 'silver';
+        existingPatient.updatedAt = now;
+        patientRecord = existingPatient;
+        StorageService.savePatients(patients);
+        ApiSyncService.saveDocument('patients', patientRecord.id, patientRecord).catch(() => {});
+      } else {
+        const newPatient = {
+          id: patientId,
+          walletId: `wal_${patientId}`,
+          fullName: app.fullName,
+          dob: app.dob || '1995-01-01',
+          age: app.age || 30,
+          gender: app.gender || 'male',
+          mobile: app.mobile,
+          whatsapp: app.whatsapp || app.mobile,
+          email: app.email || `${app.mobile}@labmedix.org`,
+          bloodGroup: app.bloodGroup || 'O+',
+          photoUrl: app.photoUrl || '/logo.jpg',
+          address: app.address || { villageArea: '', postOffice: '', policeStation: '', district: '', state: '', pinCode: '', fullAddress: '' },
+          emergencyContact: app.emergencyContact || { name: '', relation: '', phone: '' },
+          medicalInfo: app.medicalInfo || { chronicConditions: [], allergies: [], regularMedications: [] },
+          healthCardId: cardId,
+          membershipId: app.membershipId || 'silver',
+          status: 'active' as const,
+          isDeleted: false,
+          createdBy: approvedBy,
+          createdAt: now,
+          updatedAt: now
+        };
+        patientRecord = newPatient;
+        patients.unshift(newPatient as any);
+        StorageService.savePatients(patients);
+        ApiSyncService.saveDocument('patients', newPatient.id, newPatient).catch(() => {});
+      }
 
       const newCard = {
         id: cardId,
         cardNumber,
-        patientId,
+        patientId: patientRecord.id,
         membershipId: app.membershipId || 'silver',
         issueDate: now.slice(0, 10),
         expiryDate,
@@ -540,7 +571,7 @@ export class PortalService {
       app.approvedBy = approvedBy;
       app.approvedAt = now;
       app.approvedCardNumber = cardNumber;
-      app.approvedPatientId = patientId;
+      app.approvedPatientId = patientRecord.id;
       app.updatedAt = now;
 
       if (!app.processingHistory) app.processingHistory = [];
@@ -555,25 +586,23 @@ export class PortalService {
 
       StorageService.setItem(this.CARD_APPLICATIONS_KEY, allApps);
       ApiSyncService.saveDocument('cardApplications', app.id, app).catch(() => {});
-
-      const patients = StorageService.getPatients();
-      patients.unshift(newPatient as any);
-      StorageService.savePatients(patients);
-      ApiSyncService.saveDocument('patients', newPatient.id, newPatient).catch(() => {});
+      ApiSyncService.syncCardApplications(allApps).catch(() => {});
 
       const cards = StorageService.getCards();
       cards.unshift(newCard as any);
       StorageService.saveCards(cards);
       ApiSyncService.saveDocument('cards', newCard.id, newCard).catch(() => {});
+      ApiSyncService.syncCards(cards).catch(() => {});
+      ApiSyncService.syncPatients(patients).catch(() => {});
 
       AuditService.log(
         'CARD_APPLICATION_APPROVED',
         'card',
-        `Successfully approved card application for ${app.fullName}. Minted Card ${cardNumber} [Patient ID: ${patientId}].`,
+        `Successfully approved card application for ${app.fullName}. Minted Card ${cardNumber} [Patient ID: ${patientRecord.id}].`,
         app.id
       );
 
-      return { success: true, application: app, patient: newPatient, card: newCard };
+      return { success: true, application: app, patient: patientRecord, card: newCard };
     } catch (e: any) {
       console.error('Approve card application error:', e);
       return { success: false, error: e?.message || 'Transaction error during card application approval.' };
@@ -607,6 +636,7 @@ export class PortalService {
 
     StorageService.setItem(this.CARD_APPLICATIONS_KEY, all);
     ApiSyncService.saveDocument('cardApplications', app.id, app).catch(() => {});
+    ApiSyncService.syncCardApplications(all).catch(() => {});
 
     AuditService.log(
       'CARD_APPLICATION_REJECTED',
@@ -644,6 +674,7 @@ export class PortalService {
 
     StorageService.setItem(this.CARD_APPLICATIONS_KEY, all);
     ApiSyncService.saveDocument('cardApplications', app.id, app).catch(() => {});
+    ApiSyncService.syncCardApplications(all).catch(() => {});
 
     AuditService.log(
       'CARD_APPLICATION_INFO_REQUESTED',
@@ -681,6 +712,7 @@ export class PortalService {
 
     StorageService.setItem(this.CARD_APPLICATIONS_KEY, all);
     ApiSyncService.saveDocument('cardApplications', app.id, app).catch(() => {});
+    ApiSyncService.syncCardApplications(all).catch(() => {});
 
     AuditService.log(
       'CARD_APPLICATION_PAYMENT_STATUS_UPDATED',

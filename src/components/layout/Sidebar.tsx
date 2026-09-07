@@ -33,6 +33,7 @@ import {
 } from 'lucide-react';
 
 import { SystemModuleKey } from '../../constants/roles';
+import { Permission } from '../../types';
 
 interface SidebarProps {
   isOpen: boolean;
@@ -45,44 +46,48 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onCloseMobile }) => {
 
   const isDoctorRole = currentUser?.role === 'doctor';
 
-  const baseNavigation: Array<{
+  interface NavigationItem {
     name: string;
     href: string;
     icon: any;
     moduleKey: SystemModuleKey;
-    permission: any;
+    permission: Permission | Permission[];
     doctorOnly?: boolean;
     adminOnly?: boolean;
-  }> = [
-    ...(isDoctorRole
-      ? [
-          { name: 'Doctor EMR & Rx Suite', href: '/emr', icon: Stethoscope, moduleKey: 'emr' as SystemModuleKey, permission: 'emr_read', doctorOnly: true },
-          { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard, moduleKey: 'dashboard' as SystemModuleKey, permission: 'all' },
-        ]
-      : [
-          { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard, moduleKey: 'dashboard' as SystemModuleKey, permission: 'all' },
-        ]),
+  }
+
+  const doctorNav: NavigationItem[] = isDoctorRole
+    ? [
+        { name: 'Doctor EMR & Rx Suite', href: '/emr', icon: Stethoscope, moduleKey: 'emr', permission: 'emr_read', doctorOnly: true },
+        { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard, moduleKey: 'dashboard', permission: 'all' },
+      ]
+    : [
+        { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard, moduleKey: 'dashboard', permission: 'all' },
+      ];
+
+  const baseNavigation: NavigationItem[] = [
+    ...doctorNav,
     { name: 'Patients', href: '/patients', icon: Users, moduleKey: 'patients', permission: 'patient_read' },
     { name: 'Offline Intake Form', href: '/offline-form', icon: FileText, moduleKey: 'patients', permission: 'patient_read' },
-    { name: 'Doctor Master & Commission', href: '/doctor-master', icon: Crown, moduleKey: 'doctor_master', permission: 'all' },
-    { name: 'Test Master & Packages', href: '/test-master', icon: TestTube, moduleKey: 'test_master', permission: 'all' },
-    { name: 'NGO & CSR Welfare Hub', href: '/ngo-welfare', icon: HeartHandshake, moduleKey: 'ngo_welfare', permission: 'all' },
-    { name: 'Health Cards', href: '/cards', icon: CreditCard, moduleKey: 'cards', permission: 'card_read' },
+    { name: 'Doctor Master & Commission', href: '/doctor-master', icon: Crown, moduleKey: 'doctor_master', permission: ['doctor_view', 'doctor_manage'] },
+    { name: 'Test Master & Packages', href: '/test-master', icon: TestTube, moduleKey: 'test_master', permission: ['test_view', 'catalog_manage'] },
+    { name: 'NGO & CSR Welfare Hub', href: '/ngo-welfare', icon: HeartHandshake, moduleKey: 'ngo_welfare', permission: ['ngo_view', 'ngo_manage'] },
+    { name: 'Health Cards', href: '/cards', icon: CreditCard, moduleKey: 'cards', permission: ['card_read', 'card_request_view', 'card_request_create'] },
     { name: 'CR80 PVC Studio', href: '/card-studio', icon: Palette, moduleKey: 'card_studio', permission: 'card_print' },
     { name: 'A4 Print Sheet', href: '/cards/print-sheet', icon: Layers, moduleKey: 'print_sheet', permission: 'card_print' },
-    { name: 'Card Print & Dispatch', href: '/cards/printing-dispatch', icon: Truck, moduleKey: 'card_dispatch', permission: 'card_print' },
+    { name: 'Card Print & Dispatch', href: '/cards/printing-dispatch', icon: Truck, moduleKey: 'card_dispatch', permission: ['card_print', 'card_read'] },
     { name: 'Memberships', href: '/memberships', icon: Award, moduleKey: 'memberships', permission: 'membership_manage' },
     { name: 'Family Groups', href: '/families', icon: Users2, moduleKey: 'families', permission: 'family_manage' },
     { name: 'Health Wallet', href: '/wallet', icon: Wallet, moduleKey: 'wallet', permission: 'wallet_read' },
-    { name: 'Cash Desk Vouchers', href: '/cash-desk-vouchers', icon: Receipt, moduleKey: 'cash_desk_vouchers', permission: 'voucher_redeem' },
+    { name: 'Cash Desk Vouchers', href: '/cash-desk-vouchers', icon: Receipt, moduleKey: 'cash_desk_vouchers', permission: ['voucher_redeem', 'voucher_manage'] },
     { name: 'Reports & Analytics', href: '/reports', icon: BarChart3, moduleKey: 'reports', permission: 'reports_view' },
     { name: 'Staff Management', href: '/users', icon: UserCheck, moduleKey: 'users', permission: 'users_manage' },
-    { name: '3D Website & CMS Studio', href: '/website-cms', icon: Sparkles, moduleKey: 'website_cms', permission: 'all' },
+    { name: '3D Website & CMS Studio', href: '/website-cms', icon: Sparkles, moduleKey: 'website_cms', permission: 'settings_manage' },
     { name: 'Integrations Hub', href: '/integrations', icon: Globe, moduleKey: 'integrations', permission: 'settings_manage' },
     { name: 'Gmail Workspace Hub', href: '/gmail-integration', icon: Mail, moduleKey: 'integrations', permission: 'settings_manage' },
     { name: 'Audit & Activity', href: '/activity', icon: History, moduleKey: 'activity', permission: 'audit_view' },
-    { name: 'System Monitoring', href: '/system-monitoring', icon: Cpu, moduleKey: 'system_monitoring', permission: 'all' },
-    { name: 'Multi-Device Hub', href: '/multi-device', icon: Radio, moduleKey: 'system_monitoring', permission: 'all' },
+    { name: 'System Monitoring', href: '/system-monitoring', icon: Cpu, moduleKey: 'system_monitoring', permission: 'audit_view' },
+    { name: 'Multi-Device Hub', href: '/multi-device', icon: Radio, moduleKey: 'system_monitoring', permission: 'audit_view' },
     { name: 'Backup & Restore', href: '/backup', icon: Database, moduleKey: 'backup', permission: 'backup_manage' },
     { name: 'Company Settings', href: '/settings', icon: Settings, moduleKey: 'settings', permission: 'settings_manage' }
   ];
@@ -129,7 +134,11 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onCloseMobile }) => {
           </div>
           {navigation.map((item) => {
             const hasModule = hasModuleAccess(item.moduleKey);
-            const hasPerm = item.permission === 'all' || can(item.permission);
+            const hasPerm = item.permission === 'all'
+              ? (currentUser?.role === 'super_admin' || currentUser?.role === 'admin' || currentUser?.customPermissions?.includes('all'))
+              : Array.isArray(item.permission)
+                ? item.permission.some(p => can(p))
+                : can(item.permission);
             if (!hasModule || !hasPerm) return null;
 
             const Icon = item.icon;

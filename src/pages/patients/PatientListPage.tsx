@@ -15,6 +15,7 @@ import { PatientReceiptModal } from '../../components/portal/PatientReceiptModal
 import { PhlebotomySampleLabelModal } from '../../components/patients/PhlebotomySampleLabelModal';
 import { PhlebotomySampleDispatchModal } from '../../components/patients/PhlebotomySampleDispatchModal';
 import { CardApplicationReviewModal } from '../../components/card/CardApplicationReviewModal';
+import { CreateCardRequestModal } from '../../components/card/CreateCardRequestModal';
 import { PatientRealMoneyTopUpModal } from '../../components/portal/PatientRealMoneyTopUpModal';
 import { DirectLabAndPackageBookingModal } from '../../components/portal/DirectLabAndPackageBookingModal';
 import { DirectMedicineOrderModal } from '../../components/portal/DirectMedicineOrderModal';
@@ -112,6 +113,8 @@ export const PatientListPage: React.FC = () => {
   const [activePatientForTopUp, setActivePatientForTopUp] = useState<Patient | null>(null);
   const [activePatientForLabBooking, setActivePatientForLabBooking] = useState<Patient | null>(null);
   const [activePatientForMedicineOrder, setActivePatientForMedicineOrder] = useState<Patient | null>(null);
+  const [isCreateRequestModalOpen, setIsCreateRequestModalOpen] = useState(false);
+  const [preselectedPatientId, setPreselectedPatientId] = useState<string | undefined>(undefined);
 
   const { can, currentUser } = useAuth();
   const isSuperAdmin = currentUser?.role === 'super_admin';
@@ -903,6 +906,22 @@ export const PatientListPage: React.FC = () => {
               </Button>
             )}
 
+            {!p.healthCardId && (can('card_request_create') || can('card_create') || isSuperAdmin) && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="text-[10px] h-7 px-2 font-bold bg-amber-500/10 text-amber-500 dark:text-amber-400 border-amber-500/30 hover:bg-amber-500/20"
+                title="Request Health Card for this Patient"
+                onClick={() => {
+                  setPreselectedPatientId(p.id);
+                  setIsCreateRequestModalOpen(true);
+                }}
+              >
+                <CreditCard className="w-3.5 h-3.5 mr-1" />
+                Request Card
+              </Button>
+            )}
+
             {can('patient_delete') && (
               p.isDeleted ? (
                 <div className="flex items-center gap-1">
@@ -1034,6 +1053,21 @@ export const PatientListPage: React.FC = () => {
             >
               🔄 Refresh
             </Button>
+
+            {(can('card_request_create') || can('card_create') || isSuperAdmin) && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="border-amber-500/50 bg-amber-950/40 text-amber-300 hover:bg-amber-900/60 font-bold shadow-md flex items-center gap-1.5"
+                onClick={() => {
+                  setPreselectedPatientId(undefined);
+                  setIsCreateRequestModalOpen(true);
+                }}
+              >
+                <CreditCard className="w-3.5 h-3.5 text-amber-400" />
+                <span>+ Request Health Card</span>
+              </Button>
+            )}
 
             {can('patient_create') && (
               <>
@@ -2022,6 +2056,19 @@ export const PatientListPage: React.FC = () => {
           }}
         />
       )}
+
+      {/* 15. CREATE CARD REQUEST MODAL */}
+      <CreateCardRequestModal
+        isOpen={isCreateRequestModalOpen}
+        onClose={() => {
+          setIsCreateRequestModalOpen(false);
+          setPreselectedPatientId(undefined);
+        }}
+        preselectedPatientId={preselectedPatientId}
+        onRequestCreated={() => {
+          refreshList();
+        }}
+      />
     </div>
   );
 };

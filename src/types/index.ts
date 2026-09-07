@@ -17,6 +17,8 @@ export type Permission =
   | 'patient_read'
   | 'patient_update'
   | 'patient_delete'
+  | 'patient_print'
+  | 'patient_export'
   | 'card_create'
   | 'card_read'
   | 'card_update'
@@ -25,6 +27,12 @@ export type Permission =
   | 'card_status_change'
   | 'card_renew'
   | 'card_replace'
+  | 'card_delete'
+  | 'card_issue'
+  | 'card_request_create'
+  | 'card_request_view'
+  | 'card_request_approve'
+  | 'card_request_reject'
   | 'wallet_read'
   | 'wallet_credit'
   | 'wallet_debit'
@@ -47,7 +55,14 @@ export type Permission =
   | 'ngo_manage'
   | 'ngo_view'
   | 'camp_manage'
-  | 'grant_manage';
+  | 'grant_manage'
+  | 'doctor_view'
+  | 'doctor_manage'
+  | 'test_view'
+  | 'bill_create'
+  | 'bill_view'
+  | 'bill_cancel'
+  | 'payment_collect';
 
 export interface User {
   id: string;
@@ -166,6 +181,7 @@ export interface Patient {
   familyId?: string;
   isFamilyHead?: boolean;
   healthCardId?: string;
+  membershipId?: string;
   walletId: string;
   isDemo?: boolean;
   isDeleted: boolean;
@@ -910,6 +926,14 @@ export interface CardApplicationRequest {
   emailNotificationSent?: boolean;
   smsContent?: string;
   emailContent?: string;
+  requestSource?: 'public_portal' | 'staff_portal' | 'reception_desk' | 'doctor_referral';
+  submittedByStaffId?: string;
+  submittedByStaffName?: string;
+  submittedByStaffRole?: string;
+  patientId?: string;
+  urgency?: 'normal' | 'urgent' | 'emergency';
+  justificationNotes?: string;
+  dispatchPreference?: 'collect_at_clinic' | 'courier' | 'digital_only';
   createdAt: string;
   updatedAt: string;
 }

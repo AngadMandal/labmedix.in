@@ -17,6 +17,7 @@ import { Badge, CardStatusBadge } from '../../components/common/Badge';
 import { CR80CardFront } from '../../components/card/CR80CardFront';
 import { FramerInteractiveHealthCard } from '../../components/card/FramerInteractiveHealthCard';
 import { CardStudio } from '../../components/card/CardStudio';
+import { CreateCardRequestModal } from '../../components/card/CreateCardRequestModal';
 import { PatientVitalsModule } from '../../components/patients/PatientVitalsModule';
 import { PrescriptionPrintModal } from '../../components/emr/PrescriptionPrintModal';
 import { LabReportPrintModal } from '../../components/emr/LabReportPrintModal';
@@ -73,6 +74,7 @@ export const PatientDetailPage: React.FC = () => {
   const [activeReceiptTxn, setActiveReceiptTxn] = useState<any>(null);
   const [isRenewalOpen, setIsRenewalOpen] = useState(false);
   const [isReplacementOpen, setIsReplacementOpen] = useState(false);
+  const [isCreateCardModalOpen, setIsCreateCardModalOpen] = useState(false);
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
 
   // Print modals for Clinical tab
@@ -84,6 +86,7 @@ export const PatientDetailPage: React.FC = () => {
     const unsubPatients = ApiSyncService.subscribeToCollection('patients', () => setTick(t => t + 1));
     const unsubCards = ApiSyncService.subscribeToCollection('cards', () => setTick(t => t + 1));
     const unsubWallets = ApiSyncService.subscribeToCollection('wallets', () => setTick(t => t + 1));
+    const unsubApps = ApiSyncService.subscribeToCollection('cardApplications', () => setTick(t => t + 1));
 
     const handleSync = () => setTick(t => t + 1);
     window.addEventListener('labmedix_data_synced', handleSync);
@@ -91,6 +94,7 @@ export const PatientDetailPage: React.FC = () => {
       unsubPatients();
       unsubCards();
       unsubWallets();
+      unsubApps();
       window.removeEventListener('labmedix_data_synced', handleSync);
     };
   }, []);
@@ -118,6 +122,12 @@ export const PatientDetailPage: React.FC = () => {
   const patient = PatientService.getById(id || '');
   const company = StorageService.getCompanyProfile();
   const card = patient ? CardService.getById(patient.healthCardId || '') : undefined;
+  const pendingApp = useMemo(() => {
+    if (!patient) return undefined;
+    return PortalService.getCardApplications().find(
+      a => (a.patientId === patient.id || a.mobile === patient.mobile) && (a.status === 'submitted' || a.status === 'under_review' || a.status === 'pending_approval' || a.status === 'info_required')
+    );
+  }, [patient, tick]);
   const memberships = StorageService.getMemberships() || [];
   const membership = (card ? memberships.find(m => m && m.id === card?.membershipId) : null) || memberships[0] || defaultMembership;
   const wallet = patient ? WalletService.getByPatientId(patient.id) : undefined;
@@ -254,6 +264,25 @@ export const PatientDetailPage: React.FC = () => {
           >
             Download Full Patient Record (PDF)
           </Button>
+
+          {can('card_request_create') && !card && (
+            pendingApp ? (
+              <span className="px-3 py-1.5 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-300 text-xs font-bold flex items-center gap-1.5 shadow-sm">
+                <Clock className="w-3.5 h-3.5" />
+                Card Request Pending ({pendingApp.applicationNo})
+              </span>
+            ) : (
+              <Button
+                size="sm"
+                variant="primary"
+                leftIcon={<CreditCard className="w-3.5 h-3.5" />}
+                onClick={() => setIsCreateCardModalOpen(true)}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-sm"
+              >
+                Request Health Card
+              </Button>
+            )
+          )}
 
           {can('wallet_credit') && wallet && (
             <Button
@@ -930,13 +959,57 @@ export const PatientDetailPage: React.FC = () => {
         )}
 
         {/* Tab 3: Health Card & Studio */}
-        {activeTab === 'card' && card && (
-          <CardStudio
-            patient={patient}
-            card={card}
-            membership={membership}
-            company={company}
-          />
+        {activeTab === 'card' && (
+          card ? (
+            <CardStudio
+              patient={patient}
+              card={card}
+              membership={membership}
+              company={company}
+            />
+          ) : (
+            <div className="bg-white dark:bg-slate-900 rounded-3xl p-8 border border-slate-200 dark:border-slate-800 shadow-sm text-center max-w-xl mx-auto space-y-4">
+              <div className="w-16 h-16 rounded-2xl bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800 text-emerald-600 flex items-center justify-center mx-auto shadow-inner">
+                <CreditCard className="w-8 h-8" />
+              </div>
+              <div>
+                <h3 className="text-lg font-black text-slate-900 dark:text-white">No Active Health Card</h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-md mx-auto">
+                  This patient does not currently have an active physical/digital Labmedix Health Card assigned to their profile.
+                </p>
+              </div>
+
+              {pendingApp ? (
+                <div className="p-4 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 rounded-2xl text-left space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-amber-800 dark:text-amber-300 flex items-center gap-1.5">
+                      <Clock className="w-3.5 h-3.5" /> Request In Progress
+                    </span>
+                    <Badge variant="warning" size="sm">{pendingApp.status.toUpperCase()}</Badge>
+                  </div>
+                  <p className="text-xs text-amber-900 dark:text-amber-200">
+                    Application <strong>{pendingApp.applicationNo}</strong> is waiting for Super Admin review and minting.
+                  </p>
+                  {pendingApp.submittedByStaffName && (
+                    <p className="text-[11px] text-amber-700 dark:text-amber-400">
+                      Submitted by: {pendingApp.submittedByStaffName} ({pendingApp.submittedByStaffRole || 'Staff'})
+                    </p>
+                  )}
+                </div>
+              ) : (
+                can('card_request_create') && (
+                  <Button
+                    variant="primary"
+                    leftIcon={<CreditCard className="w-4 h-4" />}
+                    onClick={() => setIsCreateCardModalOpen(true)}
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-6 py-2.5 shadow-md shadow-emerald-500/20"
+                  >
+                    Request Health Card for {patient.fullName}
+                  </Button>
+                )
+              )}
+            </div>
+          )
         )}
 
         {/* Tab 4: Family Group */}
@@ -1177,6 +1250,16 @@ export const PatientDetailPage: React.FC = () => {
           booking={activePrintLabBooking}
         />
       )}
+
+      <CreateCardRequestModal
+        isOpen={isCreateCardModalOpen}
+        onClose={() => setIsCreateCardModalOpen(false)}
+        preselectedPatientId={patient.id}
+        onRequestCreated={() => {
+          showToast('success', 'Card Request Submitted', `Health Card request for ${patient.fullName} sent to Super Admin for approval.`);
+          setTick(t => t + 1);
+        }}
+      />
     </div>
   );
 };

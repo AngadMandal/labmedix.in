@@ -13,6 +13,7 @@ import { Badge, CardStatusBadge } from '../../components/common/Badge';
 import { CardRenewalModal } from './CardRenewalModal';
 import { CardReplacementModal } from './CardReplacementModal';
 import { CardApplicationReviewModal } from '../../components/card/CardApplicationReviewModal';
+import { CreateCardRequestModal } from '../../components/card/CreateCardRequestModal';
 import { SuperAdminCardDeleteModal } from '../../components/card/SuperAdminCardDeleteModal';
 import { PatientRealMoneyTopUpModal } from '../../components/portal/PatientRealMoneyTopUpModal';
 import { DirectLabAndPackageBookingModal } from '../../components/portal/DirectLabAndPackageBookingModal';
@@ -77,7 +78,8 @@ import {
   QrCode,
   Heart,
   ChevronRight,
-  ExternalLink
+  ExternalLink,
+  Plus
 } from 'lucide-react';
 
 export const CardListPage: React.FC = () => {
@@ -101,8 +103,10 @@ export const CardListPage: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [tierFilter, setTierFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [appFilter, setAppFilter] = useState<'all' | 'pending' | 'approved' | 'rejected'>('all');
 
   // Interactive Modals State
+  const [isCreateRequestModalOpen, setIsCreateRequestModalOpen] = useState(false);
   const [selectedApplicationForReview, setSelectedApplicationForReview] = useState<CardApplicationRequest | null>(null);
   const [selectedCardForRenew, setSelectedCardForRenew] = useState<HealthCard | null>(null);
   const [selectedCardForReplace, setSelectedCardForReplace] = useState<HealthCard | null>(null);
@@ -155,7 +159,17 @@ export const CardListPage: React.FC = () => {
   // Active / Archived Lists
   const activeCardsList = useMemo(() => cards.filter(c => !c.isDeleted && c.status !== 'deleted'), [cards]);
   const archivedCardsList = useMemo(() => cards.filter(c => c.isDeleted || c.status === 'cancelled' || c.status === 'deleted'), [cards]);
-  const pendingAppsCount = applications.filter(a => a.status === 'pending_approval').length;
+  const pendingAppsCount = applications.filter(a => a.status === 'pending_approval' || a.status === 'submitted' || a.status === 'under_review').length;
+  const approvedAppsCount = useMemo(() => applications.filter(a => a.status === 'approved' || a.status === 'issued').length, [applications]);
+  const rejectedAppsCount = useMemo(() => applications.filter(a => a.status === 'rejected' || a.status === 'cancelled').length, [applications]);
+
+  const displayedApplications = useMemo(() => {
+    if (appFilter === 'all') return applications;
+    if (appFilter === 'pending') return applications.filter(a => a.status === 'pending_approval' || a.status === 'submitted' || a.status === 'under_review');
+    if (appFilter === 'approved') return applications.filter(a => a.status === 'approved' || a.status === 'issued');
+    if (appFilter === 'rejected') return applications.filter(a => a.status === 'rejected' || a.status === 'cancelled');
+    return applications;
+  }, [applications, appFilter]);
 
   // Filtered Active Cards
   const filteredActiveCards = useMemo(() => {
@@ -599,6 +613,18 @@ export const CardListPage: React.FC = () => {
                 <span>Online Queue ({pendingAppsCount})</span>
               </button>
             </div>
+
+            {(can('card_request_create') || can('card_create') || isSuperAdmin) && (
+              <Button
+                variant="primary"
+                size="sm"
+                className="bg-gradient-to-r from-amber-500 to-teal-500 text-slate-950 font-black shadow-lg hover:brightness-110"
+                leftIcon={<Plus className="w-4 h-4" />}
+                onClick={() => setIsCreateRequestModalOpen(true)}
+              >
+                + Request Health Card
+              </Button>
+            )}
 
             <Button
               variant="outline"
@@ -1192,112 +1218,200 @@ export const CardListPage: React.FC = () => {
             <div>
               <h3 className="text-sm font-black text-white uppercase tracking-wide flex items-center gap-2">
                 <Clock className="w-4 h-4 text-amber-400" />
-                Online Card Self-Service Registrations Queue ({applications.length})
+                Health Card Applications & Requests Queue ({applications.length})
               </h3>
               <p className="text-xs text-slate-400 mt-0.5">
-                Verify applicant identity, review payment proof, and approve to mint official PVC Health Cards.
+                Staff submissions and online self-service card requests queued for Super Admin review and card minting.
               </p>
             </div>
 
-            <Badge variant="warning" size="md">
-              {pendingAppsCount} Pending
-            </Badge>
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs">
+                <button
+                  type="button"
+                  onClick={() => setAppFilter('all')}
+                  className={`px-2.5 py-1 rounded-lg font-bold transition-all ${
+                    appFilter === 'all' ? 'bg-teal-600 text-white shadow' : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  All ({applications.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAppFilter('pending')}
+                  className={`px-2.5 py-1 rounded-lg font-bold transition-all ${
+                    appFilter === 'pending' ? 'bg-amber-600 text-white shadow' : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  Pending ({pendingAppsCount})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAppFilter('approved')}
+                  className={`px-2.5 py-1 rounded-lg font-bold transition-all ${
+                    appFilter === 'approved' ? 'bg-emerald-600 text-white shadow' : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  Approved ({approvedAppsCount})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAppFilter('rejected')}
+                  className={`px-2.5 py-1 rounded-lg font-bold transition-all ${
+                    appFilter === 'rejected' ? 'bg-rose-600 text-white shadow' : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  Rejected ({rejectedAppsCount})
+                </button>
+              </div>
+
+              {(can('card_request_create') || can('card_create') || isSuperAdmin) && (
+                <Button
+                  size="sm"
+                  variant="primary"
+                  className="bg-gradient-to-r from-amber-500 to-teal-500 text-slate-950 font-black shadow-md hover:brightness-110 text-xs"
+                  leftIcon={<Plus className="w-3.5 h-3.5" />}
+                  onClick={() => setIsCreateRequestModalOpen(true)}
+                >
+                  + Request Card
+                </Button>
+              )}
+            </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {applications.map((app) => (
-              <div
-                key={app.id}
-                className={`p-5 rounded-3xl bg-slate-900 border-2 transition-all flex flex-col justify-between space-y-4 shadow-xl ${
-                  app.status === 'pending_approval'
-                    ? 'border-amber-500/50 bg-gradient-to-b from-slate-900 to-amber-950/20'
-                    : 'border-slate-800'
-                }`}
-              >
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="px-2.5 py-1 rounded-xl text-xs font-mono font-black bg-slate-950 text-teal-400 border border-slate-700">
-                      {app.applicationNo}
-                    </span>
-                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase font-mono ${
-                      app.status === 'approved' ? 'bg-emerald-500/20 text-emerald-300' : 'bg-amber-500/20 text-amber-300'
-                    }`}>
-                      {app.status.replace(/_/g, ' ')}
-                    </span>
-                  </div>
-
-                  <div className="flex items-center gap-3">
-                    <img
-                      src={app.photoUrl || '/logo.jpg'}
-                      alt=""
-                      className="w-12 h-12 rounded-xl object-cover border border-slate-700 shadow-md"
-                    />
-                    <div>
-                      <strong className="text-sm font-black text-white block truncate">
-                        {app.fullName}
-                      </strong>
-                      <span className="text-xs text-slate-400 font-mono">{app.mobile}</span>
-                      <div className="text-[10px] text-teal-400 font-mono mt-0.5 font-bold">
-                        Tier: {app.membershipName}
+          {displayedApplications.length === 0 ? (
+            <div className="p-12 text-center rounded-3xl bg-slate-900 border border-slate-800 space-y-3">
+              <Clock className="w-12 h-12 text-slate-600 mx-auto" />
+              <h4 className="text-base font-bold text-white">No applications in this category</h4>
+              <p className="text-xs text-slate-400 max-w-sm mx-auto">
+                No health card requests currently match the selected filter.
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {displayedApplications.map((app) => (
+                <div
+                  key={app.id}
+                  className={`p-5 rounded-3xl bg-slate-900 border-2 transition-all flex flex-col justify-between space-y-4 shadow-xl ${
+                    app.status === 'pending_approval' || app.status === 'submitted'
+                      ? 'border-amber-500/50 bg-gradient-to-b from-slate-900 to-amber-950/20'
+                      : app.status === 'approved'
+                      ? 'border-emerald-500/40 bg-gradient-to-b from-slate-900 to-emerald-950/20'
+                      : 'border-slate-800'
+                  }`}
+                >
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="px-2.5 py-1 rounded-xl text-xs font-mono font-black bg-slate-950 text-teal-400 border border-slate-700">
+                        {app.trackingId || app.applicationNo}
+                      </span>
+                      <div className="flex items-center gap-1.5">
+                        {app.urgency && app.urgency !== 'normal' && (
+                          <span className={`px-1.5 py-0.5 rounded text-[9px] font-mono font-bold uppercase ${
+                            app.urgency === 'emergency' ? 'bg-red-950 text-red-300 border border-red-500' : 'bg-amber-950 text-amber-300 border border-amber-500'
+                          }`}>
+                            {app.urgency}
+                          </span>
+                        )}
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase font-mono ${
+                          app.status === 'approved'
+                            ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                            : app.status === 'rejected'
+                            ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
+                            : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                        }`}>
+                          {app.status.replace(/_/g, ' ')}
+                        </span>
                       </div>
                     </div>
+
+                    <div className="flex items-center gap-3">
+                      <img
+                        src={app.photoUrl || '/logo.jpg'}
+                        alt=""
+                        className="w-12 h-12 rounded-xl object-cover border border-slate-700 shadow-md"
+                      />
+                      <div>
+                        <strong className="text-sm font-black text-white block truncate">
+                          {app.fullName}
+                        </strong>
+                        <span className="text-xs text-slate-400 font-mono">{app.mobile}</span>
+                        <div className="text-[10px] text-teal-400 font-mono mt-0.5 font-bold">
+                          Tier: {app.membershipName}
+                        </div>
+                      </div>
+                    </div>
+
+                    {app.submittedByStaffName && (
+                      <div className="px-2.5 py-1.5 rounded-xl bg-slate-950/80 border border-slate-800 text-[10.5px] font-mono text-slate-400 flex items-center justify-between">
+                        <span>Staff: <strong className="text-slate-200">{app.submittedByStaffName}</strong></span>
+                        <span className="capitalize text-slate-500">{app.submittedByStaffRole || 'Staff'}</span>
+                      </div>
+                    )}
+
+                    <div className="p-3 rounded-2xl bg-slate-950 border border-slate-800 text-xs font-mono space-y-1">
+                      <div className="flex justify-between text-slate-400">
+                        <span>Total Paid:</span>
+                        <strong className="text-emerald-400">{formatCurrency(app.totalPaidAmount)}</strong>
+                      </div>
+                      <div className="flex justify-between text-slate-400 text-[10px]">
+                        <span>Method:</span>
+                        <span className="text-amber-300">{app.paymentMethod}</span>
+                      </div>
+                      {app.justificationNotes && (
+                        <div className="text-[10px] text-slate-400 font-sans italic border-t border-slate-850 pt-1 mt-1 truncate">
+                          "{app.justificationNotes}"
+                        </div>
+                      )}
+                    </div>
                   </div>
 
-                  <div className="p-3 rounded-2xl bg-slate-950 border border-slate-800 text-xs font-mono space-y-1">
-                    <div className="flex justify-between text-slate-400">
-                      <span>Total Paid:</span>
-                      <strong className="text-emerald-400">{formatCurrency(app.totalPaidAmount)}</strong>
-                    </div>
-                    <div className="flex justify-between text-slate-400 text-[10px]">
-                      <span>Method:</span>
-                      <span className="text-amber-300">{app.paymentMethod}</span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="pt-3 border-t border-slate-800 flex items-center gap-2">
-                  {app.status === 'pending_approval' ? (
-                    <>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="flex-1 border-slate-700 text-slate-300 hover:bg-slate-800 text-xs font-bold"
-                        onClick={() => setSelectedApplicationForReview(app)}
-                      >
-                        Review Details
-                      </Button>
+                  <div className="pt-3 border-t border-slate-800 flex items-center gap-2">
+                    {app.status === 'pending_approval' || app.status === 'submitted' ? (
+                      <>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="flex-1 border-slate-700 text-slate-300 hover:bg-slate-800 text-xs font-bold"
+                          onClick={() => setSelectedApplicationForReview(app)}
+                        >
+                          Review Details
+                        </Button>
+                        {(isSuperAdmin || can('card_request_approve')) && (
+                          <Button
+                            size="sm"
+                            variant="primary"
+                            className="flex-1 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 text-white font-black text-xs shadow-md"
+                            leftIcon={<Zap className="w-3.5 h-3.5" />}
+                            onClick={() => handleQuickMintApplication(app)}
+                          >
+                            Mint & Issue →
+                          </Button>
+                        )}
+                      </>
+                    ) : (
                       <Button
                         size="sm"
                         variant="primary"
-                        className="flex-1 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 text-white font-black text-xs shadow-md"
-                        leftIcon={<Zap className="w-3.5 h-3.5" />}
-                        onClick={() => handleQuickMintApplication(app)}
+                        className="w-full bg-gradient-to-r from-teal-600 to-emerald-600 text-white font-black text-xs"
+                        leftIcon={<CreditCard className="w-3.5 h-3.5" />}
+                        onClick={() => {
+                          setActiveMainView('deck_3d');
+                          if (app.approvedCardNumber) {
+                            setSearchQuery(app.approvedCardNumber);
+                          } else {
+                            setSearchQuery(app.fullName);
+                          }
+                        }}
                       >
-                        Mint & Issue →
+                        View Issued Card in Deck →
                       </Button>
-                    </>
-                  ) : (
-                    <Button
-                      size="sm"
-                      variant="primary"
-                      className="w-full bg-gradient-to-r from-teal-600 to-emerald-600 text-white font-black text-xs"
-                      leftIcon={<CreditCard className="w-3.5 h-3.5" />}
-                      onClick={() => {
-                        setActiveMainView('deck_3d');
-                        if (app.approvedCardNumber) {
-                          setSearchQuery(app.approvedCardNumber);
-                        } else {
-                          setSearchQuery(app.fullName);
-                        }
-                      }}
-                    >
-                      View Issued Card in Deck →
-                    </Button>
-                  )}
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -1402,6 +1516,16 @@ export const CardListPage: React.FC = () => {
           receipt={activeReceiptToPrint}
         />
       )}
+
+      {/* 14. CREATE CARD REQUEST MODAL */}
+      <CreateCardRequestModal
+        isOpen={isCreateRequestModalOpen}
+        onClose={() => setIsCreateRequestModalOpen(false)}
+        onRequestCreated={() => {
+          refreshList();
+          setActiveMainView('applications_queue');
+        }}
+      />
     </div>
   );
 };

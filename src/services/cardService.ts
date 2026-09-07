@@ -4,6 +4,7 @@ import { AuditService } from './auditService';
 import { generateCardNumber, generateVerificationCode, generateCardCvv, generateUuid } from '../utils/idGenerator';
 import { maskCardNumber, maskPatientId } from '../utils/formatters';
 import { ApiSyncService } from './apiSyncService';
+import { checkUserPermission } from '../constants/roles';
 
 export class CardService {
 
@@ -46,6 +47,22 @@ export class CardService {
     return StorageService.getCards().find(c => c.verificationCode.toUpperCase() === code.trim().toUpperCase());
   }
 
+  public static getCards(): HealthCard[] {
+    return this.getAll(false);
+  }
+
+  public static getCardById(id: string): HealthCard | undefined {
+    return this.getById(id);
+  }
+
+  public static getCardByNumber(cardNumber: string): HealthCard | undefined {
+    return this.getByCardNumber(cardNumber);
+  }
+
+  public static getCardByPatientId(patientId: string): HealthCard | undefined {
+    return this.getByPatientId(patientId);
+  }
+
   public static updateDesign(id: string, designConfig: CardDesignConfig): HealthCard | null {
     const cards = StorageService.getCards();
     const card = cards.find(c => c.id === id);
@@ -65,11 +82,10 @@ export class CardService {
     if (!card) return null;
 
     const currentUser = StorageService.getCurrentUser();
-    const activeRole = userRole || currentUser?.role;
+    const isAuthorized = currentUser?.role === 'super_admin' || checkUserPermission(currentUser, 'card_status_change');
 
-    // Security Gate: Only Super Admin can activate, deactivate, suspend, block, or cancel cards
-    if (activeRole !== 'super_admin') {
-      throw new Error('SECURITY VIOLATION: Only Super Administrator is authorized to Activate, Deactivate, Block, or Change Health Card Status.');
+    if (!isAuthorized) {
+      throw new Error('SECURITY VIOLATION: You do not have permission to change Health Card status.');
     }
 
     const prevStatus = card.status;
@@ -81,23 +97,26 @@ export class CardService {
       date: new Date().toISOString(),
       previousStatus: prevStatus,
       newStatus,
-      changedBy: currentUser?.fullName || 'Super Administrator',
+      changedBy: currentUser?.fullName || 'Authorized Staff',
       reason: reason || `Status changed from ${prevStatus} to ${newStatus}`
     });
     StorageService.saveCards(cards);
     ApiSyncService.saveDocument('cards', card.id, card).catch(() => {});
 
-    AuditService.log('CARD_STATUS_CHANGED', 'card', `Super Admin changed Card ${card.cardNumber} status: ${prevStatus} -> ${newStatus} (${reason})`, card.id);
+    AuditService.log('CARD_STATUS_CHANGED', 'card', `Card ${card.cardNumber} status changed: ${prevStatus} -> ${newStatus} (${reason}) by ${currentUser?.fullName || 'Staff'}`, card.id);
     return card;
   }
 
   public static editCard(
     id: string,
     updates: Partial<HealthCard>,
-    userRole: string = 'super_admin'
+    userRole?: string
   ): { success: boolean; card?: HealthCard; error?: string } {
-    if (userRole !== 'super_admin') {
-      return { success: false, error: 'SECURITY VIOLATION: Only Super Administrator is authorized to edit Health Card details or change Membership Tier assignments.' };
+    const currentUser = StorageService.getCurrentUser();
+    const isAuthorized = currentUser?.role === 'super_admin' || checkUserPermission(currentUser, 'card_update');
+
+    if (!isAuthorized) {
+      return { success: false, error: 'SECURITY VIOLATION: You are not authorized to edit Health Card details.' };
     }
 
     const cards = StorageService.getCards();
@@ -110,9 +129,9 @@ export class CardService {
     ApiSyncService.saveDocument('cards', card.id, card).catch(() => {});
 
     AuditService.log(
-      'CARD_EDITED_BY_SUPER_ADMIN',
+      'CARD_EDITED',
       'card',
-      `Super Admin edited Health Card ${card.cardNumber} (Membership Tier / Details updated)`,
+      `Health Card ${card.cardNumber} details updated by ${currentUser?.fullName || 'Staff'}`,
       card.id,
       { previousValue, newValue: card }
     );
@@ -121,8 +140,8 @@ export class CardService {
   }
 
   /**
-   * Super-Admin Secure Delete & Archiving Mechanism
-   * Issued cards can ONLY be deleted by users with 'super_admin' role.
+   * Secure Delete & Archiving Mechanism
+   * Issued cards can ONLY be deleted by users with 'card_delete' permission or 'super_admin' role.
    * If permanent is true: Completely removes card from storage and unlinks it.
    * If permanent is false (Soft Delete): Marks card as cancelled/deleted with timestamp, revokes cardholder access, and enables a 30-day retention restoration window.
    */
@@ -130,8 +149,8 @@ export class CardService {
     id: string,
     reason: string = 'Administrative Card Revocation',
     permanent: boolean = false,
-    userRole: string = 'super_admin',
-    userName: string = 'Super Administrator'
+    userRole?: string,
+    userName?: string
   ): { success: boolean; error?: string; permanent?: boolean; card?: HealthCard } {
     const cards = StorageService.getCards();
     const cardIndex = cards.findIndex(c => c.id === id);
@@ -140,13 +159,13 @@ export class CardService {
     }
 
     const card = cards[cardIndex];
+    const currentUser = StorageService.getCurrentUser();
+    const isAuthorized = currentUser?.role === 'super_admin' || checkUserPermission(currentUser, 'card_delete');
 
-    // Security Gate: Issued cards can ONLY be deleted by Super Administrator
-    const isIssued = card.status === 'active' || card.status === 'expired' || card.status === 'suspended' || card.status === 'replaced';
-    if (isIssued && userRole !== 'super_admin') {
+    if (!isAuthorized) {
       return {
         success: false,
-        error: 'Permission Denied: Issued Health Cards are legally binding credentials and can ONLY be deleted or permanently revoked by a Super Administrator.'
+        error: 'Permission Denied: You do not have permission to delete or permanently revoke this Health Card.'
       };
     }
 
@@ -180,10 +199,11 @@ export class CardService {
     } else {
       // 2. Soft Delete / Revoke: Mark deleted and revoke all cardholder access with 30-day retention
       const prevStatus = card.status;
+      const actorName = userName || currentUser?.fullName || 'Super Administrator';
       card.isDeleted = true;
       card.status = 'cancelled';
       card.deletedAt = now;
-      card.deletedBy = userName;
+      card.deletedBy = actorName;
       card.deleteReason = reason;
       card.updatedAt = now;
 
@@ -193,8 +213,8 @@ export class CardService {
         date: now,
         previousStatus: prevStatus,
         newStatus: 'cancelled',
-        changedBy: userName,
-        reason: `[SUPER ADMIN ARCHIVED / REVOKED] ${reason}`
+        changedBy: actorName,
+        reason: `[REVOKED / ARCHIVED] ${reason}`
       });
 
       StorageService.saveCards(cards);
@@ -203,7 +223,7 @@ export class CardService {
       AuditService.log(
         'CARD_REVOKED_ARCHIVED',
         'card',
-        `Card ${card.cardNumber} (Patient: ${card.patientId}) revoked and archived by ${userName}. Reason: ${reason}. (30-Day Retention Clock Started)`,
+        `Card ${card.cardNumber} (Patient: ${card.patientId}) revoked and archived by ${actorName}. Reason: ${reason}. (30-Day Retention Clock Started)`,
         card.id
       );
 

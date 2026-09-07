@@ -1054,7 +1054,7 @@ export class ApiSyncService {
           throw new Error(`Transaction Blocked: Application status must be PENDING_APPROVAL. Current status is "${status}".`);
         }
 
-        const patientId = `lmdx-p-${Math.floor(1000 + Math.random() * 9000)}`;
+        const patientId = appData.patientId || `lmdx-p-${Math.floor(1000 + Math.random() * 9000)}`;
         const cardId = `card_${Math.floor(1000 + Math.random() * 9000)}`;
         const cardNumber = `LHC-2026-${Math.floor(100000 + Math.random() * 900000)}`;
         const cvv = String(Math.floor(100 + Math.random() * 900));
@@ -1066,26 +1066,39 @@ export class ApiSyncService {
         const cardRef = doc(db, 'cards', cardId);
         const walletRef = doc(db, 'wallets', `wal_${patientId}`);
 
-        const newPatient = {
-          id: patientId,
-          fullName: appData.fullName,
-          dob: appData.dob || '1995-01-01',
-          age: appData.age || 30,
-          gender: appData.gender || 'male',
-          mobile: appData.mobile,
-          whatsapp: appData.whatsapp || appData.mobile,
-          email: appData.email || `${appData.mobile}@labmedix.org`,
-          bloodGroup: appData.bloodGroup || 'O+',
-          photoUrl: appData.photoUrl || '/logo.jpg',
-          address: appData.address || { villageArea: '', postOffice: '', policeStation: '', district: '', state: '', pinCode: '', fullAddress: '' },
-          emergencyContact: appData.emergencyContact || { name: '', relation: '', phone: '' },
-          medicalInfo: appData.medicalInfo || { chronicConditions: [], allergies: [], regularMedications: [] },
-          healthCardId: cardId,
-          membershipId: appData.membershipId || 'silver',
-          status: 'active',
-          createdAt: now,
-          updatedAt: now
-        };
+        let patientRecord: any;
+        const existingPatientSnap = await transaction.get(patientRef);
+        if (existingPatientSnap.exists()) {
+          patientRecord = {
+            ...existingPatientSnap.data(),
+            healthCardId: cardId,
+            membershipId: appData.membershipId || (existingPatientSnap.data() as any).membershipId || 'silver',
+            updatedAt: now
+          };
+          transaction.set(patientRef, patientRecord, { merge: true });
+        } else {
+          patientRecord = {
+            id: patientId,
+            fullName: appData.fullName,
+            dob: appData.dob || '1995-01-01',
+            age: appData.age || 30,
+            gender: appData.gender || 'male',
+            mobile: appData.mobile,
+            whatsapp: appData.whatsapp || appData.mobile,
+            email: appData.email || `${appData.mobile}@labmedix.org`,
+            bloodGroup: appData.bloodGroup || 'O+',
+            photoUrl: appData.photoUrl || '/logo.jpg',
+            address: appData.address || { villageArea: '', postOffice: '', policeStation: '', district: '', state: '', pinCode: '', fullAddress: '' },
+            emergencyContact: appData.emergencyContact || { name: '', relation: '', phone: '' },
+            medicalInfo: appData.medicalInfo || { chronicConditions: [], allergies: [], regularMedications: [] },
+            healthCardId: cardId,
+            membershipId: appData.membershipId || 'silver',
+            status: 'active',
+            createdAt: now,
+            updatedAt: now
+          };
+          transaction.set(patientRef, patientRecord);
+        }
 
         const newCard = {
           id: cardId,
@@ -1159,12 +1172,11 @@ export class ApiSyncService {
           ]
         };
 
-        transaction.set(patientRef, newPatient);
         transaction.set(cardRef, newCard);
         transaction.set(walletRef, newWallet);
         transaction.set(appRef, updatedApp, { merge: true });
 
-        return { success: true, application: updatedApp, patient: newPatient, card: newCard };
+        return { success: true, application: updatedApp, patient: patientRecord, card: newCard };
       });
 
       return result;

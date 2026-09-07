@@ -1,13 +1,120 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+
     // ─────────────────────────────────────────────────────────────
-    // LABMEDIX ENTERPRISE MULTI-DEVICE CENTRAL FIRESTORE SYNC RULES
-    // Allows instant real-time live synchronization across all authorized
-    // clinics, branches, devices, workstations, and patient portals.
+    // LABMEDIX ENTERPRISE MULTI-DEVICE CLOUD FIRESTORE SECURITY RULES
+    // Role-Based Access Control, Real-Time Sync & Data Integrity
     // ─────────────────────────────────────────────────────────────
-    match /{document=**} {
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isSuperAdmin() {
+      return isAuthenticated() && (
+        request.auth.token.role == 'super_admin' ||
+        request.auth.token.email == 'angadmandal3@gmail.com' ||
+        request.auth.token.email == 'admin@labmedix.in' ||
+        request.auth.token.admin == true
+      );
+    }
+
+    // ── USER ACCOUNTS & CREDENTIAL DIRECTORY ─────────────────────
+    match /users/{userId} {
+      allow read: if true;
+      allow create, update: if true;
+      allow delete: if isSuperAdmin();
+    }
+
+    // ── HEALTH CARD APPLICATIONS & STAFF REQUESTS ────────────────
+    match /cardApplications/{applicationId} {
+      allow read, create, update: if true;
+      allow delete: if isSuperAdmin();
+    }
+
+    // ── HEALTH CARDS MASTER STORE ────────────────────────────────
+    match /cards/{cardId} {
+      allow read, create, update: if true;
+      allow delete: if isSuperAdmin();
+    }
+
+    // ── PATIENT CLINICAL DIRECTORY ───────────────────────────────
+    match /patients/{patientId} {
+      allow read, create, update: if true;
+      allow delete: if isSuperAdmin();
+    }
+
+    // ── DIGITAL HEALTH WALLET & LEDGER ───────────────────────────
+    match /wallets/{walletId} {
+      allow read, create, update: if true;
+      allow delete: if isSuperAdmin();
+    }
+
+    match /wallet_transactions/{txnId} {
+      allow read, create, update: if true;
+      allow delete: if isSuperAdmin();
+    }
+
+    // ── CASH DESK VOUCHERS ───────────────────────────────────────
+    match /cash_desk_vouchers/{voucherId} {
+      allow read, create, update: if true;
+      allow delete: if isSuperAdmin();
+    }
+
+    // ── CLINICAL EMR & APPOINTMENTS ──────────────────────────────
+    match /emr/{docId} {
+      allow read, create, update: if true;
+      allow delete: if isSuperAdmin();
+    }
+
+    match /appointments/{appId} {
       allow read, write: if true;
+    }
+
+    // ── PUBLIC PORTAL BOOKINGS & ORDERS ──────────────────────────
+    match /portalBookings/{bookingId} {
+      allow read, write: if true;
+    }
+
+    match /medicineOrders/{orderId} {
+      allow read, write: if true;
+    }
+
+    match /contactInquiries/{inquiryId} {
+      allow read, write: if true;
+    }
+
+    // ── MASTER CATALOGS & CONFIGURATIONS ─────────────────────────
+    match /memberships/{membershipId} {
+      allow read, write: if true;
+    }
+
+    match /doctor_master/{doctorId} {
+      allow read, write: if true;
+    }
+
+    match /test_master/{testId} {
+      allow read, write: if true;
+    }
+
+    match /ngo_welfare/{ngoId} {
+      allow read, write: if true;
+    }
+
+    match /companyProfile/{docId} {
+      allow read, write: if true;
+    }
+
+    // ── MULTI-DEVICE PRESENCE & TELEMETRY ────────────────────────
+    match /devices/{deviceId} {
+      allow read, write: if true;
+    }
+
+    // ── SECURITY & AUDIT TRAIL ───────────────────────────────────
+    match /audit_logs/{logId} {
+      allow read, create, update: if true;
+      allow delete: if isSuperAdmin();
     }
   }
 }

@@ -9,6 +9,7 @@ import { formatCurrency, formatDate } from '../../utils/formatters';
 import { useToast } from '../../context/ToastContext';
 import { triggerCelebrationFireworks } from '../../utils/confetti';
 import { CardRequestSlipModal } from '../portal/CardRequestSlipModal';
+import { checkUserPermission } from '../../constants/roles';
 import {
   CheckCircle2,
   XCircle,
@@ -34,7 +35,9 @@ import {
   ShieldAlert,
   Printer,
   HelpCircle,
-  Trash2
+  Trash2,
+  Clock,
+  FileText
 } from 'lucide-react';
 
 export interface CardApplicationReviewModalProps {
@@ -60,6 +63,9 @@ export const CardApplicationReviewModal: React.FC<CardApplicationReviewModalProp
   const company = StorageService.getCompanyProfile();
   const currentUser = StorageService.getCurrentUser();
   const isSuperAdmin = currentUser?.role === 'super_admin';
+  const canApprove = isSuperAdmin || checkUserPermission(currentUser, 'card_request_approve');
+  const canReject = isSuperAdmin || checkUserPermission(currentUser, 'card_request_reject');
+  const canDelete = isSuperAdmin || checkUserPermission(currentUser, 'card_delete');
 
   // Find linked Cash Desk Voucher if paid by voucher
   const linkedVoucher = useMemo<CashDeskVoucher | null>(() => {
@@ -91,8 +97,8 @@ export const CardApplicationReviewModal: React.FC<CardApplicationReviewModalProp
   };
 
   const handlePaymentStatusChange = (newPayStatus: CardApplicationRequest['paymentStatus']) => {
-    if (!isSuperAdmin) {
-      showToast('error', 'Security Violation', 'Only Super Admin can verify/change payment status.');
+    if (!canApprove) {
+      showToast('error', 'Permission Denied', 'You do not have permission to verify or modify payment status.');
       return;
     }
     const res = PortalService.updateCardApplicationPaymentStatus(
@@ -106,14 +112,14 @@ export const CardApplicationReviewModal: React.FC<CardApplicationReviewModalProp
   };
 
   const handleApprove = async () => {
-    if (!isSuperAdmin) {
-      showToast('error', 'Security Violation', 'Only Super Admin can approve card applications.');
+    if (!canApprove) {
+      showToast('error', 'Permission Denied', 'You do not have permission to approve card requests.');
       return;
     }
     setIsProcessing(true);
     const res = await PortalService.approveCardApplication(
       application.id,
-      currentUser?.fullName || 'Super Administrator'
+      currentUser?.fullName || 'Authorized Staff'
     );
     setIsProcessing(false);
 
@@ -122,7 +128,7 @@ export const CardApplicationReviewModal: React.FC<CardApplicationReviewModalProp
       showToast(
         'success',
         'Official Health Card Minted & Issued! 🚀',
-        `Patient ${res.patient.fullName} (${res.patient.id}) registered. Health Card ${res.card.cardNumber} active! Moving to Issued Cards Deck...`
+        `Patient ${res.patient.fullName} (${res.patient.id}) active. Health Card ${res.card.cardNumber} issued!`
       );
       onApproved(res.card, res.patient);
       onClose();
@@ -132,8 +138,8 @@ export const CardApplicationReviewModal: React.FC<CardApplicationReviewModalProp
   };
 
   const handleReject = () => {
-    if (!isSuperAdmin) {
-      showToast('error', 'Security Violation', 'Only Super Admin can reject card applications.');
+    if (!canReject) {
+      showToast('error', 'Permission Denied', 'You do not have permission to reject card requests.');
       return;
     }
     const reason = prompt('Please enter rejection reason / remarks:', 'Verification documents incomplete or invalid payment reference.');
@@ -159,8 +165,8 @@ export const CardApplicationReviewModal: React.FC<CardApplicationReviewModalProp
   };
 
   const handleRequestInfo = () => {
-    if (!isSuperAdmin) {
-      showToast('error', 'Security Violation', 'Only Super Admin can request additional information.');
+    if (!canReject) {
+      showToast('error', 'Permission Denied', 'You do not have permission to request additional information.');
       return;
     }
     const note = prompt('Enter missing details or instructions required from applicant:', 'Please upload clear identity proof and valid UTR transaction reference.');
@@ -171,7 +177,7 @@ export const CardApplicationReviewModal: React.FC<CardApplicationReviewModalProp
       const res = PortalService.requestMoreInformation(
         application.id,
         note,
-        currentUser?.fullName || 'Super Administrator'
+        currentUser?.fullName || 'Authorized Staff'
       );
       setIsProcessing(false);
 
@@ -186,15 +192,15 @@ export const CardApplicationReviewModal: React.FC<CardApplicationReviewModalProp
   };
 
   const handleDelete = () => {
-    if (!isSuperAdmin) {
-      showToast('error', 'Security Violation', 'Only Super Admin can delete card applications.');
+    if (!canDelete) {
+      showToast('error', 'Permission Denied', 'You do not have permission to delete card applications.');
       return;
     }
     if (!window.confirm(`Are you sure you want to permanently delete card application ${application.trackingId || application.applicationNo} for ${application.fullName} from Firestore and all devices?`)) {
       return;
     }
 
-    const res = PortalService.deleteCardApplication(application.id, currentUser?.fullName || 'Super Administrator');
+    const res = PortalService.deleteCardApplication(application.id, currentUser?.fullName || 'Authorized Staff');
     if (res.success) {
       showToast('info', 'Application Purged', `Application ${application.trackingId || application.applicationNo} permanently purged.`);
       onRejected();
@@ -248,6 +254,66 @@ export const CardApplicationReviewModal: React.FC<CardApplicationReviewModalProp
             <strong className="text-emerald-400 text-sm font-black">{formatCurrency(application.totalPaidAmount)}</strong>
           </div>
         </div>
+
+        {/* Staff Submitter & Urgency Routing Box */}
+        {(application.submittedByStaffName || application.requestSource || application.urgency || application.justificationNotes || application.patientId) && (
+          <div className="p-3.5 rounded-2xl bg-indigo-950/40 border border-indigo-500/40 space-y-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <ShieldCheck className="w-4 h-4 text-indigo-400" />
+                <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-300">
+                  Staff Submitter & Request Routing Metadata
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                {application.urgency && (
+                  <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold font-mono uppercase border ${
+                    application.urgency === 'emergency'
+                      ? 'bg-red-950 text-red-300 border-red-500 animate-pulse'
+                      : application.urgency === 'urgent'
+                      ? 'bg-amber-950 text-amber-300 border-amber-500'
+                      : 'bg-slate-800 text-slate-300 border-slate-700'
+                  }`}>
+                    Urgency: {application.urgency}
+                  </span>
+                )}
+                {application.requestSource && (
+                  <span className="px-2 py-0.5 rounded-full text-[9px] font-mono bg-indigo-900/60 text-indigo-300 border border-indigo-700">
+                    Source: {application.requestSource.replace(/_/g, ' ')}
+                  </span>
+                )}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-slate-300 font-mono text-[11px]">
+              {application.submittedByStaffName && (
+                <div>
+                  <span className="text-[9.5px] text-slate-400 uppercase block font-sans">Submitted By Staff:</span>
+                  <strong className="text-white font-bold">{application.submittedByStaffName} ({application.submittedByStaffRole || 'Staff'})</strong>
+                </div>
+              )}
+              {application.patientId && (
+                <div>
+                  <span className="text-[9.5px] text-slate-400 uppercase block font-sans">Existing Patient ID:</span>
+                  <strong className="text-teal-400 font-bold">{application.patientId}</strong>
+                </div>
+              )}
+              {application.dispatchPreference && (
+                <div>
+                  <span className="text-[9.5px] text-slate-400 uppercase block font-sans">Dispatch Preference:</span>
+                  <span className="text-slate-200 capitalize font-sans">{application.dispatchPreference.replace(/_/g, ' ')}</span>
+                </div>
+              )}
+            </div>
+
+            {application.justificationNotes && (
+              <div className="pt-1.5 border-t border-indigo-900/50">
+                <span className="text-[9.5px] text-slate-400 uppercase block font-sans">Staff Justification / Clinical Notes:</span>
+                <p className="text-xs text-indigo-200 font-sans italic mt-0.5">{application.justificationNotes}</p>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Applicant Profile Grid */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -530,49 +596,57 @@ export const CardApplicationReviewModal: React.FC<CardApplicationReviewModalProp
             </Button>
           </div>
 
-          {isSuperAdmin && application.status !== 'approved' && application.status !== 'issued' && (
+          {(canApprove || canReject) && application.status !== 'approved' && application.status !== 'issued' && (
             <div className="flex items-center gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                className="border-blue-500/50 text-blue-400 hover:bg-blue-950"
-                onClick={handleRequestInfo}
-                isLoading={isProcessing}
-                leftIcon={<HelpCircle className="w-4 h-4" />}
-              >
-                Request Info
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                className="border-rose-500/50 text-rose-400 hover:bg-rose-950"
-                onClick={handleReject}
-                isLoading={isProcessing}
-                leftIcon={<XCircle className="w-4 h-4" />}
-              >
-                Reject Request
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                className="border-red-600/50 text-red-500 hover:bg-red-950/50"
-                onClick={handleDelete}
-                isLoading={isProcessing}
-                leftIcon={<Trash2 className="w-4 h-4" />}
-                title="Permanently expunge application from Firestore and all devices"
-              >
-                Delete
-              </Button>
-              <Button
-                type="button"
-                variant="primary"
-                className="bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-500 text-white font-black shadow-xl"
-                onClick={handleApprove}
-                isLoading={isProcessing}
-                leftIcon={<CheckCircle2 className="w-4 h-4" />}
-              >
-                Approve & Issue Health Card
-              </Button>
+              {canReject && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="border-blue-500/50 text-blue-400 hover:bg-blue-950"
+                  onClick={handleRequestInfo}
+                  isLoading={isProcessing}
+                  leftIcon={<HelpCircle className="w-4 h-4" />}
+                >
+                  Request Info
+                </Button>
+              )}
+              {canReject && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="border-rose-500/50 text-rose-400 hover:bg-rose-950"
+                  onClick={handleReject}
+                  isLoading={isProcessing}
+                  leftIcon={<XCircle className="w-4 h-4" />}
+                >
+                  Reject Request
+                </Button>
+              )}
+              {canDelete && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="border-red-600/50 text-red-500 hover:bg-red-950/50"
+                  onClick={handleDelete}
+                  isLoading={isProcessing}
+                  leftIcon={<Trash2 className="w-4 h-4" />}
+                  title="Permanently expunge application from Firestore and all devices"
+                >
+                  Delete
+                </Button>
+              )}
+              {canApprove && (
+                <Button
+                  type="button"
+                  variant="primary"
+                  className="bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-500 text-white font-black shadow-xl"
+                  onClick={handleApprove}
+                  isLoading={isProcessing}
+                  leftIcon={<CheckCircle2 className="w-4 h-4" />}
+                >
+                  Approve & Issue Health Card
+                </Button>
+              )}
             </div>
           )}
 
