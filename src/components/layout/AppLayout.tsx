@@ -8,6 +8,7 @@ import { ToastContainer } from '../common/ToastContainer';
 import { BackupReminderNotification } from '../common/BackupReminderNotification';
 import { DeviceRevokedModal } from '../common/DeviceRevokedModal';
 import { FloatingActionButton } from '../common/FloatingActionButton';
+import { ModuleErrorBoundary } from '../common/ModuleErrorBoundary';
 
 export const AppLayout: React.FC = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -25,7 +26,9 @@ export const AppLayout: React.FC = () => {
           <Header onToggleSidebar={() => setSidebarOpen(!sidebarOpen)} />
         </div>
         <main className="flex-1 p-4 sm:p-6 lg:p-8 max-w-7xl w-full mx-auto print:p-0 print:m-0 print:max-w-none print:w-full">
-          <Outlet />
+          <ModuleErrorBoundary>
+            <Outlet />
+          </ModuleErrorBoundary>
         </main>
       </div>
 

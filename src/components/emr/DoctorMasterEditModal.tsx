@@ -44,6 +44,7 @@ export const DoctorMasterEditModal: React.FC<DoctorMasterEditModalProps> = ({
   const isEditing = !!doctor;
 
   // Form State
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [name, setName] = useState('');
   const [qualification, setQualification] = useState('');
   const [speciality, setSpeciality] = useState('Cardiology & Interventional Medicine');
@@ -123,68 +124,77 @@ export const DoctorMasterEditModal: React.FC<DoctorMasterEditModalProps> = ({
       return;
     }
 
-    const cleanUsername = username.trim() ? username.trim().toLowerCase().replace(/\s+/g, '.') : name.toLowerCase().replace(/[^a-z0-9]/g, '.');
+    if (isSubmitting) return;
+    setIsSubmitting(true);
 
-    if (isEditing && doctor) {
-      const res = DoctorMasterService.updateDoctor(doctor.id, {
-        name,
-        qualification,
-        speciality,
-        department,
-        regNumber,
-        phone,
-        email,
-        opdRoom,
-        avatarUrl,
-        pinCode,
-        standardFee,
-        followUpFee,
-        telemedicineFee,
-        cardholderDiscountPercent,
-        bloodCommissionPercent,
-        status,
-        opdTiming
-      }, 'super_admin');
+    try {
+      const cleanUsername = username.trim() ? username.trim().toLowerCase().replace(/\s+/g, '.') : name.toLowerCase().replace(/[^a-z0-9]/g, '.');
 
-      if (res.success) {
-        triggerCelebrationFireworks();
-        showToast('success', 'Doctor Master Updated', `${name} profile and commission matrix updated.`);
-        onSaved();
-        onClose();
+      if (isEditing && doctor) {
+        const res = DoctorMasterService.updateDoctor(doctor.id, {
+          name,
+          qualification,
+          speciality,
+          department,
+          regNumber,
+          phone,
+          email,
+          opdRoom,
+          avatarUrl,
+          pinCode,
+          standardFee,
+          followUpFee,
+          telemedicineFee,
+          cardholderDiscountPercent,
+          bloodCommissionPercent,
+          status,
+          opdTiming
+        }, 'super_admin');
+
+        if (res.success) {
+          triggerCelebrationFireworks();
+          showToast('success', 'Doctor Master Updated', `${name} profile and commission matrix updated.`);
+          onSaved();
+          onClose();
+        } else {
+          showToast('error', 'Update Failed', res.error);
+        }
       } else {
-        showToast('error', 'Update Failed', res.error);
-      }
-    } else {
-      const res = DoctorMasterService.createDoctor({
-        name,
-        qualification,
-        speciality,
-        department,
-        regNumber,
-        phone,
-        email: email || `${cleanUsername}@labmedix.org`,
-        opdRoom,
-        avatarUrl: avatarUrl || 'https://images.unsplash.com/photo-1622253692010-333f2da6031d?w=400&auto=format&fit=crop&q=80',
-        username: cleanUsername,
-        pinCode,
-        standardFee,
-        followUpFee,
-        telemedicineFee,
-        cardholderDiscountPercent,
-        bloodCommissionPercent,
-        status,
-        availableDays: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
-        opdTiming
-      }, 'super_admin');
+        const res = DoctorMasterService.createDoctor({
+          name,
+          qualification,
+          speciality,
+          department,
+          regNumber,
+          phone,
+          email: email || `${cleanUsername}@labmedix.org`,
+          opdRoom,
+          avatarUrl: avatarUrl || 'https://images.unsplash.com/photo-1622253692010-333f2da6031d?w=400&auto=format&fit=crop&q=80',
+          username: cleanUsername,
+          pinCode,
+          standardFee,
+          followUpFee,
+          telemedicineFee,
+          cardholderDiscountPercent,
+          bloodCommissionPercent,
+          status,
+          availableDays: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
+          opdTiming
+        }, 'super_admin');
 
-      if (res.success && res.doctor) {
-        triggerCelebrationFireworks();
-        showToast('success', 'Doctor Master Created', `${res.doctor.name} registered with Auto User ID @${res.doctor.username} & PIN ${res.doctor.pinCode}.`);
-        onSaved();
-        onClose();
-      } else {
-        showToast('error', 'Registration Failed', res.error);
+        if (res.success && res.doctor) {
+          triggerCelebrationFireworks();
+          showToast('success', 'Doctor Master Created', `${res.doctor.name} registered with Auto User ID @${res.doctor.username} & PIN ${res.doctor.pinCode}.`);
+          onSaved();
+          onClose();
+        } else {
+          showToast('error', 'Registration Failed', res.error);
+        }
       }
+    } catch (err: any) {
+      showToast('error', 'Operation Failed', err?.message || 'Failed to process Doctor Master entry.');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -417,6 +427,7 @@ export const DoctorMasterEditModal: React.FC<DoctorMasterEditModalProps> = ({
             variant="outline"
             size="sm"
             onClick={onClose}
+            disabled={isSubmitting}
           >
             Cancel
           </Button>
@@ -424,6 +435,8 @@ export const DoctorMasterEditModal: React.FC<DoctorMasterEditModalProps> = ({
             type="submit"
             variant="primary"
             size="sm"
+            disabled={isSubmitting}
+            isLoading={isSubmitting}
             className="bg-gradient-to-r from-purple-600 via-indigo-600 to-teal-500 text-white font-black shadow-lg"
             leftIcon={<Save className="w-4 h-4 text-white" />}
           >

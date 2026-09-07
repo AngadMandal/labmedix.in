@@ -1,3 +1,5 @@
+import { doc, writeBatch } from 'firebase/firestore';
+import { db } from './firebaseService';
 import { StorageService } from './storage';
 import { WalletService } from './walletService';
 import { EMRService } from './emrService';
@@ -392,8 +394,27 @@ export class PortalService {
     approvedBy: string = 'Super Administrator'
   ): Promise<{ success: boolean; application?: CardApplicationRequest; patient?: any; card?: any; error?: string }> {
     try {
+      // 0. Strict Idempotency Check: Prevent duplicate card minting or double ledger updates
+      const allApps = this.getCardApplications();
+      const existingApp = allApps.find(a => a.id === applicationId || a.trackingId === applicationId);
+      if (existingApp && (existingApp.status === 'approved' || existingApp.approvedCardNumber)) {
+        const cards = StorageService.getCards();
+        const existingCard = cards.find(c => c.cardNumber === existingApp.approvedCardNumber || c.patientId === existingApp.approvedPatientId);
+        const patients = StorageService.getPatients();
+        const existingPatient = existingApp.approvedPatientId ? patients.find(p => p.id === existingApp.approvedPatientId) : undefined;
+        return {
+          success: true,
+          application: existingApp,
+          patient: existingPatient,
+          card: existingCard
+        };
+      }
+
       // 1. Try atomic Firestore transaction
-      const txResult = await ApiSyncService.approveApplicationTransaction(applicationId, approvedBy).catch(() => ({ success: false })) as any;
+      const txResult = await ApiSyncService.approveApplicationTransaction(applicationId, approvedBy).catch((err: any) => ({
+        success: false,
+        error: err?.message || 'Transaction failed'
+      })) as any;
 
       if (txResult && txResult.success && txResult.application) {
         const all = this.getCardApplications();
@@ -436,6 +457,10 @@ export class PortalService {
         );
 
         return { success: true, application: txResult.application, patient: txResult.patient, card: txResult.card };
+      }
+
+      if (txResult && txResult.error && txResult.error.toLowerCase().includes('already been approved')) {
+        return { success: false, error: txResult.error };
       }
 
       // 2. Try Express backend endpoint
@@ -482,8 +507,8 @@ export class PortalService {
       }
 
       // 3. Guaranteed Local Fallback (Online/Offline)
-      const allApps = this.getCardApplications();
-      const app = allApps.find(a => a.id === applicationId || a.trackingId === applicationId);
+      const fallbackApps = this.getCardApplications();
+      const app = fallbackApps.find(a => a.id === applicationId || a.trackingId === applicationId);
       if (!app) {
         return { success: false, error: 'Application not found in storage.' };
       }
@@ -584,14 +609,25 @@ export class PortalService {
         actor: approvedBy
       });
 
-      StorageService.setItem(this.CARD_APPLICATIONS_KEY, allApps);
-      ApiSyncService.saveDocument('cardApplications', app.id, app).catch(() => {});
-      ApiSyncService.syncCardApplications(allApps).catch(() => {});
-
+      StorageService.setItem(this.CARD_APPLICATIONS_KEY, fallbackApps);
       const cards = StorageService.getCards();
       cards.unshift(newCard as any);
       StorageService.saveCards(cards);
-      ApiSyncService.saveDocument('cards', newCard.id, newCard).catch(() => {});
+
+      // Multi-device Firestore atomic batch commit
+      try {
+        const batch = writeBatch(db);
+        batch.set(doc(db, 'cardApplications', app.id), JSON.parse(JSON.stringify(app)), { merge: true });
+        batch.set(doc(db, 'cards', newCard.id), JSON.parse(JSON.stringify(newCard)), { merge: true });
+        batch.set(doc(db, 'patients', patientRecord.id), JSON.parse(JSON.stringify(patientRecord)), { merge: true });
+        await batch.commit();
+      } catch (batchErr) {
+        console.warn('[PortalService] Batch commit notice (falling back to queue):', batchErr);
+        ApiSyncService.saveDocument('cardApplications', app.id, app).catch(() => {});
+        ApiSyncService.saveDocument('cards', newCard.id, newCard).catch(() => {});
+        ApiSyncService.saveDocument('patients', patientRecord.id, patientRecord).catch(() => {});
+      }
+      ApiSyncService.syncCardApplications(fallbackApps).catch(() => {});
       ApiSyncService.syncCards(cards).catch(() => {});
       ApiSyncService.syncPatients(patients).catch(() => {});
 

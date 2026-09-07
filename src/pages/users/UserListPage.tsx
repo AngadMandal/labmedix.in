@@ -190,6 +190,7 @@ export const UserListPage: React.FC = () => {
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [pinResetUser, setPinResetUser] = useState<User | null>(null);
   const [newPin, setNewPin] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [isMatrixModalOpen, setIsMatrixModalOpen] = useState(false);
 
   // Permissions & Modules Studio Modal State
@@ -365,60 +366,69 @@ Note: Keep these credentials confidential.`;
       return;
     }
 
-    const res = await UserService.createUser({
-      username,
-      fullName,
-      email,
-      password: password.trim() || undefined,
-      phone,
-      workPhone,
-      department,
-      designation,
-      accessZone,
-      nationalId,
-      licenseNo,
-      employeeNo: employeeNo.trim() || undefined,
-      emergencyContact,
-      emergencyContactName,
-      joiningDate,
-      expiryDate,
-      bloodGroup,
-      photoUrl,
-      role,
-      pinCode,
-      cardThemeWish,
-      cardMaterialWish
-    });
+    if (isSubmitting) return;
+    setIsSubmitting(true);
 
-    if (res.error) {
-      showToast('error', 'Creation Failed', res.error);
-    } else {
-      triggerCelebrationFireworks();
-      showToast('success', 'Staff Created', `${res.user.fullName} registered with ID ${res.user.staffId}.`);
-
-      // Automatically dispatch credentials email to staff
-      const staffPass = res.user.password || 'Lmdx@2026!';
-      const staffPin = res.user.pinCode || '1234';
-      const loginUrl = `${window.location.origin}/#/login`;
-      const emailSubject = `[LABMEDIX ENTERPRISE] Official Staff Account & Portal Credentials - ${res.user.fullName}`;
-      const emailBody = `Dear ${res.user.fullName},\n\nYour official staff account has been successfully created in the LABMEDIX AutoHealth Enterprise system.\n\nHere are your secure login credentials:\n\n- Staff ID: ${res.user.staffId}\n- Role: ${res.user.role.toUpperCase()} (${res.user.designation})\n- Department: ${res.user.department}\n- Username: ${res.user.username}\n- Email: ${res.user.email}\n- Password: ${staffPass}\n- Security PIN: ${staffPin}\n\nLogin Portal: ${loginUrl}\n\nPlease keep these credentials strictly confidential.\n\nWarm regards,\nSovereign Super Admin Office\nLABMEDIX AutoHealth Enterprise`;
-
-      GmailService.sendEmail(undefined, res.user.email, emailSubject, emailBody).then((sent) => {
-        if (sent) {
-          UserService.updateUser(res.user.id, { emailSent: true });
-          showToast('success', 'Email Dispatched!', `Staff ID & password successfully sent to ${res.user.email}`);
-        } else {
-          showToast('info', 'Email Queued', `Staff created. Email dispatch queued for ${res.user.email}`);
-        }
-        refreshList();
-      }).catch(() => {
-        showToast('success', 'Credentials Ready', `Staff created successfully for ${res.user.fullName}.`);
-        refreshList();
+    try {
+      const res = await UserService.createUser({
+        username,
+        fullName,
+        email,
+        password: password.trim() || undefined,
+        phone,
+        workPhone,
+        department,
+        designation,
+        accessZone,
+        nationalId,
+        licenseNo,
+        employeeNo: employeeNo.trim() || undefined,
+        emergencyContact,
+        emergencyContactName,
+        joiningDate,
+        expiryDate,
+        bloodGroup,
+        photoUrl,
+        role,
+        pinCode,
+        cardThemeWish,
+        cardMaterialWish
       });
 
-      setIsAddModalOpen(false);
-      resetForm();
-      refreshList();
+      if (res.error) {
+        showToast('error', 'Creation Failed', res.error);
+      } else {
+        triggerCelebrationFireworks();
+        showToast('success', 'Staff Created', `${res.user.fullName} registered with ID ${res.user.staffId}.`);
+
+        // Automatically dispatch credentials email to staff
+        const staffPass = res.user.password || 'Lmdx@2026!';
+        const staffPin = res.user.pinCode || '1234';
+        const loginUrl = `${window.location.origin}/#/login`;
+        const emailSubject = `[LABMEDIX ENTERPRISE] Official Staff Account & Portal Credentials - ${res.user.fullName}`;
+        const emailBody = `Dear ${res.user.fullName},\n\nYour official staff account has been successfully created in the LABMEDIX AutoHealth Enterprise system.\n\nHere are your secure login credentials:\n\n- Staff ID: ${res.user.staffId}\n- Role: ${res.user.role.toUpperCase()} (${res.user.designation})\n- Department: ${res.user.department}\n- Username: ${res.user.username}\n- Email: ${res.user.email}\n- Password: ${staffPass}\n- Security PIN: ${staffPin}\n\nLogin Portal: ${loginUrl}\n\nPlease keep these credentials strictly confidential.\n\nWarm regards,\nSovereign Super Admin Office\nLABMEDIX AutoHealth Enterprise`;
+
+        GmailService.sendEmail(undefined, res.user.email, emailSubject, emailBody).then((sent) => {
+          if (sent) {
+            UserService.updateUser(res.user.id, { emailSent: true });
+            showToast('success', 'Email Dispatched!', `Staff ID & password successfully sent to ${res.user.email}`);
+          } else {
+            showToast('info', 'Email Queued', `Staff created. Email dispatch queued for ${res.user.email}`);
+          }
+          refreshList();
+        }).catch(() => {
+          showToast('success', 'Credentials Ready', `Staff created successfully for ${res.user.fullName}.`);
+          refreshList();
+        });
+
+        setIsAddModalOpen(false);
+        resetForm();
+        refreshList();
+      }
+    } catch (err: any) {
+      showToast('error', 'Creation Failed', err?.message || 'Failed to create staff account');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -453,36 +463,44 @@ Note: Keep these credentials confidential.`;
       return;
     }
     if (!editingUser) return;
+    if (isSubmitting) return;
+    setIsSubmitting(true);
 
-    UserService.updateUser(editingUser.id, {
-      username: username.trim(),
-      fullName: fullName.trim(),
-      email: email.trim(),
-      ...(password.trim() ? { password: password.trim() } : {}),
-      phone,
-      workPhone,
-      department,
-      designation,
-      accessZone,
-      nationalId,
-      licenseNo,
-      employeeNo: employeeNo.trim() || undefined,
-      emergencyContact,
-      emergencyContactName,
-      joiningDate,
-      expiryDate,
-      bloodGroup,
-      photoUrl,
-      role,
-      cardThemeWish,
-      cardMaterialWish
-    });
+    try {
+      UserService.updateUser(editingUser.id, {
+        username: username.trim(),
+        fullName: fullName.trim(),
+        email: email.trim(),
+        ...(password.trim() ? { password: password.trim() } : {}),
+        phone,
+        workPhone,
+        department,
+        designation,
+        accessZone,
+        nationalId,
+        licenseNo,
+        employeeNo: employeeNo.trim() || undefined,
+        emergencyContact,
+        emergencyContactName,
+        joiningDate,
+        expiryDate,
+        bloodGroup,
+        photoUrl,
+        role,
+        cardThemeWish,
+        cardMaterialWish
+      });
 
-    triggerCelebrationFireworks();
-    showToast('success', 'Staff Updated', `Changes to ${fullName} saved.`);
-    setEditingUser(null);
-    setPassword('');
-    refreshList();
+      triggerCelebrationFireworks();
+      showToast('success', 'Staff Updated', `Changes to ${fullName} saved.`);
+      setEditingUser(null);
+      setPassword('');
+      refreshList();
+    } catch (err: any) {
+      showToast('error', 'Update Failed', err?.message || 'Failed to update staff record');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   // Save Card Theme Wish Directly from ID Modal
@@ -510,13 +528,21 @@ Note: Keep these credentials confidential.`;
       return;
     }
     if (!pinResetUser || !newPin) return;
+    if (isSubmitting) return;
+    setIsSubmitting(true);
 
-    UserService.resetPin(pinResetUser.id, newPin);
-    triggerCelebrationFireworks();
-    showToast('success', 'PIN Reset', `Security PIN for ${pinResetUser.fullName} updated to ${newPin}.`);
-    setPinResetUser(null);
-    setNewPin('');
-    refreshList();
+    try {
+      UserService.resetPin(pinResetUser.id, newPin);
+      triggerCelebrationFireworks();
+      showToast('success', 'PIN Reset', `Security PIN for ${pinResetUser.fullName} updated to ${newPin}.`);
+      setPinResetUser(null);
+      setNewPin('');
+      refreshList();
+    } catch (err: any) {
+      showToast('error', 'PIN Reset Failed', err?.message || 'Failed to reset PIN');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   // 4. Toggle Status (Super Admin Exclusive)
@@ -1790,8 +1816,8 @@ Note: Keep these credentials confidential.`;
           </div>
 
           <div className="flex justify-end gap-3 pt-4 border-t border-slate-100 dark:border-slate-800">
-            <Button type="button" variant="outline" onClick={() => setIsAddModalOpen(false)}>Cancel</Button>
-            <Button type="submit" variant="primary">Create Staff Account</Button>
+            <Button type="button" variant="outline" onClick={() => setIsAddModalOpen(false)} disabled={isSubmitting}>Cancel</Button>
+            <Button type="submit" variant="primary" disabled={isSubmitting} isLoading={isSubmitting}>Create Staff Account</Button>
           </div>
         </form>
       </Modal>
@@ -1958,8 +1984,8 @@ Note: Keep these credentials confidential.`;
             </div>
 
             <div className="flex justify-end gap-3 pt-4 border-t border-slate-100 dark:border-slate-800">
-              <Button type="button" variant="outline" onClick={() => setEditingUser(null)}>Cancel</Button>
-              <Button type="submit" variant="primary">Save Changes</Button>
+              <Button type="button" variant="outline" onClick={() => setEditingUser(null)} disabled={isSubmitting}>Cancel</Button>
+              <Button type="submit" variant="primary" disabled={isSubmitting} isLoading={isSubmitting}>Save Changes</Button>
             </div>
           </form>
         </Modal>
@@ -1988,8 +2014,8 @@ Note: Keep these credentials confidential.`;
             </button>
 
             <div className="flex justify-end gap-3 pt-4 border-t border-slate-100 dark:border-slate-800">
-              <Button type="button" variant="outline" onClick={() => setPinResetUser(null)}>Cancel</Button>
-              <Button type="submit" variant="primary">Update PIN</Button>
+              <Button type="button" variant="outline" onClick={() => setPinResetUser(null)} disabled={isSubmitting}>Cancel</Button>
+              <Button type="submit" variant="primary" disabled={isSubmitting} isLoading={isSubmitting}>Update PIN</Button>
             </div>
           </form>
         </Modal>

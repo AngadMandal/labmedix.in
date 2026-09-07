@@ -101,22 +101,29 @@ export const WalletTransactionModal: React.FC<WalletTransactionModalProps> = ({
       return;
     }
 
+    if (isSubmitting) return;
     setIsSubmitting(true);
-    const result = WalletService.addTransaction(
-      patient.id,
-      type,
-      numAmount,
-      notes || `Wallet ${type.toUpperCase()} - Clinical Health Services`
-    );
 
-    setIsSubmitting(false);
-    if (result.error) {
-      showToast('error', 'Transaction Failed', result.error);
-    } else {
-      triggerCelebrationFireworks();
-      showToast('success', 'Transaction Successful', `${type.toUpperCase()} of ${formatCurrency(numAmount)} settled in health wallet.`);
-      onSuccess(result.transaction, result.wallet);
-      onClose();
+    try {
+      const result = WalletService.addTransaction(
+        patient.id,
+        type,
+        numAmount,
+        notes || `Wallet ${type.toUpperCase()} - Clinical Health Services`
+      );
+
+      if (result.error) {
+        showToast('error', 'Transaction Failed', result.error);
+      } else {
+        triggerCelebrationFireworks();
+        showToast('success', 'Transaction Successful', `${type.toUpperCase()} of ${formatCurrency(numAmount)} settled in health wallet.`);
+        onSuccess(result.transaction, result.wallet);
+        onClose();
+      }
+    } catch (err: any) {
+      showToast('error', 'Transaction Failed', err?.message || 'Wallet transaction failed.');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -131,38 +138,45 @@ export const WalletTransactionModal: React.FC<WalletTransactionModalProps> = ({
       return;
     }
 
+    if (isVerifyingVoucher) return;
     setIsVerifyingVoucher(true);
-    const cashier = StorageService.getCurrentUser()?.fullName || 'Hospital Cashier';
-    const res = CashDeskVoucherService.verifyAndRedeemVoucher(
-      voucherCodeInput.trim(),
-      voucherPinInput.trim(),
-      cashier,
-      {
-        redemptionChannel: 'wallet_credit',
-        patientId: patient.id,
-        patientName: patient.fullName,
-        creditPatientWallet: true,
-        redemptionNotes: `Redeemed at hospital counter for ${patient.fullName} wallet float`
+
+    try {
+      const cashier = StorageService.getCurrentUser()?.fullName || 'Hospital Cashier';
+      const res = CashDeskVoucherService.verifyAndRedeemVoucher(
+        voucherCodeInput.trim(),
+        voucherPinInput.trim(),
+        cashier,
+        {
+          redemptionChannel: 'wallet_credit',
+          patientId: patient.id,
+          patientName: patient.fullName,
+          creditPatientWallet: true,
+          redemptionNotes: `Redeemed at hospital counter for ${patient.fullName} wallet float`
+        }
+      );
+
+      if (!res.success || !res.voucher) {
+        showToast('error', 'Voucher Redemption Failed', res.error || 'Invalid voucher or PIN.');
+        return;
       }
-    );
-    setIsVerifyingVoucher(false);
 
-    if (!res.success || !res.voucher) {
-      showToast('error', 'Voucher Redemption Failed', res.error || 'Invalid voucher or PIN.');
-      return;
+      const v = res.voucher;
+      triggerCelebrationFireworks();
+      showToast('success', 'Voucher Redeemed & Credited!', `Added ${formatCurrency(v.amount)} from Voucher ${v.voucherCode} to ${patient.fullName}'s wallet.`);
+      
+      // Fetch updated wallet
+      const updatedWallet = WalletService.getByPatientId(patient.id) || wallet;
+      const lastTxn = WalletService.getTransactions(patient.id)[0];
+      if (updatedWallet) {
+        onSuccess(lastTxn, updatedWallet);
+      }
+      onClose();
+    } catch (err: any) {
+      showToast('error', 'Voucher Redemption Error', err?.message || 'Failed to process voucher redemption.');
+    } finally {
+      setIsVerifyingVoucher(false);
     }
-
-    const v = res.voucher;
-    triggerCelebrationFireworks();
-    showToast('success', 'Voucher Redeemed & Credited!', `Added ${formatCurrency(v.amount)} from Voucher ${v.voucherCode} to ${patient.fullName}'s wallet.`);
-    
-    // Fetch updated wallet
-    const updatedWallet = WalletService.getByPatientId(patient.id) || wallet;
-    const lastTxn = WalletService.getTransactions(patient.id)[0];
-    if (updatedWallet) {
-      onSuccess(lastTxn, updatedWallet);
-    }
-    onClose();
   };
 
   return (

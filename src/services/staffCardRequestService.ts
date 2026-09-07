@@ -9,6 +9,8 @@ import {
   ApplicationFamilyMember,
   ClinicalVitals
 } from '../types';
+import { doc, writeBatch } from 'firebase/firestore';
+import { db } from './firebaseService';
 import { StorageService } from './storage';
 import { PortalService } from './portalService';
 import { BillService } from './billService';
@@ -314,12 +316,21 @@ export class StaffCardRequestService {
     StorageService.saveBill(newBill);
     StorageService.saveCardRequestTransaction(newTransaction);
 
-    // Multi-device Firestore sync
-    await Promise.allSettled([
-      ApiSyncService.saveDocument('cardApplications', newApplication.id, newApplication),
-      ApiSyncService.saveDocument('bills', newBill.id, newBill),
-      ApiSyncService.saveDocument('card_transactions', newTransaction.id, newTransaction)
-    ]);
+    // Multi-device Firestore atomic batch sync
+    try {
+      const batch = writeBatch(db);
+      batch.set(doc(db, 'cardApplications', newApplication.id), JSON.parse(JSON.stringify(newApplication)), { merge: true });
+      batch.set(doc(db, 'bills', newBill.id), JSON.parse(JSON.stringify(newBill)), { merge: true });
+      batch.set(doc(db, 'card_transactions', newTransaction.id), JSON.parse(JSON.stringify(newTransaction)), { merge: true });
+      await batch.commit();
+    } catch (batchErr) {
+      console.warn('[StaffCardRequestService] Batch commit notice (falling back to queue):', batchErr);
+      await Promise.allSettled([
+        ApiSyncService.saveDocument('cardApplications', newApplication.id, newApplication),
+        ApiSyncService.saveDocument('bills', newBill.id, newBill),
+        ApiSyncService.saveDocument('card_transactions', newTransaction.id, newTransaction)
+      ]);
+    }
 
     // 11. Comprehensive Audit Logging
     AuditService.log(

@@ -345,6 +345,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       } catch {}
       recordActivity();
       MultiDeviceSyncService.registerOrUpdateDeviceSession(userOrUsername).catch(() => {});
+      // ⚡ Re-engage real-time Central Firestore listeners for the authorized session
+      ApiSyncService.subscribeToAll();
       return { success: true };
     }
     const res = AuthService.loginWithUsername(userOrUsername);
@@ -357,6 +359,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       } catch {}
       recordActivity();
       MultiDeviceSyncService.registerOrUpdateDeviceSession(res.user).catch(() => {});
+      // ⚡ Re-engage real-time Central Firestore listeners for the authorized session
+      ApiSyncService.subscribeToAll();
       return { success: true };
     }
     return { success: false, error: res.error };
@@ -384,6 +388,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setCurrentUser(null);
     setIsIdleWarningOpen(false);
     MultiDeviceSyncService.registerOrUpdateDeviceSession(null).catch(() => {});
+    window.dispatchEvent(new CustomEvent('labmedix_session_ended'));
   };
 
   // ─────────────────────────────────────────────────────────────
