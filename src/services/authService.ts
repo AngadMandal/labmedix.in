@@ -116,12 +116,24 @@ export class AuthService {
   // ==========================================
   // CREDENTIAL & SECURITY PIN VALIDATION
   // ==========================================
-  public static validateCredentials(username: string, passwordOrPin: string): { success: boolean; user?: User; error?: string; attemptsLeft?: number; isLocked?: boolean; remainingSeconds?: number } {
-    const cleanUname = (username || 'angadmandal3@gmail.com').trim().toLowerCase().replace(/\s+/g, '');
+  public static validateCredentials(usernameOrEmail: string, passwordOrPin: string): { success: boolean; user?: User; error?: string; attemptsLeft?: number; isLocked?: boolean; remainingSeconds?: number } {
+    let cleanEmail = (usernameOrEmail || 'angadmandal3@gmail.com').trim().toLowerCase().replace(/\s+/g, '');
     const cleanPass = (passwordOrPin || '').trim();
 
+    if (cleanEmail === 'superadmin') {
+      cleanEmail = 'angadmandal3@gmail.com';
+    }
+
+    // Enforce email format for all staff accounts
+    if (!cleanEmail.includes('@')) {
+      return {
+        success: false,
+        error: 'Staff authentication requires your unique registered email address. Manual staff IDs or usernames cannot be used to log in.'
+      };
+    }
+
     // Super Admin auto-bypass lockout for root password
-    const isRootAttempt = cleanUname === 'angadmandal3@gmail.com' || cleanUname === 'superadmin' || cleanUname === 'admin@labmedix.org' || cleanUname === 'admin';
+    const isRootAttempt = cleanEmail === 'angadmandal3@gmail.com' || cleanEmail === 'admin@labmedix.org' || cleanEmail === 'admin@labmedix.in';
     const isMasterPass = 
       cleanPass === 'Angad@1999' ||
       cleanPass === 'LabMedix@2026Root#' || 
@@ -131,13 +143,13 @@ export class AuthService {
       cleanPass.toLowerCase() === 'labmedix2026root#';
 
     if (isRootAttempt && isMasterPass) {
-      this.resetFailedAttempts(cleanUname);
+      this.resetFailedAttempts(cleanEmail);
       this.resetFailedAttempts('angadmandal3@gmail.com');
       this.resetFailedAttempts('superadmin');
     }
 
     // Check account lockout status
-    const lockStatus = this.isAccountLocked(cleanUname);
+    const lockStatus = this.isAccountLocked(cleanEmail);
     if (lockStatus.locked && !(isRootAttempt && isMasterPass)) {
       return {
         success: false,
@@ -150,47 +162,26 @@ export class AuthService {
     const users = StorageService.getUsers();
     let user: User | undefined;
 
-    // Strict explicit separation between superadmin and admin
-    if (cleanUname === 'angadmandal3@gmail.com' || cleanUname === 'superadmin' || cleanUname === 'admin@labmedix.org') {
+    // Strict explicit matching by registered email address
+    if (cleanEmail === 'angadmandal3@gmail.com' || cleanEmail === 'admin@labmedix.org' || cleanEmail === 'admin@labmedix.in') {
       user = users.find(u => 
         u.role === 'super_admin' || 
-        (u.username && u.username.trim().toLowerCase().replace(/\s+/g, '') === 'angadmandal3@gmail.com') ||
-        (u.email && u.email.trim().toLowerCase().replace(/\s+/g, '') === 'angadmandal3@gmail.com') ||
+        (u.email && u.email.trim().toLowerCase().replace(/\s+/g, '') === cleanEmail) ||
         (u.username && u.username.trim().toLowerCase().replace(/\s+/g, '') === 'superadmin')
       ) || users[0];
       if (user) {
         user.role = 'super_admin';
       }
-    } else if (cleanUname === 'admin' || cleanUname === 'ops@labmedix.org') {
-      user = users.find(u => (u.role === 'admin' || (u.username && u.username.trim().toLowerCase().replace(/\s+/g, '') === 'admin')) && u.username !== 'superadmin' && u.username !== 'angadmandal3@gmail.com') || users.find(u => u.role === 'admin');
     } else {
-      // 1. Match on normalized username, email, staffId, employeeNo, id, phone, or role
-      user = users.find(u => {
-        const uName = (u.username || '').trim().toLowerCase().replace(/\s+/g, '');
-        const uEmail = (u.email || '').trim().toLowerCase().replace(/\s+/g, '');
-        const uStaff = (u.staffId || '').trim().toLowerCase().replace(/\s+/g, '');
-        const uEmp = (u.employeeNo || '').trim().toLowerCase().replace(/\s+/g, '');
-        const uId = (u.id || '').trim().toLowerCase().replace(/\s+/g, '');
-        const uPhone = (u.phone || '').trim().replace(/\D/g, '');
-        const uRole = (u.role || '').trim().toLowerCase().replace(/\s+/g, '');
-        const cleanDigits = cleanUname.replace(/\D/g, '');
-        return uName === cleanUname || 
-               uEmail === cleanUname || 
-               uStaff === cleanUname || 
-               uEmp === cleanUname || 
-               uId === cleanUname || 
-               (cleanDigits.length >= 7 && uPhone.includes(cleanDigits)) ||
-               uRole === cleanUname;
-      });
+      user = users.find(u => u.email && u.email.trim().toLowerCase().replace(/\s+/g, '') === cleanEmail);
     }
 
     if (!user) {
-      // User not found — reject login. Only Super Admin can create new staff accounts.
-      const failResult = this.recordFailedAttempt(cleanUname);
-      AuditService.log('SECURITY_LOGIN_FAILED', 'auth', `Login attempt for unknown user [${cleanUname}]. Access denied.`, undefined);
+      const failResult = this.recordFailedAttempt(cleanEmail);
+      AuditService.log('SECURITY_LOGIN_FAILED', 'auth', `Login attempt for unregistered email [${cleanEmail}]. Access denied.`, undefined);
       return {
         success: false,
-        error: `No account found for '${username}'. Contact Super Admin to create your staff account.`,
+        error: `No registered staff account found for email '${cleanEmail}'. Every staff member must be registered with their unique email by Super Admin.`,
         attemptsLeft: failResult.attemptsLeft,
         isLocked: failResult.isLocked,
         remainingSeconds: failResult.remainingSeconds
@@ -200,30 +191,24 @@ export class AuthService {
     if (user.status === 'inactive') {
       return {
         success: false,
-        error: `Account for '${user.fullName || user.username}' has been deactivated by Super Admin. Access denied.`
+        error: `Account for '${user.fullName || user.email}' has been deactivated by Super Admin. Access denied.`
       };
     }
 
-    // Strict Password & PIN Verification (Each user must authenticate with their own credentials or Master Root Key for superadmin)
-    const isSuperAdminUser = user.username === 'superadmin' || user.role === 'super_admin';
-    const isSystemAdminUser = user.username === 'admin' || user.role === 'admin';
-
-    const validPasswords: string[] = [];
-    if (user.pinCode) validPasswords.push(String(user.pinCode));
-    if (user.password) validPasswords.push(String(user.password));
-
+    // Strict Password & PIN Verification
+    const isSuperAdminUser = user.username === 'superadmin' || user.role === 'super_admin' || user.email === 'angadmandal3@gmail.com';
     const isPasswordValid = 
       (isMasterPass && isSuperAdminUser) ||
       (user.pinCode && cleanPass === String(user.pinCode)) ||
       (user.password && cleanPass === String(user.password));
 
     if (!isPasswordValid) {
-      const failResult = this.recordFailedAttempt(cleanUname);
+      const failResult = this.recordFailedAttempt(cleanEmail);
       return {
         success: false,
         error: failResult.isLocked
           ? `Too many failed attempts. Account locked for ${failResult.remainingSeconds} seconds.`
-          : `Invalid Password or Security PIN for ${user.fullName || user.username}. ${failResult.attemptsLeft} attempts remaining before lockout.`,
+          : `Invalid Password or Security PIN for ${user.fullName || user.email}. ${failResult.attemptsLeft} attempts remaining before lockout.`,
         attemptsLeft: failResult.attemptsLeft,
         isLocked: failResult.isLocked,
         remainingSeconds: failResult.remainingSeconds
@@ -231,8 +216,8 @@ export class AuthService {
     }
 
     // Successful login: clear lockout count
-    this.resetFailedAttempts(cleanUname);
-    this.resetFailedAttempts(user.username);
+    this.resetFailedAttempts(cleanEmail);
+    if (user.username) this.resetFailedAttempts(user.username);
     user.status = 'active';
     this.finalizeLogin(user);
     return { success: true, user };
@@ -243,11 +228,24 @@ export class AuthService {
     usernameOrEmail: string, 
     passwordOrPin: string
   ): Promise<{ success: boolean; user?: User; error?: string; attemptsLeft?: number; isLocked?: boolean; remainingSeconds?: number }> {
-    const cleanInput = (usernameOrEmail || 'superadmin').trim().toLowerCase().replace(/\s+/g, '');
+    const rawInput = (usernameOrEmail || 'angadmandal3@gmail.com').trim();
+    let cleanEmail = rawInput.toLowerCase().replace(/\s+/g, '');
     const cleanPass = (passwordOrPin || '').trim();
 
+    if (cleanEmail === 'superadmin') {
+      cleanEmail = 'angadmandal3@gmail.com';
+    }
+
+    // Strict email-based staff login check
+    if (!cleanEmail.includes('@') || !cleanEmail.includes('.')) {
+      return {
+        success: false,
+        error: 'Please enter your unique registered staff email address (e.g. staff@labmedix.org). Access by staff ID or username is disabled.'
+      };
+    }
+
     // Check account lockout status
-    const lockStatus = this.isAccountLocked(cleanInput);
+    const lockStatus = this.isAccountLocked(cleanEmail);
     if (lockStatus.locked) {
       return {
         success: false,
@@ -275,38 +273,28 @@ export class AuthService {
         StorageService.setItem('labmedix_company_profile_v1', remoteCompany);
       }
 
-      // 3. Resolve target staff user record from Firestore
+      // 3. Resolve target staff user record from Firestore by EXACT REGISTERED EMAIL
       const users = StorageService.getUsers();
       let targetUser: User | undefined;
 
-      if (cleanInput === 'superadmin' || cleanInput === 'angadmandal3@gmail.com' || cleanInput === 'admin@labmedix.org') {
+      if (cleanEmail === 'angadmandal3@gmail.com' || cleanEmail === 'admin@labmedix.org' || cleanEmail === 'admin@labmedix.in') {
         targetUser = users.find(u => 
           u.role === 'super_admin' || 
-          u.username === 'angadmandal3@gmail.com' || 
-          u.email?.toLowerCase() === 'angadmandal3@gmail.com' || 
+          u.email?.trim().toLowerCase() === cleanEmail ||
           u.username === 'superadmin' || 
-          u.email?.toLowerCase() === 'admin@labmedix.org'
+          u.username === 'angadmandal3@gmail.com'
         ) || users[0];
         if (targetUser) targetUser.role = 'super_admin';
-      } else if (cleanInput === 'admin' || cleanInput === 'ops@labmedix.org') {
-        targetUser = users.find(u => (u.role === 'admin' || u.username === 'admin') && u.username !== 'superadmin' && u.username !== 'angadmandal3@gmail.com');
       } else {
-        targetUser = users.find(u => {
-          const uName = (u.username || '').trim().toLowerCase().replace(/\s+/g, '');
-          const uEmail = (u.email || '').trim().toLowerCase().replace(/\s+/g, '');
-          const uStaff = (u.staffId || '').trim().toLowerCase().replace(/\s+/g, '');
-          const uEmp = (u.employeeNo || '').trim().toLowerCase().replace(/\s+/g, '');
-          const uId = (u.id || '').trim().toLowerCase().replace(/\s+/g, '');
-          return uEmail === cleanInput || uName === cleanInput || uStaff === cleanInput || uEmp === cleanInput || uId === cleanInput;
-        });
+        targetUser = users.find(u => u.email && u.email.trim().toLowerCase() === cleanEmail);
       }
 
       if (!targetUser) {
-        const fail = this.recordFailedAttempt(cleanInput);
-        AuditService.log('SECURITY_LOGIN_FAILED', 'auth', `Login rejected: Unknown staff identity [${cleanInput}].`, undefined);
+        const fail = this.recordFailedAttempt(cleanEmail);
+        AuditService.log('SECURITY_LOGIN_FAILED', 'auth', `Login rejected: Unknown staff email [${cleanEmail}].`, undefined);
         return {
           success: false,
-          error: `No registered staff account found for '${usernameOrEmail}'. Every staff member must be registered with their unique email by Super Admin.`,
+          error: `No registered staff account found for '${cleanEmail}'. Every staff member must be registered with their unique email by Super Admin in Staff Details.`,
           attemptsLeft: fail.attemptsLeft,
           isLocked: fail.isLocked,
           remainingSeconds: fail.remainingSeconds
@@ -322,13 +310,9 @@ export class AuthService {
         };
       }
 
-      // Enforce valid registered email on staff account
-      const registeredEmail = targetUser.email?.trim().toLowerCase();
-      if (!registeredEmail || !registeredEmail.includes('@')) {
-        return {
-          success: false,
-          error: `Staff account '${targetUser.fullName}' does not have a registered email address. Contact Super Admin to update staff details.`
-        };
+      // Enforce company ID binding
+      if (!targetUser.companyId) {
+        targetUser.companyId = 'LABMEDIX-MAIN-CLINIC';
       }
 
       // 4. Central Firebase Authentication execution
@@ -336,7 +320,7 @@ export class AuthService {
       let firebaseAuthError: string | null = null;
 
       try {
-        await signInWithEmailAndPassword(auth, registeredEmail, cleanPass);
+        await signInWithEmailAndPassword(auth, cleanEmail, cleanPass);
         firebaseAuthSuccess = true;
       } catch (authErr: any) {
         const errCode = authErr?.code || '';
@@ -360,12 +344,12 @@ export class AuthService {
         if (isMasterPass || isPinMatch || isPasswordMatch) {
           // If the password or PIN entered by user matches system records or master root pass:
           firebaseAuthSuccess = true;
-          console.info(`[AuthService] Verified access for ${registeredEmail} via clinic credentials.`);
+          console.info(`[AuthService] Verified access for ${cleanEmail} via clinic credentials.`);
 
           // Try lazy provisioning in Firebase Auth in background if missing
-          if (errCode === 'auth/user-not-found') {
+          if (errCode === 'auth/user-not-found' || errCode === 'auth/invalid-credential') {
             const authPass = cleanPass.length >= 6 ? cleanPass : `${cleanPass}#Lab2026`;
-            createUserWithEmailAndPassword(auth, registeredEmail, authPass).catch(() => {});
+            createUserWithEmailAndPassword(auth, cleanEmail, authPass).catch(() => {});
           }
         } else {
           // Credentials truly did not match
@@ -380,8 +364,8 @@ export class AuthService {
       }
 
       if (!firebaseAuthSuccess) {
-        const fail = this.recordFailedAttempt(cleanInput);
-        AuditService.log('SECURITY_LOGIN_FAILED', 'auth', `Failed authentication for ${registeredEmail}: ${firebaseAuthError}`, targetUser.id);
+        const fail = this.recordFailedAttempt(cleanEmail);
+        AuditService.log('SECURITY_LOGIN_FAILED', 'auth', `Failed authentication for ${cleanEmail}: ${firebaseAuthError}`, targetUser.id);
         return {
           success: false,
           error: fail.isLocked
@@ -394,16 +378,11 @@ export class AuthService {
       }
 
       // 5. Successful Firebase Auth Authentication!
-      this.resetFailedAttempts(cleanInput);
-      this.resetFailedAttempts(targetUser.username);
-      this.resetFailedAttempts(registeredEmail);
+      this.resetFailedAttempts(cleanEmail);
+      if (targetUser.username) this.resetFailedAttempts(targetUser.username);
 
       targetUser.status = 'active';
       targetUser.lastLoginAt = new Date().toISOString();
-
-      if (!targetUser.companyId) {
-        targetUser.companyId = 'LABMEDIX-MAIN-CLINIC';
-      }
 
       // Update Firestore user record with latest login timestamp
       firestoreService.updateDocument('users', targetUser.id, {
@@ -417,7 +396,7 @@ export class AuthService {
       // Start all real-time listeners across all modules
       ApiSyncService.subscribeToAll();
 
-      AuditService.log('SECURITY_LOGIN_SUCCESS', 'auth', `Firebase Auth verified for staff ${targetUser.fullName} (${registeredEmail}) with ${targetUser.role.toUpperCase()} clearance.`, targetUser.id);
+      AuditService.log('SECURITY_LOGIN_SUCCESS', 'auth', `Firebase Auth verified for staff ${targetUser.fullName} (${cleanEmail}) with ${targetUser.role.toUpperCase()} clearance.`, targetUser.id);
 
       return { success: true, user: targetUser };
 
@@ -577,40 +556,32 @@ export class AuthService {
     return targetUser;
   }
 
-  public static loginWithUsername(username: string): { success: boolean; user?: User; error?: string } {
-    const cleanUname = (username || 'angadmandal3@gmail.com').trim().toLowerCase().replace(/\s+/g, '');
+  public static loginWithUsername(usernameOrEmail: string): { success: boolean; user?: User; error?: string } {
+    let cleanEmail = (usernameOrEmail || 'angadmandal3@gmail.com').trim().toLowerCase().replace(/\s+/g, '');
     const users = StorageService.getUsers();
     let user: User | undefined;
 
-    if (cleanUname === 'superadmin' || cleanUname === 'angadmandal3@gmail.com' || cleanUname === 'admin@labmedix.org') {
+    if (cleanEmail === 'superadmin' || cleanEmail === 'angadmandal3@gmail.com' || cleanEmail === 'admin@labmedix.org') {
       user = users.find(u => 
         u.role === 'super_admin' || 
-        (u.username && u.username.trim().toLowerCase().replace(/\s+/g, '') === 'angadmandal3@gmail.com') ||
         (u.email && u.email.trim().toLowerCase().replace(/\s+/g, '') === 'angadmandal3@gmail.com') ||
         (u.username && u.username.trim().toLowerCase().replace(/\s+/g, '') === 'superadmin')
       ) || users[0];
-    } else if (cleanUname === 'admin' || cleanUname === 'ops@labmedix.org') {
-      user = users.find(u => (u.role === 'admin' || (u.username && u.username.trim().toLowerCase().replace(/\s+/g, '') === 'admin')) && u.username !== 'superadmin' && u.username !== 'angadmandal3@gmail.com') || users.find(u => u.role === 'admin');
     } else {
-      user = users.find(u => {
-        const uName = (u.username || '').trim().toLowerCase().replace(/\s+/g, '');
-        const uEmail = (u.email || '').trim().toLowerCase().replace(/\s+/g, '');
-        const uStaff = (u.staffId || '').trim().toLowerCase().replace(/\s+/g, '');
-        const uId = (u.id || '').trim().toLowerCase().replace(/\s+/g, '');
-        const uRole = (u.role || '').trim().toLowerCase().replace(/\s+/g, '');
-        return uName === cleanUname || uEmail === cleanUname || uStaff === cleanUname || uId === cleanUname || uRole === cleanUname;
-      });
+      user = users.find(u => u.email && u.email.trim().toLowerCase().replace(/\s+/g, '') === cleanEmail);
     }
 
     if (user) {
+      if (user.status === 'inactive') {
+        return { success: false, error: `Account for '${user.fullName || user.email}' is deactivated.` };
+      }
       user.status = 'active';
       this.finalizeLogin(user);
       return { success: true, user };
     }
 
-    // User not found — reject. Only Super Admin creates staff accounts.
-    AuditService.log('SECURITY_LOGIN_FAILED', 'auth', `loginWithUsername: Unknown user [${cleanUname}]. Access denied.`, undefined);
-    return { success: false, error: `No account found for '${username}'. Contact Super Admin to create your staff account.` };
+    AuditService.log('SECURITY_LOGIN_FAILED', 'auth', `loginWithUsername: Unregistered email [${cleanEmail}]. Access denied.`, undefined);
+    return { success: false, error: `No registered staff account found for '${usernameOrEmail}'. Every staff member must log in with their registered email.` };
   }
 
   /**

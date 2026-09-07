@@ -397,7 +397,19 @@ export function checkUserPermission(user: { role: Role; customPermissions?: Perm
   if (user.role === 'super_admin') return true;
   if (user.customPermissions && user.customPermissions.length > 0) {
     if (user.customPermissions.includes('all')) return true;
-    return user.customPermissions.includes(permission);
+    if (user.customPermissions.includes(permission)) return true;
+
+    // Granular compatibility aliases for custom permissions
+    if (permission === 'card_request_view' && (user.customPermissions.includes('card_request_view_own') || user.customPermissions.includes('card_request_view_all') || user.customPermissions.includes('card_request_create'))) return true;
+    if (permission === 'card_request_view_own' && (user.customPermissions.includes('card_request_view') || user.customPermissions.includes('card_request_view_all') || user.customPermissions.includes('card_request_create'))) return true;
+    if (permission === 'card_request_submit' && user.customPermissions.includes('card_request_create')) return true;
+    if (permission === 'card_bill_print' && (user.customPermissions.includes('bill_print') || user.customPermissions.includes('bill_view') || user.customPermissions.includes('card_request_create'))) return true;
+    if (permission === 'bill_print' && (user.customPermissions.includes('card_bill_print') || user.customPermissions.includes('bill_view'))) return true;
+    if (permission === 'bill_view' && (user.customPermissions.includes('bill_view_own') || user.customPermissions.includes('bill_view_all'))) return true;
+    if (permission === 'bill_view_own' && (user.customPermissions.includes('bill_view') || user.customPermissions.includes('bill_view_all') || user.customPermissions.includes('bill_create'))) return true;
+    if (permission === 'card_transactions_view_own' && (user.customPermissions.includes('card_transactions_view') || user.customPermissions.includes('card_transactions_view_all') || user.customPermissions.includes('card_request_create'))) return true;
+
+    return false;
   }
   return hasPermission(user.role, permission);
 }

@@ -6,9 +6,10 @@ import { ApiSyncService } from '../services/apiSyncService';
 import { AuditService } from '../services/auditService';
 import { MultiDeviceSyncService } from '../services/multiDeviceSyncService';
 import { checkUserPermission, checkUserModuleAccess, SystemModuleKey } from '../constants/roles';
-import { onAuthStateChanged } from 'firebase/auth';
-import { doc, onSnapshot } from 'firebase/firestore';
+import { onAuthStateChanged, signOut } from 'firebase/auth';
+import { doc, onSnapshot, getDoc } from 'firebase/firestore';
 import { auth, db } from '../services/firebaseService';
+import { firestoreService } from '../services/firestoreService';
 
 // Dynamic Session Timeout from Company Profile (default 15 minutes)
 const getIdleTimeouts = () => {
@@ -116,14 +117,41 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     window.addEventListener('storage', handleStorageChange);
 
     // ⚡ Listen to Central Firebase Auth State
-    const unsubAuth = onAuthStateChanged(auth, (fbUser) => {
+    const unsubAuth = onAuthStateChanged(auth, async (fbUser) => {
       if (fbUser && fbUser.email) {
-        const users = StorageService.getUsers();
-        const matched = users.find(u => u.email?.toLowerCase() === fbUser.email?.toLowerCase());
-        if (matched && matched.status === 'active') {
-          setCurrentUser(matched);
-          StorageService.setCurrentUser(matched);
-          ApiSyncService.subscribeToAll();
+        try {
+          const userDocSnap = await getDoc(doc(db, 'users', fbUser.uid));
+          let liveUser: User | null = null;
+          if (userDocSnap.exists()) {
+            liveUser = { id: userDocSnap.id, ...userDocSnap.data() } as User;
+          } else {
+            const remoteUsers = await firestoreService.getCollection<User>('users');
+            const found = remoteUsers.find(u => u.email?.trim().toLowerCase() === fbUser.email?.trim().toLowerCase());
+            if (found) liveUser = found;
+          }
+
+          if (liveUser) {
+            if (liveUser.status !== 'active') {
+              console.warn('[AuthContext] Deactivated user in Firebase Auth session. Signing out.');
+              await signOut(auth);
+              StorageService.setCurrentUser(null);
+              setCurrentUser(null);
+              return;
+            }
+            setCurrentUser(liveUser);
+            StorageService.setCurrentUser(liveUser);
+            ApiSyncService.subscribeToAll();
+          } else {
+            const users = StorageService.getUsers();
+            const matched = users.find(u => u.email?.toLowerCase() === fbUser.email?.toLowerCase());
+            if (matched && matched.status === 'active') {
+              setCurrentUser(matched);
+              StorageService.setCurrentUser(matched);
+              ApiSyncService.subscribeToAll();
+            }
+          }
+        } catch (e) {
+          console.warn('[AuthContext] Auth state sync notice:', e);
         }
       }
     });
@@ -149,36 +177,44 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const userDocRef = doc(db, 'users', currentUser.id);
     const unsubUser = onSnapshot(userDocRef, (docSnap) => {
-      if (docSnap.exists()) {
-        const liveUserData = { id: docSnap.id, ...docSnap.data() } as User;
-
-        // If Super Admin deactivated this user account:
-        if (liveUserData.status === 'inactive') {
-          console.warn('[AuthContext] Account deactivated by Super Administrator. Revoking session.');
-          logout();
-          window.dispatchEvent(new CustomEvent('labmedix_account_deactivated', {
-            detail: { message: 'Your staff account has been deactivated by Super Administrator.' }
-          }));
-          return;
-        }
-
-        // Live Role, Permissions, and Module updates
-        setCurrentUser((prev) => {
-          if (!prev) return liveUserData;
-          const permsChanged = JSON.stringify(prev.customPermissions) !== JSON.stringify(liveUserData.customPermissions);
-          const modsChanged = JSON.stringify(prev.allowedModules) !== JSON.stringify(liveUserData.allowedModules);
-          const roleChanged = prev.role !== liveUserData.role;
-          const nameChanged = prev.fullName !== liveUserData.fullName;
-
-          if (permsChanged || modsChanged || roleChanged || nameChanged) {
-            console.info('[AuthContext] Real-time permissions/roles synced from Central Firestore.');
-            const merged = { ...prev, ...liveUserData };
-            StorageService.setCurrentUser(merged);
-            return merged;
-          }
-          return prev;
-        });
+      if (!docSnap.exists()) {
+        console.warn('[AuthContext] Account removed from Central Firestore. Revoking session.');
+        logout();
+        window.dispatchEvent(new CustomEvent('labmedix_account_deactivated', {
+          detail: { message: 'Your staff account record has been removed by Super Administrator.' }
+        }));
+        return;
       }
+
+      const liveUserData = { id: docSnap.id, ...docSnap.data() } as User;
+
+      // If Super Admin deactivated this user account:
+      if (liveUserData.status === 'inactive') {
+        console.warn('[AuthContext] Account deactivated by Super Administrator. Revoking session.');
+        logout();
+        window.dispatchEvent(new CustomEvent('labmedix_account_deactivated', {
+          detail: { message: 'Your staff account has been deactivated by Super Administrator.' }
+        }));
+        return;
+      }
+
+      // Live Role, Permissions, Company, and Module updates
+      setCurrentUser((prev) => {
+        if (!prev) return liveUserData;
+        const permsChanged = JSON.stringify(prev.customPermissions) !== JSON.stringify(liveUserData.customPermissions);
+        const modsChanged = JSON.stringify(prev.allowedModules) !== JSON.stringify(liveUserData.allowedModules);
+        const roleChanged = prev.role !== liveUserData.role;
+        const nameChanged = prev.fullName !== liveUserData.fullName;
+        const companyChanged = prev.companyId !== liveUserData.companyId;
+
+        if (permsChanged || modsChanged || roleChanged || nameChanged || companyChanged) {
+          console.info('[AuthContext] Real-time permissions/roles synced from Central Firestore.');
+          const merged = { ...prev, ...liveUserData };
+          StorageService.setCurrentUser(merged);
+          return merged;
+        }
+        return prev;
+      });
     }, (err) => {
       console.warn('[AuthContext] User document subscription notice:', err);
     });
@@ -307,10 +343,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   // ─────────────────────────────────────────────────────────────
-  // LOGOUT — local session clear
+  // LOGOUT — central Firebase and multi-device session revocation
   // ─────────────────────────────────────────────────────────────
   const logout = async () => {
-    AuthService.logout(); // clears localStorage session + audit log
+    try {
+      await signOut(auth);
+    } catch (err) {
+      console.warn('[AuthContext] Firebase signOut warning:', err);
+    }
+    await AuthService.logout(); // clears localStorage session + audit log
     try {
       localStorage.removeItem('labmedix_auth_locked_user');
       localStorage.removeItem('labmedix_google_auth_locked');

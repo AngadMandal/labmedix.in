@@ -4,7 +4,7 @@ service cloud.firestore {
 
     // ─────────────────────────────────────────────────────────────
     // LABMEDIX ENTERPRISE MULTI-DEVICE CLOUD FIRESTORE SECURITY RULES
-    // Role-Based Access Control, Real-Time Sync & Data Integrity
+    // Role-Based Access Control, Real-Time Sync & Company Isolation
     // ─────────────────────────────────────────────────────────────
 
     function isAuthenticated() {
@@ -16,14 +16,23 @@ service cloud.firestore {
         request.auth.token.role == 'super_admin' ||
         request.auth.token.email == 'angadmandal3@gmail.com' ||
         request.auth.token.email == 'admin@labmedix.in' ||
+        request.auth.token.email == 'admin@labmedix.org' ||
         request.auth.token.admin == true
       );
     }
 
-    // ── USER ACCOUNTS & CREDENTIAL DIRECTORY ─────────────────────
+    // ── USER ACCOUNTS & STAFF DIRECTORY ──────────────────────────
+    // Non-super-admins cannot elevate their own role, permissions, companyId, or status
     match /users/{userId} {
       allow read: if true;
-      allow create, update: if true;
+      allow create: if isSuperAdmin() || (isAuthenticated() && request.auth.uid == userId);
+      allow update: if isSuperAdmin() || (
+        isAuthenticated() && (
+          !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+            'role', 'customPermissions', 'allowedModules', 'staffId', 'companyId', 'status'
+          ])
+        )
+      );
       allow delete: if isSuperAdmin();
     }
 
@@ -74,8 +83,18 @@ service cloud.firestore {
       allow delete: if isSuperAdmin();
     }
 
+    match /vouchers/{voucherId} {
+      allow read, create, update: if true;
+      allow delete: if isSuperAdmin();
+    }
+
     // ── CLINICAL EMR & APPOINTMENTS ──────────────────────────────
     match /emr/{docId} {
+      allow read, create, update: if true;
+      allow delete: if isSuperAdmin();
+    }
+
+    match /emrEncounters/{docId} {
       allow read, create, update: if true;
       allow delete: if isSuperAdmin();
     }
@@ -89,7 +108,15 @@ service cloud.firestore {
       allow read, write: if true;
     }
 
+    match /labBookings/{bookingId} {
+      allow read, write: if true;
+    }
+
     match /medicineOrders/{orderId} {
+      allow read, write: if true;
+    }
+
+    match /pharmacyOrders/{orderId} {
       allow read, write: if true;
     }
 
@@ -102,7 +129,23 @@ service cloud.firestore {
       allow read, write: if true;
     }
 
+    match /membershipTiers/{tierId} {
+      allow read, write: if true;
+    }
+
+    match /families/{familyId} {
+      allow read, write: if true;
+    }
+
+    match /doctors/{doctorId} {
+      allow read, write: if true;
+    }
+
     match /doctor_master/{doctorId} {
+      allow read, write: if true;
+    }
+
+    match /labTests/{testId} {
       allow read, write: if true;
     }
 
@@ -110,12 +153,28 @@ service cloud.firestore {
       allow read, write: if true;
     }
 
+    match /healthPackages/{packageId} {
+      allow read, write: if true;
+    }
+
     match /ngo_welfare/{ngoId} {
       allow read, write: if true;
     }
 
-    match /companyProfile/{docId} {
+    match /ngoPartners/{ngoId} {
       allow read, write: if true;
+    }
+
+    // ── SETTINGS & COMPANY PROFILE ───────────────────────────────
+    // Company profile and enterprise settings only editable by Super Admin
+    match /companyProfile/{docId} {
+      allow read: if true;
+      allow write: if isSuperAdmin();
+    }
+
+    match /settings/{docId} {
+      allow read: if true;
+      allow write: if isSuperAdmin();
     }
 
     // ── MULTI-DEVICE PRESENCE & TELEMETRY ────────────────────────
@@ -123,8 +182,17 @@ service cloud.firestore {
       allow read, write: if true;
     }
 
+    match /_system_diagnostics/{diagId} {
+      allow read, write: if true;
+    }
+
     // ── SECURITY & AUDIT TRAIL ───────────────────────────────────
     match /audit_logs/{logId} {
+      allow read, create, update: if true;
+      allow delete: if isSuperAdmin();
+    }
+
+    match /auditLogs/{logId} {
       allow read, create, update: if true;
       allow delete: if isSuperAdmin();
     }

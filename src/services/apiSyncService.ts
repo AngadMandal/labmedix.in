@@ -460,6 +460,8 @@ export class ApiSyncService {
     'labmedix_ngo_fund_transactions_v1': { type: 'collection', path: 'ngoTransactions' },
     'labmedix_company_profile_v1': { type: 'doc', path: 'settings/companyProfile' },
     'labmedix_bills_v1': { type: 'collection', path: 'bills' },
+    'labmedix_card_request_transactions_v1': { type: 'collection', path: 'card_transactions' },
+    'labmedix_wallet_transactions_v1': { type: 'collection', path: 'wallet_transactions' },
     'LABMEDIX_WEBSITE_CMS_CONFIG': { type: 'doc', path: 'settings/websiteCms' },
     'labmedix_integrations_v4': { type: 'doc', path: 'settings/integrations' }
   };

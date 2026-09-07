@@ -71,6 +71,7 @@ export class CardService {
     card.designConfig = { ...card.designConfig, ...designConfig };
     card.updatedAt = new Date().toISOString();
     StorageService.saveCards(cards);
+    ApiSyncService.saveDocument('cards', card.id, card).catch(() => {});
 
     AuditService.log('CARD_DESIGN_UPDATED', 'card', `Updated design for Card ${card.cardNumber}`, card.id);
     return card;

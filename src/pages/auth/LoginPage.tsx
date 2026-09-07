@@ -23,7 +23,8 @@ import {
   AlertTriangle,
   Fingerprint,
   Sparkles,
-  KeyRound
+  KeyRound,
+  Mail
 } from 'lucide-react';
 
 export const LoginPage: React.FC = () => {
@@ -197,18 +198,18 @@ export const LoginPage: React.FC = () => {
 
         {/* PRIMARY CREDENTIALS FORM */}
         <form onSubmit={handlePrimaryLogin} className="space-y-4">
-          {/* Registered Email / Staff ID */}
+          {/* Registered Email */}
           <div className="space-y-1">
             <label className="text-xs font-bold text-slate-300 block flex items-center justify-between">
-              <span>Registered Staff Email / Staff ID:</span>
-              <span className="text-[10px] text-teal-400 font-mono font-normal">Unique Email Required</span>
+              <span>Registered Staff Email Address:</span>
+              <span className="text-[10px] text-teal-400 font-mono font-normal">Firebase Auth Verified</span>
             </label>
             <Input
-              type="text"
-              placeholder="e.g. angadmandal3@gmail.com or LMDX-STF-001"
+              type="email"
+              placeholder="e.g. staff@labmedix.org or angadmandal3@gmail.com"
               value={username}
               onChange={(e) => handleUsernameChange(e.target.value)}
-              leftIcon={<User className="w-4 h-4 text-teal-400" />}
+              leftIcon={<Mail className="w-4 h-4 text-teal-400" />}
               disabled={lockoutSeconds > 0}
               required
             />
