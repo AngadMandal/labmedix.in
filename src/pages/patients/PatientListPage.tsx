@@ -90,8 +90,8 @@ import { useToast } from '../../context/ToastContext';
 import { triggerCelebrationFireworks } from '../../utils/confetti';
 
 export const PatientListPage: React.FC = () => {
-  // Navigation & View Mode
-  const [activeMainView, setActiveMainView] = useState<'requests_command' | 'card_applications' | 'directory_table' | 'directory_grid'>('requests_command');
+  // Navigation & View Mode: Default to primary Patient Directory Table
+  const [activeMainView, setActiveMainView] = useState<'directory_table' | 'directory_grid' | 'requests_command' | 'card_applications'>('directory_table');
   const [showDeleted, setShowDeleted] = useState(false);
   const [quickViewPatient, setQuickViewPatient] = useState<Patient | null>(null);
 

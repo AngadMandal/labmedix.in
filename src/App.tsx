@@ -41,6 +41,14 @@ const PublicVerifyPage = React.lazy(() => import('./pages/verify/PublicVerifyPag
 const PatientPortalPage = React.lazy(() => import('./pages/portal/PatientPortalPage').then(m => ({ default: m.PatientPortalPage })));
 const NgoWelfare = React.lazy(() => import('./pages/NgoWelfare').then(m => ({ default: m.NgoWelfare })));
 const OfflineFormPage = React.lazy(() => import('./pages/offline/OfflineFormPage').then(m => ({ default: m.OfflineFormPage })));
+const CardRequestsPage = React.lazy(() => import('./pages/cards/CardRequestsPage').then(m => ({ default: m.CardRequestsPage })));
+const AppointmentsPage = React.lazy(() => import('./pages/appointments/AppointmentsPage').then(m => ({ default: m.AppointmentsPage })));
+const DoctorsPage = React.lazy(() => import('./pages/doctors/DoctorsPage').then(m => ({ default: m.DoctorsPage })));
+const LaboratoryPage = React.lazy(() => import('./pages/laboratory/LaboratoryPage').then(m => ({ default: m.LaboratoryPage })));
+const PharmacyPage = React.lazy(() => import('./pages/pharmacy/PharmacyPage').then(m => ({ default: m.PharmacyPage })));
+const BillingPage = React.lazy(() => import('./pages/billing/BillingPage').then(m => ({ default: m.BillingPage })));
+const TransactionsPage = React.lazy(() => import('./pages/transactions/TransactionsPage').then(m => ({ default: m.TransactionsPage })));
+const PermissionsPage = React.lazy(() => import('./pages/users/PermissionsPage').then(m => ({ default: m.PermissionsPage })));
 const NotFoundPage = React.lazy(() => import('./pages/not-found/NotFoundPage').then(m => ({ default: m.NotFoundPage })));
 
 const RouteLoadingSpinner: React.FC = () => (
@@ -262,6 +270,7 @@ export const App: React.FC = () => {
 
                     {/* Card & Studio Routes */}
                     <Route path="/cards" element={<ModuleGuard moduleKey="cards"><CardListPage /></ModuleGuard>} />
+                    <Route path="/card-requests" element={<ModuleGuard moduleKey="card_requests"><CardRequestsPage /></ModuleGuard>} />
                     <Route path="/card-studio" element={<ModuleGuard moduleKey="card_studio"><CardStudioPage /></ModuleGuard>} />
                     <Route path="/cards/print-sheet" element={<ModuleGuard moduleKey="print_sheet"><CardPrintSheetPage /></ModuleGuard>} />
                     <Route path="/cards/printing-dispatch" element={<ModuleGuard moduleKey="card_dispatch"><CardPrintingDispatchPage /></ModuleGuard>} />
@@ -275,6 +284,26 @@ export const App: React.FC = () => {
                     {/* Families */}
                     <Route path="/families" element={<ModuleGuard moduleKey="families"><FamilyListPage /></ModuleGuard>} />
 
+                    {/* Appointments & OPD Queue */}
+                    <Route path="/appointments" element={<ModuleGuard moduleKey="appointments"><AppointmentsPage /></ModuleGuard>} />
+
+                    {/* Doctors Master & Clinical Desk */}
+                    <Route path="/doctors" element={<ModuleGuard moduleKey="doctors"><DoctorsPage /></ModuleGuard>} />
+                    <Route path="/doctor-master" element={<ModuleGuard moduleKey="doctors"><DoctorsPage /></ModuleGuard>} />
+
+                    {/* Diagnostic Laboratory Hub */}
+                    <Route path="/laboratory" element={<ModuleGuard moduleKey="laboratory"><LaboratoryPage /></ModuleGuard>} />
+                    <Route path="/test-master" element={<ModuleGuard moduleKey="laboratory"><LaboratoryPage /></ModuleGuard>} />
+
+                    {/* Pharmacy & Dispensing Hub */}
+                    <Route path="/pharmacy" element={<ModuleGuard moduleKey="pharmacy"><PharmacyPage /></ModuleGuard>} />
+
+                    {/* Hospital Billing & Invoices */}
+                    <Route path="/billing" element={<ModuleGuard moduleKey="billing"><BillingPage /></ModuleGuard>} />
+
+                    {/* Central Financial Ledger & Revenue */}
+                    <Route path="/transactions" element={<ModuleGuard moduleKey="transactions"><TransactionsPage /></ModuleGuard>} />
+
                     {/* Wallet */}
                     <Route path="/wallet" element={<ModuleGuard moduleKey="wallet"><WalletDashboardPage /></ModuleGuard>} />
 
@@ -282,17 +311,14 @@ export const App: React.FC = () => {
                     <Route path="/emr" element={<DoctorRouteGuard><DoctorEMRPage /></DoctorRouteGuard>} />
                     <Route path="/doctor-dashboard" element={<DoctorRouteGuard><DoctorDashboardPage /></DoctorRouteGuard>} />
 
-                    {/* Doctor Master & Commission Governance (Super Admin) */}
-                    <Route path="/doctor-master" element={<ModuleGuard moduleKey="doctor_master"><DoctorMasterPage /></ModuleGuard>} />
-
-                    {/* Diagnostic Test Master & Package Management */}
-                    <Route path="/test-master" element={<ModuleGuard moduleKey="test_master"><TestMasterPage /></ModuleGuard>} />
-
                     {/* Branch Analytics & Reports */}
                     <Route path="/reports" element={<ModuleGuard moduleKey="reports"><ReportsPage /></ModuleGuard>} />
 
                     {/* Staff User Management */}
                     <Route path="/users" element={<ModuleGuard moduleKey="users"><UserListPage /></ModuleGuard>} />
+
+                    {/* Permissions & RBAC Matrix */}
+                    <Route path="/permissions" element={<ModuleGuard moduleKey="permissions"><PermissionsPage /></ModuleGuard>} />
 
                     {/* Super Admin Sovereign Cash Desk Voucher Engine */}
                     <Route path="/cash-desk-vouchers" element={<ModuleGuard moduleKey="cash_desk_vouchers"><CashDeskBillVouchersPage /></ModuleGuard>} />

@@ -31,7 +31,8 @@ export const ROLE_CONFIGS: Record<Role, RoleConfig> = {
       'ngo_manage', 'ngo_view', 'camp_manage', 'grant_manage', 'users_manage',
       'doctor_view', 'doctor_manage', 'test_view',
       'bill_create', 'bill_view', 'bill_view_own', 'bill_view_all', 'bill_cancel', 'bill_print', 'bill_view_due', 'payment_collect',
-      'card_transactions_view', 'card_transactions_view_own', 'card_transactions_view_all', 'transactions_manage'
+      'card_transactions_view', 'card_transactions_view_own', 'card_transactions_view_all', 'transactions_manage',
+      'appointment_manage', 'appointment_view', 'lab_order_manage', 'pharmacy_dispense', 'permissions_manage'
     ]
   },
   doctor: {
@@ -41,7 +42,8 @@ export const ROLE_CONFIGS: Record<Role, RoleConfig> = {
     description: 'Exclusive clinical authority to diagnose, prescribe medications, modify dosages, order investigations, and sign official medical prescriptions.',
     permissions: [
       'patient_read', 'patient_update', 'card_read', 'card_request_create', 'card_request_submit', 'card_request_view', 'card_request_view_own', 'card_bill_print', 'wallet_read',
-      'emr_read', 'emr_create', 'emr_edit', 'emr_prescribe', 'doctor_view'
+      'emr_read', 'emr_create', 'emr_edit', 'emr_prescribe', 'doctor_view',
+      'appointment_view', 'appointment_manage', 'lab_order_manage', 'pharmacy_dispense'
     ]
   },
   manager: {
@@ -56,7 +58,8 @@ export const ROLE_CONFIGS: Record<Role, RoleConfig> = {
       'wallet_read', 'wallet_credit', 'wallet_debit',
       'membership_manage', 'family_manage', 'audit_view', 'reports_view', 'catalog_manage', 'package_manage',
       'doctor_view', 'test_view', 'bill_create', 'bill_view', 'bill_view_own', 'bill_view_all', 'bill_print', 'bill_view_due', 'payment_collect',
-      'card_transactions_view', 'card_transactions_view_own', 'card_transactions_view_all'
+      'card_transactions_view', 'card_transactions_view_own', 'card_transactions_view_all', 'transactions_manage',
+      'appointment_view', 'appointment_manage', 'lab_order_manage', 'pharmacy_dispense'
     ]
   },
   reception: {
@@ -71,7 +74,8 @@ export const ROLE_CONFIGS: Record<Role, RoleConfig> = {
       'wallet_read', 'wallet_credit',
       'family_manage',
       'bill_create', 'bill_view', 'bill_view_own', 'bill_print', 'payment_collect',
-      'card_transactions_view_own'
+      'card_transactions_view_own',
+      'appointment_view', 'appointment_manage'
     ]
   },
   cashier: {
@@ -83,7 +87,7 @@ export const ROLE_CONFIGS: Record<Role, RoleConfig> = {
       'patient_read', 'patient_print', 'card_read', 'card_request_view', 'card_request_view_own',
       'wallet_read', 'wallet_credit', 'wallet_debit', 'voucher_redeem', 'reports_view',
       'bill_create', 'bill_view', 'bill_view_own', 'bill_cancel', 'bill_print', 'bill_view_due', 'payment_collect',
-      'card_transactions_view_own'
+      'card_transactions_view_own', 'transactions_manage'
     ]
   },
   lab_staff: {
@@ -92,7 +96,7 @@ export const ROLE_CONFIGS: Record<Role, RoleConfig> = {
     badgeColor: 'bg-teal-100 text-teal-800 border-teal-300 dark:bg-teal-950/50 dark:text-teal-300 dark:border-teal-800',
     description: 'Verifies patient card membership for laboratory diagnostic testing discounts.',
     permissions: [
-      'patient_read', 'card_read', 'wallet_read', 'wallet_debit', 'catalog_manage', 'test_view'
+      'patient_read', 'card_read', 'wallet_read', 'wallet_debit', 'catalog_manage', 'test_view', 'lab_order_manage'
     ]
   },
   phlebotomist: {
@@ -101,7 +105,7 @@ export const ROLE_CONFIGS: Record<Role, RoleConfig> = {
     badgeColor: 'bg-rose-100 text-rose-800 border-rose-300 dark:bg-rose-950/50 dark:text-rose-300 dark:border-rose-800',
     description: 'Specialist in blood and clinical specimen collection, barcode labeling, sample accessioning, and test routing.',
     permissions: [
-      'patient_read', 'card_read', 'catalog_manage', 'test_view'
+      'patient_read', 'card_read', 'catalog_manage', 'test_view', 'lab_order_manage'
     ]
   },
   marketing: {
@@ -138,24 +142,32 @@ export const ROLE_CONFIGS: Record<Role, RoleConfig> = {
 export const MODULE_KEYS = [
   'dashboard',
   'patients',
+  'cards',
+  'card_requests',
+  'families',
+  'appointments',
+  'doctors',
+  'laboratory',
+  'pharmacy',
+  'billing',
+  'transactions',
+  'reports',
+  'users',
+  'permissions',
+  'activity',
+  'settings',
   'emr',
   'doctor_master',
   'test_master',
   'ngo_welfare',
-  'cards',
   'card_studio',
   'print_sheet',
   'card_dispatch',
   'memberships',
-  'families',
   'wallet',
   'cash_desk_vouchers',
-  'reports',
-  'users',
   'integrations',
-  'activity',
   'backup',
-  'settings',
   'website_cms',
   'system_monitoring'
 ] as const;
@@ -347,29 +359,93 @@ export const SYSTEM_MODULES: SystemModuleInfo[] = [
     category: 'system',
     description: 'Super Admin Real-Time Performance Telemetry, API Latency Metrics, Memory Footprint & Audit Distribution Charts.',
     associatedPermissions: ['all', 'audit_view']
+  },
+  {
+    key: 'card_requests',
+    name: 'Card Requests & Issuance',
+    href: '/card-requests',
+    category: 'cards',
+    description: 'Staff health card applications, sequential LMX-REQ request IDs, printable slips & Super Admin approval.',
+    associatedPermissions: ['card_request_view', 'card_request_view_own', 'card_request_create', 'card_request_approve', 'card_issue']
+  },
+  {
+    key: 'appointments',
+    name: 'Appointments & OPD Queue',
+    href: '/appointments',
+    category: 'clinical',
+    description: 'Patient appointments scheduling, doctor calendar, OPD waiting room queue & token workflow.',
+    associatedPermissions: ['appointment_view', 'appointment_manage', 'emr_read', 'patient_read']
+  },
+  {
+    key: 'doctors',
+    name: 'Doctors Directory & Clinical Desk',
+    href: '/doctors',
+    category: 'clinical',
+    description: 'Physician master directory, consultation schedules, specialty matrix & EMR linkage.',
+    associatedPermissions: ['doctor_view', 'doctor_manage', 'emr_read']
+  },
+  {
+    key: 'laboratory',
+    name: 'Laboratory & Diagnostics Hub',
+    href: '/laboratory',
+    category: 'clinical',
+    description: 'Diagnostic test catalog, active lab investigation orders, sample accessioning & barcode printing.',
+    associatedPermissions: ['test_view', 'catalog_manage', 'lab_order_manage', 'patient_read']
+  },
+  {
+    key: 'pharmacy',
+    name: 'Pharmacy & Dispensing Hub',
+    href: '/pharmacy',
+    category: 'clinical',
+    description: 'Active prescription medicine dispensing queue, stock status & delivery tracking.',
+    associatedPermissions: ['patient_read', 'pharmacy_dispense', 'catalog_manage']
+  },
+  {
+    key: 'billing',
+    name: 'Billing & Hospital Invoices',
+    href: '/billing',
+    category: 'finance',
+    description: 'Unified billing for Card registrations, OPD visits, Lab diagnostics & Pharmacy with printable receipts.',
+    associatedPermissions: ['bill_view', 'bill_view_own', 'bill_create', 'bill_print', 'payment_collect']
+  },
+  {
+    key: 'transactions',
+    name: 'Financial Ledger & Revenue',
+    href: '/transactions',
+    category: 'finance',
+    description: 'Centralized financial ledger: staff-wise own collection tracking vs Super Admin full clinic audit.',
+    associatedPermissions: ['card_transactions_view', 'card_transactions_view_own', 'wallet_read', 'transactions_manage']
+  },
+  {
+    key: 'permissions',
+    name: 'RBAC & Action Permissions Matrix',
+    href: '/permissions',
+    category: 'system',
+    description: 'Action-level role-based access control matrix & granular permission enforcement.',
+    associatedPermissions: ['users_manage', 'permissions_manage', 'all']
   }
 ];
 
 export const ROLE_DEFAULT_MODULES: Record<Role, SystemModuleKey[]> = {
   super_admin: [
-    'dashboard', 'patients', 'doctor_master', 'test_master', 'ngo_welfare', 'cards', 'card_studio', 'print_sheet', 'card_dispatch',
-    'memberships', 'families', 'wallet', 'reports', 'users', 'website_cms', 'integrations',
-    'activity', 'backup', 'settings', 'cash_desk_vouchers', 'system_monitoring'
+    'dashboard', 'patients', 'cards', 'card_requests', 'families', 'appointments', 'doctors', 'laboratory', 'pharmacy', 'billing', 'transactions', 'reports', 'users', 'permissions', 'activity', 'settings',
+    'doctor_master', 'test_master', 'ngo_welfare', 'card_studio', 'print_sheet', 'card_dispatch',
+    'memberships', 'wallet', 'website_cms', 'integrations', 'backup', 'cash_desk_vouchers', 'system_monitoring'
   ],
   admin: [
-    'dashboard', 'patients', 'doctor_master', 'test_master', 'ngo_welfare', 'cards', 'card_studio', 'print_sheet', 'card_dispatch',
-    'memberships', 'families', 'wallet', 'reports', 'users', 'integrations',
-    'activity', 'backup', 'settings'
+    'dashboard', 'patients', 'cards', 'card_requests', 'families', 'appointments', 'doctors', 'laboratory', 'pharmacy', 'billing', 'transactions', 'reports', 'users', 'permissions', 'activity', 'settings',
+    'doctor_master', 'test_master', 'ngo_welfare', 'card_studio', 'print_sheet', 'card_dispatch',
+    'memberships', 'wallet', 'integrations', 'backup'
   ],
-  doctor: ['emr', 'dashboard', 'patients', 'ngo_welfare', 'cards', 'wallet'],
-  reception: ['dashboard', 'patients', 'ngo_welfare', 'cards', 'card_studio', 'print_sheet', 'card_dispatch', 'wallet', 'families'],
-  cashier: ['dashboard', 'patients', 'wallet', 'cash_desk_vouchers', 'cards', 'reports'],
-  manager: ['dashboard', 'patients', 'ngo_welfare', 'cards', 'card_studio', 'print_sheet', 'card_dispatch', 'memberships', 'families', 'wallet', 'reports', 'activity'],
-  lab_staff: ['dashboard', 'patients', 'cards', 'wallet', 'test_master', 'ngo_welfare'],
-  phlebotomist: ['dashboard', 'patients', 'cards', 'test_master'],
-  marketing: ['dashboard', 'patients', 'ngo_welfare', 'cards', 'card_dispatch'],
-  card_operator: ['dashboard', 'patients', 'cards', 'card_studio', 'print_sheet', 'card_dispatch', 'ngo_welfare'],
-  read_only: ['dashboard', 'patients', 'ngo_welfare', 'cards', 'card_dispatch', 'wallet', 'activity']
+  doctor: ['emr', 'dashboard', 'patients', 'appointments', 'doctors', 'laboratory', 'pharmacy', 'cards', 'wallet'],
+  reception: ['dashboard', 'patients', 'cards', 'card_requests', 'families', 'appointments', 'billing', 'transactions', 'wallet'],
+  cashier: ['dashboard', 'patients', 'billing', 'transactions', 'wallet', 'cash_desk_vouchers', 'cards', 'reports'],
+  manager: ['dashboard', 'patients', 'cards', 'card_requests', 'families', 'appointments', 'doctors', 'laboratory', 'pharmacy', 'billing', 'transactions', 'memberships', 'wallet', 'reports', 'activity'],
+  lab_staff: ['dashboard', 'patients', 'laboratory', 'test_master', 'cards', 'wallet'],
+  phlebotomist: ['dashboard', 'patients', 'laboratory', 'test_master', 'cards'],
+  marketing: ['dashboard', 'patients', 'cards', 'card_requests', 'reports'],
+  card_operator: ['dashboard', 'patients', 'cards', 'card_requests', 'card_studio', 'print_sheet', 'card_dispatch'],
+  read_only: ['dashboard', 'patients', 'cards', 'appointments', 'laboratory', 'pharmacy', 'billing', 'transactions', 'activity']
 };
 
 export function hasPermission(userRole: Role, permission: Permission): boolean {

@@ -76,7 +76,12 @@ export type Permission =
   | 'bill_view_all'
   | 'bill_print'
   | 'bill_view_due'
-  | 'transactions_manage';
+  | 'transactions_manage'
+  | 'appointment_manage'
+  | 'appointment_view'
+  | 'lab_order_manage'
+  | 'pharmacy_dispense'
+  | 'permissions_manage';
 
 export interface User {
   id: string;
@@ -554,6 +559,8 @@ export interface PatientBill {
     role: string;
   };
   notes?: string;
+  billCategory?: 'registration' | 'card_enrollment' | 'opd_consultation' | 'lab_diagnostics' | 'pharmacy_dispensing' | 'general';
+  items?: Array<{ description: string; quantity: number; unitPrice: number; total: number }>;
   createdAt: string;
 }
 

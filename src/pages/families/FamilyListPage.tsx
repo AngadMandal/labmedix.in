@@ -326,7 +326,23 @@ export const FamilyListPage: React.FC = () => {
                         <h3 className="text-base font-black text-slate-900 dark:text-white flex items-center gap-2">
                           <span>{fam.familyName}</span>
                         </h3>
-                        <span className="text-xs font-mono text-slate-400">{fam.id} • {fam.members.length} Members</span>
+                        <span className="text-xs font-mono text-slate-400 flex items-center gap-1.5 flex-wrap">
+                          <span>{fam.id}</span>
+                          <span>•</span>
+                          <span>Family Members:</span>
+                          <span className={`px-2 py-0.5 rounded font-bold ${
+                            fam.members.length > 5
+                              ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-300 dark:border-amber-700'
+                              : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700'
+                          }`}>
+                            {fam.members.length} / 5
+                          </span>
+                          {fam.members.length > 5 && (
+                            <span className="text-[10px] text-amber-600 dark:text-amber-400 font-bold">
+                              (+{fam.members.length - 5} Extra: ₹{(fam.members.length - 5) * 299})
+                            </span>
+                          )}
+                        </span>
                       </div>
                     </div>
 
@@ -673,6 +689,27 @@ export const FamilyListPage: React.FC = () => {
                 <span className="text-[11px] text-slate-500 font-mono">Mobile: {activePrimaryHead.mobile}</span>
               </div>
             )}
+
+            {/* Standard 5-Member Allowance Indicator & Extra Charge Notice */}
+            <div className={`p-3 rounded-xl border text-xs flex items-center justify-between ${
+              activeFamily.members.length >= 5
+                ? 'bg-amber-50 dark:bg-amber-950/40 border-amber-300 dark:border-amber-700 text-amber-900 dark:text-amber-200'
+                : 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-300 dark:border-emerald-700 text-emerald-900 dark:text-emerald-200'
+            }`}>
+              <div>
+                <span className="font-bold block">
+                  Family Shield Allowance: {activeFamily.members.length} / 5 Dependents
+                </span>
+                <span className="text-[11px] opacity-90">
+                  {activeFamily.members.length >= 5
+                    ? '⚠️ Standard 5-member allowance reached. Adding this dependent requires an additional fee of ₹299.'
+                    : 'Included under the standard family plan (up to 5 dependents at zero additional fee).'}
+                </span>
+              </div>
+              <span className="text-sm font-black font-mono">
+                {activeFamily.members.length >= 5 ? '+₹299' : 'FREE'}
+              </span>
+            </div>
 
             <form onSubmit={handleAddMember} className="space-y-4">
               {addMemberMode === 'auto_register' ? (

@@ -670,30 +670,11 @@ export const CardListPage: React.FC = () => {
 
               <button
                 type="button"
-                onClick={() => setActiveMainView('applications_queue')}
-                className={`px-3 py-1.5 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all ${
-                  activeMainView === 'applications_queue'
-                    ? 'bg-amber-500 text-slate-950 shadow-md font-black'
-                    : 'text-slate-400 hover:text-white'
-                }`}
+                onClick={() => navigate('/card-requests')}
+                className="px-3 py-1.5 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all bg-gradient-to-r from-teal-500/20 to-emerald-500/20 text-teal-300 hover:text-white border border-teal-500/30"
               >
-                <Clock className="w-3.5 h-3.5" />
-                <span>Online Queue ({pendingAppsCount})</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setActiveMainView('staff_requests_hub')}
-                className={`px-3 py-1.5 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all ${
-                  activeMainView === 'staff_requests_hub'
-                    ? 'bg-gradient-to-r from-teal-500 to-emerald-500 text-slate-950 shadow-md font-black'
-                    : 'text-teal-400 hover:text-white'
-                }`}
-              >
-                <ShieldCheck className="w-3.5 h-3.5" />
-                <span>
-                  {isSuperAdmin ? 'Staff Requests & Bills' : 'My Requests & Bills'} ({staffRequests.length})
-                </span>
+                <ShieldCheck className="w-3.5 h-3.5 text-teal-400" />
+                <span>Card Requests Hub</span>
                 {staffKpis.pendingRequests > 0 && (
                   <span className="px-1.5 py-0.2 rounded-full bg-amber-500 text-slate-950 text-[10px] font-mono font-black">
                     {staffKpis.pendingRequests}

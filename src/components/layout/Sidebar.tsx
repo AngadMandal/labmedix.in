@@ -29,7 +29,12 @@ import {
   FileText,
   Cpu,
   Truck,
-  Radio
+  Radio,
+  Calendar,
+  Pill,
+  DollarSign,
+  KeyRound,
+  ShieldCheck
 } from 'lucide-react';
 
 import { SystemModuleKey } from '../../constants/roles';
@@ -68,28 +73,20 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onCloseMobile }) => {
   const baseNavigation: NavigationItem[] = [
     ...doctorNav,
     { name: 'Patients', href: '/patients', icon: Users, moduleKey: 'patients', permission: 'patient_read' },
-    { name: 'Offline Intake Form', href: '/offline-form', icon: FileText, moduleKey: 'patients', permission: 'patient_read' },
-    { name: 'Doctor Master & Commission', href: '/doctor-master', icon: Crown, moduleKey: 'doctor_master', permission: ['doctor_view', 'doctor_manage'] },
-    { name: 'Test Master & Packages', href: '/test-master', icon: TestTube, moduleKey: 'test_master', permission: ['test_view', 'catalog_manage'] },
-    { name: 'NGO & CSR Welfare Hub', href: '/ngo-welfare', icon: HeartHandshake, moduleKey: 'ngo_welfare', permission: ['ngo_view', 'ngo_manage'] },
     { name: 'Health Cards', href: '/cards', icon: CreditCard, moduleKey: 'cards', permission: ['card_read', 'card_request_view', 'card_request_create'] },
-    { name: 'CR80 PVC Studio', href: '/card-studio', icon: Palette, moduleKey: 'card_studio', permission: 'card_print' },
-    { name: 'A4 Print Sheet', href: '/cards/print-sheet', icon: Layers, moduleKey: 'print_sheet', permission: 'card_print' },
-    { name: 'Card Print & Dispatch', href: '/cards/printing-dispatch', icon: Truck, moduleKey: 'card_dispatch', permission: ['card_print', 'card_read'] },
-    { name: 'Memberships', href: '/memberships', icon: Award, moduleKey: 'memberships', permission: 'membership_manage' },
-    { name: 'Family Groups', href: '/families', icon: Users2, moduleKey: 'families', permission: 'family_manage' },
-    { name: 'Health Wallet', href: '/wallet', icon: Wallet, moduleKey: 'wallet', permission: 'wallet_read' },
-    { name: 'Cash Desk Vouchers', href: '/cash-desk-vouchers', icon: Receipt, moduleKey: 'cash_desk_vouchers', permission: ['voucher_redeem', 'voucher_manage'] },
+    { name: 'Card Requests', href: '/card-requests', icon: ShieldCheck, moduleKey: 'card_requests', permission: ['card_request_view', 'card_request_view_own', 'card_request_create'] },
+    { name: 'Family Health Shield', href: '/families', icon: Users2, moduleKey: 'families', permission: 'family_manage' },
+    { name: 'Appointments', href: '/appointments', icon: Calendar, moduleKey: 'appointments', permission: ['appointment_view', 'emr_read', 'patient_read'] },
+    { name: 'Doctors', href: '/doctors', icon: Crown, moduleKey: 'doctors', permission: ['doctor_view', 'doctor_manage', 'emr_read'] },
+    { name: 'Laboratory', href: '/laboratory', icon: TestTube, moduleKey: 'laboratory', permission: ['test_view', 'catalog_manage', 'patient_read'] },
+    { name: 'Pharmacy', href: '/pharmacy', icon: Pill, moduleKey: 'pharmacy', permission: ['patient_read', 'catalog_manage'] },
+    { name: 'Billing', href: '/billing', icon: Receipt, moduleKey: 'billing', permission: ['bill_view', 'bill_view_own', 'bill_create'] },
+    { name: 'Transactions', href: '/transactions', icon: DollarSign, moduleKey: 'transactions', permission: ['card_transactions_view', 'card_transactions_view_own', 'wallet_read'] },
     { name: 'Reports & Analytics', href: '/reports', icon: BarChart3, moduleKey: 'reports', permission: 'reports_view' },
-    { name: 'Staff Management', href: '/users', icon: UserCheck, moduleKey: 'users', permission: 'users_manage' },
-    { name: '3D Website & CMS Studio', href: '/website-cms', icon: Sparkles, moduleKey: 'website_cms', permission: 'settings_manage' },
-    { name: 'Integrations Hub', href: '/integrations', icon: Globe, moduleKey: 'integrations', permission: 'settings_manage' },
-    { name: 'Gmail Workspace Hub', href: '/gmail-integration', icon: Mail, moduleKey: 'integrations', permission: 'settings_manage' },
-    { name: 'Audit & Activity', href: '/activity', icon: History, moduleKey: 'activity', permission: 'audit_view' },
-    { name: 'System Monitoring', href: '/system-monitoring', icon: Cpu, moduleKey: 'system_monitoring', permission: 'audit_view' },
-    { name: 'Multi-Device Hub', href: '/multi-device', icon: Radio, moduleKey: 'system_monitoring', permission: 'audit_view' },
-    { name: 'Backup & Restore', href: '/backup', icon: Database, moduleKey: 'backup', permission: 'backup_manage' },
-    { name: 'Company Settings', href: '/settings', icon: Settings, moduleKey: 'settings', permission: 'settings_manage' }
+    { name: 'Staff & Users', href: '/users', icon: UserCheck, moduleKey: 'users', permission: 'users_manage' },
+    { name: 'Permissions', href: '/permissions', icon: KeyRound, moduleKey: 'permissions', permission: ['users_manage', 'all'] },
+    { name: 'Audit Logs', href: '/activity', icon: History, moduleKey: 'activity', permission: 'audit_view' },
+    { name: 'Settings & System', href: '/settings', icon: Settings, moduleKey: 'settings', permission: 'settings_manage' }
   ];
 
   const navigation = baseNavigation.filter(item => {

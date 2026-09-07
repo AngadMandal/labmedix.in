@@ -138,7 +138,12 @@ const PERMISSION_LABELS: Record<Permission, { label: string; category: string }>
   bill_view_all: { label: 'View All Clinic Invoices & Bills', category: 'Financial' },
   bill_print: { label: 'Print Patient Invoices & Tax Receipts', category: 'Financial' },
   bill_view_due: { label: 'Track Outstanding Balance & Due Amounts', category: 'Financial' },
-  transactions_manage: { label: 'Manage Financial Ledgers & Settlements', category: 'Financial' }
+  transactions_manage: { label: 'Manage Financial Ledgers & Settlements', category: 'Financial' },
+  appointment_manage: { label: 'Manage Appointments & Doctor Schedules', category: 'Clinical EMR' },
+  appointment_view: { label: 'View Appointments & OPD Queue', category: 'Clinical EMR' },
+  lab_order_manage: { label: 'Process Lab Investigations & Samples', category: 'Clinical Admin' },
+  pharmacy_dispense: { label: 'Dispense Prescription Medications', category: 'Clinical Admin' },
+  permissions_manage: { label: 'Super Admin RBAC Matrix & Role Governance', category: 'System Core' }
 };
 
 // Preset high-res clinical avatar gallery
