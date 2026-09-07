@@ -11,17 +11,22 @@ import {
 } from 'firebase/firestore';
 import configFile from '../../firebase-applet-config.json';
 
-export const databaseId = (configFile as any).firestoreDatabaseId || "ai-studio-labmedixautoheal-1ac13548-bbcc-4f91-96bd-c8c990bec0c8";
+const env = (typeof import.meta !== 'undefined' && (import.meta as any).env) ? (import.meta as any).env : {};
+
+export const databaseId = 
+  env.VITE_FIREBASE_DATABASE_ID || 
+  (configFile as any).firestoreDatabaseId || 
+  "ai-studio-labmedixautoheal-1ac13548-bbcc-4f91-96bd-c8c990bec0c8";
 
 const config = {
   ...configFile,
-  apiKey: configFile.apiKey || "AIzaSyBNaCHTH6cWJ1AdygG42bKugjtHNRg05ys",
-  authDomain: configFile.authDomain || "gen-lang-client-0076489895.firebaseapp.com",
-  projectId: configFile.projectId || "gen-lang-client-0076489895",
+  apiKey: env.VITE_FIREBASE_API_KEY || configFile.apiKey || "AIzaSyBNaCHTH6cWJ1AdygG42bKugjtHNRg05ys",
+  authDomain: env.VITE_FIREBASE_AUTH_DOMAIN || configFile.authDomain || "gen-lang-client-0076489895.firebaseapp.com",
+  projectId: env.VITE_FIREBASE_PROJECT_ID || configFile.projectId || "gen-lang-client-0076489895",
   firestoreDatabaseId: databaseId,
-  storageBucket: configFile.storageBucket || "gen-lang-client-0076489895.firebasestorage.app",
-  messagingSenderId: configFile.messagingSenderId || "451271134982",
-  appId: configFile.appId || "1:451271134982:web:defaee0de0069f4732d887"
+  storageBucket: env.VITE_FIREBASE_STORAGE_BUCKET || configFile.storageBucket || "gen-lang-client-0076489895.firebasestorage.app",
+  messagingSenderId: env.VITE_FIREBASE_MESSAGING_SENDER_ID || configFile.messagingSenderId || "451271134982",
+  appId: env.VITE_FIREBASE_APP_ID || configFile.appId || "1:451271134982:web:defaee0de0069f4732d887"
 };
 
 export const firebaseConfig = config;
@@ -52,23 +57,22 @@ function shouldUseMemoryCache(): boolean {
 }
 
 let firestoreDb;
+const isNamedDb = Boolean(databaseId && databaseId !== '(default)');
 try {
   if (shouldUseMemoryCache()) {
     // Memory-only: no localStorage writes, safe on all devices and quota conditions
-    firestoreDb = initializeFirestore(app, {
-      localCache: memoryLocalCache()
-    }, databaseId);
+    firestoreDb = isNamedDb
+      ? initializeFirestore(app, { localCache: memoryLocalCache() }, databaseId)
+      : initializeFirestore(app, { localCache: memoryLocalCache() });
   } else {
     // Full persistent cache for desktop/tablet with sufficient storage
-    firestoreDb = initializeFirestore(app, {
-      localCache: persistentLocalCache({
-        tabManager: persistentMultipleTabManager()
-      })
-    }, databaseId);
+    firestoreDb = isNamedDb
+      ? initializeFirestore(app, { localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }) }, databaseId)
+      : initializeFirestore(app, { localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }) });
   }
 } catch {
-  // Final fallback: plain Firestore with named database
-  firestoreDb = getFirestore(app, databaseId);
+  // Final fallback: plain Firestore with named or default database
+  firestoreDb = isNamedDb ? getFirestore(app, databaseId) : getFirestore(app);
 }
 
 export const db = firestoreDb;
