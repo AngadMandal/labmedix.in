@@ -360,16 +360,23 @@ export class FirestoreBackupService {
    */
   public static async listCloudSnapshots(): Promise<FirestoreCloudSnapshot[]> {
     try {
-      const q = query(
-        collection(db, this.CLOUD_BACKUPS_COLLECTION),
-        orderBy('timestamp', 'desc'),
-        limit(50)
-      );
-      const snap = await getDocs(q);
+      let snap;
+      try {
+        const q = query(
+          collection(db, this.CLOUD_BACKUPS_COLLECTION),
+          orderBy('timestamp', 'desc'),
+          limit(50)
+        );
+        snap = await getDocs(q);
+      } catch {
+        const q = query(collection(db, this.CLOUD_BACKUPS_COLLECTION), limit(50));
+        snap = await getDocs(q);
+      }
       const list: FirestoreCloudSnapshot[] = [];
       snap.forEach(docSnap => {
         list.push({ id: docSnap.id, ...docSnap.data() } as FirestoreCloudSnapshot);
       });
+      list.sort((a, b) => new Date(b.timestamp || 0).getTime() - new Date(a.timestamp || 0).getTime());
       return list;
     } catch (err) {
       console.warn('[FirestoreBackup] Failed to list cloud snapshots from Firestore:', err);

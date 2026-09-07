@@ -943,7 +943,22 @@ export class StorageService {
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'hidden') {
         StorageService.forceSyncToIndexedDB().catch(() => { });
+      } else if (document.visibilityState === 'visible') {
+        console.info('[LABMEDIX] Screen/tab resumed. Reconnecting live Firestore streams...');
+        import('./multiDeviceSyncService').then(m => m.MultiDeviceSyncService.registerOrUpdateDeviceSession().catch(() => {})).catch(() => {});
+        ApiSyncService.ensureActiveSubscriptions((key, val) => {
+          StorageService.updateCacheAndNotify(key, val);
+        });
+        window.dispatchEvent(new CustomEvent('labmedix_data_synced', { detail: { action: 'VISIBILITY_RESUME' } }));
       }
+    });
+
+    window.addEventListener('focus', () => {
+      import('./multiDeviceSyncService').then(m => m.MultiDeviceSyncService.registerOrUpdateDeviceSession().catch(() => {})).catch(() => {});
+      ApiSyncService.ensureActiveSubscriptions((key, val) => {
+        StorageService.updateCacheAndNotify(key, val);
+      });
+      window.dispatchEvent(new CustomEvent('labmedix_data_synced', { detail: { action: 'WINDOW_FOCUS' } }));
     });
 
     // 4. Real-Time Cloud Firestore Listener Subscription (Instant second-by-second pushes across all devices)
@@ -955,10 +970,13 @@ export class StorageService {
       console.warn('[LABMEDIX] Realtime Firestore subscribe notice:', e);
     }
 
-    // 5. Auto-Periodic deep sync every 3 minutes
+    // 5. Proactive Auto-Healing Sync & Heartbeat Watchdog every 30 seconds
     setInterval(() => {
       StorageService.forceSyncToIndexedDB().catch(() => { });
-    }, 180000);
+      ApiSyncService.ensureActiveSubscriptions((key, val) => {
+        StorageService.updateCacheAndNotify(key, val);
+      });
+    }, 30000);
   }
 
   public static async initializeDatabase(): Promise<void> {

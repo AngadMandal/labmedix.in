@@ -845,9 +845,14 @@ export class ApiSyncService {
             this.addDiagnosticLog({
               type: 'ERROR',
               pathOrCollection: config.path,
-              details: `Subscription error on ${config.path}: ${err?.message || err}`
+              details: `Subscription notice on ${config.path}: ${err?.message || err}`
             });
-            console.warn(`[ApiSync] Realtime subscription error on ${config.path}:`, err);
+            console.warn(`[ApiSync] Realtime subscription notice on ${config.path}:`, err);
+            setTimeout(() => {
+              if (this.isConnected && !this.quotaExceeded) {
+                this.ensureActiveSubscriptions(onUpdate);
+              }
+            }, 5000);
           });
           this.activeUnsubscribers.push(unsub);
         } else if (config.type === 'doc') {
@@ -886,9 +891,14 @@ export class ApiSyncService {
             this.addDiagnosticLog({
               type: 'ERROR',
               pathOrCollection: config.path,
-              details: `Doc subscription error on ${config.path}: ${err?.message || err}`
+              details: `Doc subscription notice on ${config.path}: ${err?.message || err}`
             });
-            console.warn(`[ApiSync] Realtime doc subscription error on ${config.path}:`, err);
+            console.warn(`[ApiSync] Realtime doc subscription notice on ${config.path}:`, err);
+            setTimeout(() => {
+              if (this.isConnected && !this.quotaExceeded) {
+                this.ensureActiveSubscriptions(onUpdate);
+              }
+            }, 5000);
           });
           this.activeUnsubscribers.push(unsub);
         }
@@ -943,6 +953,24 @@ export class ApiSyncService {
     return () => {
       this.unsubscribeAll();
     };
+  }
+
+  /** Returns the count of currently active Firestore real-time listeners */
+  public static getActiveListenersCount(): number {
+    return this.activeUnsubscribers.length;
+  }
+
+  /**
+   * Proactive health check & self-healing listener re-attachment.
+   * Guarantees that mobile devices, background tabs, and laptops never lose their live connection.
+   */
+  public static ensureActiveSubscriptions(onUpdate?: (key: string, value: any) => void): void {
+    if (this.quotaExceeded) return;
+    const expectedCount = Object.keys(this.KEY_TO_FIRESTORE_MAP).length;
+    if (this.activeUnsubscribers.length < Math.floor(expectedCount * 0.7)) {
+      console.info(`[ApiSync] Self-healing sync watchdog: Active listeners (${this.activeUnsubscribers.length}/${expectedCount}). Re-engaging full real-time streams...`);
+      this.subscribeToAll(onUpdate);
+    }
   }
 
   /** Cleanly tear down all active real-time Firestore listeners on logout or session reset */

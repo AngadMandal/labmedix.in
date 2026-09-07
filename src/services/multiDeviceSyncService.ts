@@ -429,8 +429,7 @@ export class MultiDeviceSyncService {
     try {
       const q = query(
         collection(db, SYNC_EVENTS_COLLECTION),
-        orderBy('timestamp', 'desc'),
-        limit(25)
+        limit(30)
       );
 
       this.syncEventsUnsubscribe = onSnapshot(q, (snapshot) => {
@@ -438,6 +437,7 @@ export class MultiDeviceSyncService {
         snapshot.forEach((d) => {
           events.push(d.data() as MultiDeviceSyncEvent);
         });
+        events.sort((a, b) => new Date(b.timestamp || 0).getTime() - new Date(a.timestamp || 0).getTime());
         this.recentSyncEvents = events;
         this.syncEventListeners.forEach((listener) => {
           try { listener(events); } catch {}
@@ -445,7 +445,9 @@ export class MultiDeviceSyncService {
       }, (err) => {
         console.warn('[MultiDevice] Sync events stream notice:', err);
       });
-    } catch {}
+    } catch (err) {
+      console.warn('[MultiDevice] Sync events listener init notice:', err);
+    }
   }
 
   public static onSyncEvents(callback: (events: MultiDeviceSyncEvent[]) => void): () => void {
