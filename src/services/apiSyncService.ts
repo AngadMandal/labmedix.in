@@ -941,11 +941,19 @@ export class ApiSyncService {
     }
 
     return () => {
+      this.unsubscribeAll();
+    };
+  }
+
+  /** Cleanly tear down all active real-time Firestore listeners on logout or session reset */
+  public static unsubscribeAll(): void {
+    if (this.activeUnsubscribers.length > 0) {
+      console.info(`[ApiSync] Unsubscribing ${this.activeUnsubscribers.length} active Firestore listeners.`);
       this.activeUnsubscribers.forEach(u => {
         try { u(); } catch {}
       });
       this.activeUnsubscribers = [];
-    };
+    }
   }
 
   public static async syncPatients(patients: Patient[]): Promise<void> {

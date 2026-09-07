@@ -1931,4 +1931,64 @@ export class StorageService {
 
     window.dispatchEvent(new CustomEvent('labmedix_data_synced', { detail: { action: 'CLEAR_ALL' } }));
   }
+
+  /**
+   * Clears all client-side cached user data, business records, and in-memory caches on logout.
+   * NOTE: This NEVER touches Central Cloud Firestore! It solely purges the local browser
+   * storage so that switching users or devices never mixes or leaks previous session data.
+   */
+  public static clearUserSessionCache(): void {
+    console.info('[StorageService] Purging local user session cache...');
+
+    // 1. Wipe in-memory cache
+    StorageService.memoryCache.clear();
+
+    // 2. Sensitive user business collection keys to remove from local/session storage
+    const userSessionKeys = [
+      STORAGE_KEYS.CURRENT_USER,
+      STORAGE_KEYS.SCREEN_LOCKED,
+      STORAGE_KEYS.PATIENTS,
+      STORAGE_KEYS.CARDS,
+      STORAGE_KEYS.FAMILIES,
+      STORAGE_KEYS.WALLETS,
+      STORAGE_KEYS.TRANSACTIONS,
+      STORAGE_KEYS.AUDIT_LOGS,
+      STORAGE_KEYS.APPOINTMENTS,
+      STORAGE_KEYS.EMR_ENCOUNTERS,
+      STORAGE_KEYS.PORTAL_LAB_BOOKINGS,
+      STORAGE_KEYS.PORTAL_PHARMACY_ORDERS,
+      STORAGE_KEYS.PORTAL_CARD_APPLICATIONS,
+      STORAGE_KEYS.CASH_DESK_VOUCHERS,
+      STORAGE_KEYS.BILLS,
+      STORAGE_KEYS.CARD_REQUEST_TRANSACTIONS,
+      'labmedix_auth_locked_user',
+      'labmedix_last_active_ts',
+      'labmedix_google_auth_locked'
+    ];
+
+    userSessionKeys.forEach(key => {
+      try { localStorage.removeItem(key); } catch {}
+      try { sessionStorage.removeItem(key); } catch {}
+      StorageService.idbRemove(key).catch(() => {});
+    });
+
+    // Remove any dynamic patient vitals or session tokens from localStorage
+    try {
+      for (let i = localStorage.length - 1; i >= 0; i--) {
+        const k = localStorage.key(i);
+        if (k && (k.startsWith('labmedix_patient_vitals_') || k.startsWith('labmedix_session_'))) {
+          localStorage.removeItem(k);
+        }
+      }
+    } catch {}
+
+    try {
+      sessionStorage.clear();
+    } catch {}
+
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('labmedix_session_cleared'));
+      window.dispatchEvent(new CustomEvent('labmedix_data_synced', { detail: { action: 'SESSION_CLEARED' } }));
+    }
+  }
 }

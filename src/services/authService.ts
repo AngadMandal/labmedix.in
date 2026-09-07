@@ -346,10 +346,22 @@ export class AuthService {
           firebaseAuthSuccess = true;
           console.info(`[AuthService] Verified access for ${cleanEmail} via clinic credentials.`);
 
-          // Try lazy provisioning in Firebase Auth in background if missing
+          // Provision or sign in to Firebase Auth to ensure authenticated Firebase session
           if (errCode === 'auth/user-not-found' || errCode === 'auth/invalid-credential') {
             const authPass = cleanPass.length >= 6 ? cleanPass : `${cleanPass}#Lab2026`;
-            createUserWithEmailAndPassword(auth, cleanEmail, authPass).catch(() => {});
+            try {
+              const newCred = await createUserWithEmailAndPassword(auth, cleanEmail, authPass);
+              if (newCred?.user) {
+                targetUser.uid = newCred.user.uid;
+              }
+            } catch {
+              try {
+                const signInCred = await signInWithEmailAndPassword(auth, cleanEmail, authPass);
+                if (signInCred?.user) {
+                  targetUser.uid = signInCred.user.uid;
+                }
+              } catch {}
+            }
           }
         } else {
           // Credentials truly did not match
@@ -383,13 +395,22 @@ export class AuthService {
 
       targetUser.status = 'active';
       targetUser.lastLoginAt = new Date().toISOString();
+      if (auth.currentUser?.uid) {
+        targetUser.uid = auth.currentUser.uid;
+      }
 
-      // Update Firestore user record with latest login timestamp
-      firestoreService.updateDocument('users', targetUser.id, {
+      // Update Firestore user record with latest login timestamp & authenticated UID
+      const userUpdatePayload = {
         lastLoginAt: targetUser.lastLoginAt,
         status: 'active',
-        companyId: targetUser.companyId
-      }).catch(() => {});
+        companyId: targetUser.companyId,
+        uid: targetUser.uid || undefined
+      };
+
+      firestoreService.updateDocument('users', targetUser.id, userUpdatePayload).catch(() => {});
+      if (targetUser.uid && targetUser.uid !== targetUser.id) {
+        ApiSyncService.saveDocument('users', targetUser.uid, { ...targetUser, ...userUpdatePayload }).catch(() => {});
+      }
 
       this.finalizeLogin(targetUser);
 

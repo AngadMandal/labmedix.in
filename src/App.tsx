@@ -59,7 +59,10 @@ import { StorageService } from './services/storage';
 
 // Protected Route Wrapper
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, isAuthLoading } = useAuth();
+  if (isAuthLoading) {
+    return <RouteLoadingSpinner />;
+  }
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
   }

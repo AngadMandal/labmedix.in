@@ -4,6 +4,7 @@ import { Button } from '../common/Button';
 import { Input } from '../common/Input';
 import { Select } from '../common/Select';
 import { useToast } from '../../context/ToastContext';
+import { useAuth } from '../../context/AuthContext';
 import { StorageService } from '../../services/storage';
 import { MembershipTierService } from '../../services/membershipTierService';
 import { DoctorMasterService, DoctorMasterItem } from '../../services/doctorMasterService';
@@ -64,7 +65,8 @@ export const CreateCardRequestModal: React.FC<CreateCardRequestModalProps> = ({
   onRequestCreated
 }) => {
   const { showToast } = useToast();
-  const currentUser = StorageService.getCurrentUser();
+  const { currentUser: authUser } = useAuth();
+  const currentUser = authUser || StorageService.getCurrentUser();
   const company: CompanyProfile = StorageService.getCompanyProfile();
   const regSettings = company.registrationSettings || {
     enableClinicalTriageDefault: false,

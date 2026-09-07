@@ -361,8 +361,14 @@ export class StaffCardRequestService {
     if (currentUser.role === 'super_admin' || checkUserPermission(currentUser, 'card_request_view_all')) {
       return all;
     }
-    // Submitting staff view only their own records
-    return all.filter(app => app.submittedByStaffId === currentUser.id);
+    // Submitting staff view only their own records (matches by UID, ID, registered Email, or Staff ID across all devices)
+    return all.filter(app => {
+      const matchId = app.submittedByStaffId === currentUser.id;
+      const matchUid = !!currentUser.uid && app.submittedByStaffId === currentUser.uid;
+      const matchEmail = !!currentUser.email && !!app.submittedByStaffEmail && app.submittedByStaffEmail.trim().toLowerCase() === currentUser.email.trim().toLowerCase();
+      const matchStaffCode = !!currentUser.staffId && app.submittedByStaffId === currentUser.staffId;
+      return matchId || matchUid || matchEmail || matchStaffCode;
+    });
   }
 
   /**
@@ -374,8 +380,14 @@ export class StaffCardRequestService {
     if (currentUser.role === 'super_admin' || checkUserPermission(currentUser, 'card_transactions_view_all')) {
       return all;
     }
-    // Submitting staff view only their own records
-    return all.filter(txn => txn.staffUserId === currentUser.id);
+    // Submitting staff view only their own records (matches by UID, ID, registered Email, or Staff ID across all devices)
+    return all.filter(txn => {
+      const matchId = txn.staffUserId === currentUser.id;
+      const matchUid = !!currentUser.uid && txn.staffUserId === currentUser.uid;
+      const matchEmail = !!currentUser.email && !!txn.staffEmail && txn.staffEmail.trim().toLowerCase() === currentUser.email.trim().toLowerCase();
+      const matchStaffCode = !!currentUser.staffId && txn.staffUserId === currentUser.staffId;
+      return matchId || matchUid || matchEmail || matchStaffCode;
+    });
   }
 
   /**

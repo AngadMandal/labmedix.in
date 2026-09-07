@@ -80,6 +80,7 @@ export type Permission =
 
 export interface User {
   id: string;
+  uid?: string;
   staffId?: string;
   employeeNo?: string;
   username: string;

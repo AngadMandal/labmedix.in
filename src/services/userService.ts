@@ -165,6 +165,9 @@ export class UserService {
       // (ensures Super Admin session is never signed out while creating staff credentials)
       try {
         const authRes = await AuthService.createStaffAuthAccount(cleanEmail, assignedPassword);
+        if (authRes.uid) {
+          newUser.uid = authRes.uid;
+        }
         if (!authRes.success) {
           console.warn('[UserService] Firebase Auth provisioning notice:', authRes.error);
         } else {
@@ -180,6 +183,9 @@ export class UserService {
 
       // 5. Atomic write to Central Cloud Firestore with WAL & multi-device sync broadcast
       await ApiSyncService.saveDocument('users', newUser.id, newUser);
+      if (newUser.uid && newUser.uid !== newUser.id) {
+        ApiSyncService.saveDocument('users', newUser.uid, newUser).catch(() => {});
+      }
       AuditService.log('USER_CREATED', 'users', `Created new staff user: ${newUser.fullName} (${newUser.role}) [ID: ${newUser.staffId}, Email: ${newUser.email}]`, newUser.id);
       
       if (typeof window !== 'undefined') {
@@ -233,6 +239,9 @@ export class UserService {
         updatedUser.companyId = 'LABMEDIX-MAIN-CLINIC';
       }
       await ApiSyncService.saveDocument('users', id, { ...updatedUser, updatedAt: new Date().toISOString() });
+      if (updatedUser.uid && updatedUser.uid !== id) {
+        ApiSyncService.saveDocument('users', updatedUser.uid, { ...updatedUser, updatedAt: new Date().toISOString() }).catch(() => {});
+      }
       AuditService.log('USER_UPDATED', 'users', `Updated staff account [${updatedUser.fullName}] (${updatedUser.email})`, id);
       
       if (typeof window !== 'undefined') {

@@ -25,7 +25,7 @@ service cloud.firestore {
     // Non-super-admins cannot elevate their own role, permissions, companyId, or status
     match /users/{userId} {
       allow read: if true;
-      allow create: if isSuperAdmin() || (isAuthenticated() && request.auth.uid == userId);
+      allow create: if isSuperAdmin() || (isAuthenticated() && (request.auth.uid == userId || request.resource.data.uid == request.auth.uid || request.resource.data.email == request.auth.token.email));
       allow update: if isSuperAdmin() || (
         isAuthenticated() && (
           !request.resource.data.diff(resource.data).affectedKeys().hasAny([
@@ -48,10 +48,14 @@ service cloud.firestore {
       allow delete: if isSuperAdmin();
     }
 
-    // ── PATIENT CLINICAL DIRECTORY ───────────────────────────────
+    // ── PATIENT CLINICAL DIRECTORY & VITALS ──────────────────────
     match /patients/{patientId} {
       allow read, create, update: if true;
       allow delete: if isSuperAdmin();
+    }
+
+    match /patientVitals/{patientId} {
+      allow read, write: if true;
     }
 
     // ── DIGITAL HEALTH WALLET & LEDGER ───────────────────────────
@@ -88,7 +92,7 @@ service cloud.firestore {
       allow delete: if isSuperAdmin();
     }
 
-    // ── CLINICAL EMR & APPOINTMENTS ──────────────────────────────
+    // ── CLINICAL EMR, QUEUES & APPOINTMENTS ──────────────────────
     match /emr/{docId} {
       allow read, create, update: if true;
       allow delete: if isSuperAdmin();
@@ -100,6 +104,14 @@ service cloud.firestore {
     }
 
     match /appointments/{appId} {
+      allow read, write: if true;
+    }
+
+    match /doctor_queues/{queueId} {
+      allow read, write: if true;
+    }
+
+    match /doctor_clinical_records/{recId} {
       allow read, write: if true;
     }
 
@@ -157,11 +169,49 @@ service cloud.firestore {
       allow read, write: if true;
     }
 
+    // ── NGO & COMMUNITY WELFARE ──────────────────────────────────
     match /ngo_welfare/{ngoId} {
       allow read, write: if true;
     }
 
     match /ngoPartners/{ngoId} {
+      allow read, write: if true;
+    }
+
+    match /healthCamps/{campId} {
+      allow read, write: if true;
+    }
+
+    match /campAttendees/{attendeeId} {
+      allow read, write: if true;
+    }
+
+    match /charityGrants/{grantId} {
+      allow read, write: if true;
+    }
+
+    match /ngoTransactions/{txnId} {
+      allow read, write: if true;
+    }
+
+    // ── CARD PRINTING & SAMPLE DISPATCHES ────────────────────────
+    match /sampleDispatches/{dispatchId} {
+      allow read, write: if true;
+    }
+
+    match /cardDispatches/{dispatchId} {
+      allow read, write: if true;
+    }
+
+    match /cardDispatchBatches/{batchId} {
+      allow read, write: if true;
+    }
+
+    match /recoveryVault/{vaultId} {
+      allow read, write: if true;
+    }
+
+    match /snapshots/{snapshotId} {
       allow read, write: if true;
     }
 
@@ -179,6 +229,22 @@ service cloud.firestore {
 
     // ── MULTI-DEVICE PRESENCE & TELEMETRY ────────────────────────
     match /devices/{deviceId} {
+      allow read, write: if true;
+    }
+
+    match /_system_active_devices/{docId} {
+      allow read, write: if true;
+    }
+
+    match /_system_sync_events/{docId} {
+      allow read, write: if true;
+    }
+
+    match /_system_cloud_backups/{docId} {
+      allow read, write: if true;
+    }
+
+    match /_system_health/{docId} {
       allow read, write: if true;
     }
 

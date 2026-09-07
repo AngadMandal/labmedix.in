@@ -31,6 +31,7 @@ const LAST_ACTIVITY_KEY = 'labmedix_last_active_ts';
 interface AuthContextType {
   currentUser: User | null;
   isAuthenticated: boolean;
+  isAuthLoading: boolean;
   isLocked: boolean;
   isIdleWarningOpen: boolean;
   idleSecondsRemaining: number;
@@ -48,6 +49,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [currentUser, setCurrentUser] = useState<User | null>(() => StorageService.getCurrentUser());
+  const [isAuthLoading, setIsAuthLoading] = useState<boolean>(true);
   const [isLocked, setIsLocked] = useState<boolean>(() => StorageService.isScreenLocked());
   const [isIdleWarningOpen, setIsIdleWarningOpen] = useState<boolean>(false);
   const [idleSecondsRemaining, setIdleSecondsRemaining] = useState<number>(60);
@@ -118,6 +120,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     // ⚡ Listen to Central Firebase Auth State
     const unsubAuth = onAuthStateChanged(auth, async (fbUser) => {
+      setIsAuthLoading(false);
       if (fbUser && fbUser.email) {
         try {
           const userDocSnap = await getDoc(doc(db, 'users', fbUser.uid));
@@ -127,14 +130,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           } else {
             const remoteUsers = await firestoreService.getCollection<User>('users');
             const found = remoteUsers.find(u => u.email?.trim().toLowerCase() === fbUser.email?.trim().toLowerCase());
-            if (found) liveUser = found;
+            if (found) {
+              liveUser = found;
+              // Mirror to /users/{fbUser.uid} so future lookups by UID are instantaneous
+              ApiSyncService.saveDocument('users', fbUser.uid, { ...found, uid: fbUser.uid }).catch(() => {});
+            }
           }
 
           if (liveUser) {
+            liveUser.uid = fbUser.uid;
             if (liveUser.status !== 'active') {
               console.warn('[AuthContext] Deactivated user in Firebase Auth session. Signing out.');
               await signOut(auth);
-              StorageService.setCurrentUser(null);
+              ApiSyncService.unsubscribeAll();
+              StorageService.clearUserSessionCache();
               setCurrentUser(null);
               return;
             }
@@ -145,6 +154,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             const users = StorageService.getUsers();
             const matched = users.find(u => u.email?.toLowerCase() === fbUser.email?.toLowerCase());
             if (matched && matched.status === 'active') {
+              matched.uid = fbUser.uid;
               setCurrentUser(matched);
               StorageService.setCurrentUser(matched);
               ApiSyncService.subscribeToAll();
@@ -152,6 +162,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           }
         } catch (e) {
           console.warn('[AuthContext] Auth state sync notice:', e);
+        }
+      } else {
+        // Firebase Auth is signed out completely
+        // If there is any stale session in memoryCache / localStorage, clear it!
+        const staleUser = StorageService.getCurrentUser();
+        if (staleUser) {
+          console.info('[AuthContext] No active Firebase Auth session. Wiping stale local session.');
+          ApiSyncService.unsubscribeAll();
+          StorageService.clearUserSessionCache();
+          setCurrentUser(null);
         }
       }
     });
@@ -351,6 +371,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (err) {
       console.warn('[AuthContext] Firebase signOut warning:', err);
     }
+    // Cleanly tear down all real-time Firestore listeners
+    ApiSyncService.unsubscribeAll();
+    // Wipe all cached user business records, memoryCache, and session storage
+    StorageService.clearUserSessionCache();
     await AuthService.logout(); // clears localStorage session + audit log
     try {
       localStorage.removeItem('labmedix_auth_locked_user');
@@ -394,6 +418,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       value={{
         currentUser,
         isAuthenticated: !!currentUser,
+        isAuthLoading,
         isLocked,
         isIdleWarningOpen,
         idleSecondsRemaining,
