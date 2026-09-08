@@ -233,3 +233,37 @@ export function generateQueueToken(existingTokens?: Array<{ tokenNumber?: string
   }
   return `T-${String(maxNum + 1).padStart(3, '0')}`;
 }
+
+export function generateDiagnosticReportNumber(existingReports?: string[]): string {
+  const currentYear = new Date().getFullYear();
+  const prefix = `LMDX-RPT-${currentYear}-`;
+  let maxSeq = 0;
+  if (existingReports && Array.isArray(existingReports)) {
+    existingReports.forEach(r => {
+      if (r && r.startsWith(prefix)) {
+        const num = parseInt(r.replace(prefix, ''), 10);
+        if (!isNaN(num) && num > maxSeq) {
+          maxSeq = num;
+        }
+      }
+    });
+  }
+  if (maxSeq === 0) {
+    const randomSuffix = Math.floor(100000 + Math.random() * 900000);
+    return `${prefix}${randomSuffix}`;
+  }
+  return `${prefix}${String(maxSeq + 1).padStart(6, '0')}`;
+}
+
+export function generateTechnicianCode(existingCodes?: string[]): string {
+  let maxNum = 0;
+  if (existingCodes && Array.isArray(existingCodes)) {
+    existingCodes.forEach(code => {
+      if (code && code.startsWith('LT-')) {
+        const num = parseInt(code.replace('LT-', ''), 10);
+        if (!isNaN(num) && num > maxNum) maxNum = num;
+      }
+    });
+  }
+  return `LT-${String(maxNum + 1).padStart(3, '0')}`;
+}

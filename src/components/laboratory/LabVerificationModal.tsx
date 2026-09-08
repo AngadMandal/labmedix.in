@@ -1,8 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Modal } from '../common/Modal';
 import { Button } from '../common/Button';
 import { BloodTestBooking, PortalService } from '../../services/portalService';
 import { LaboratoryService } from '../../services/laboratoryService';
+import { DoctorMasterService } from '../../services/doctorMasterService';
+import { TechnicianMasterService } from '../../services/technicianMasterService';
+import { DiagnosticReportService } from '../../services/diagnosticReportService';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import { triggerCelebrationFireworks } from '../../utils/confetti';
@@ -13,7 +16,9 @@ import {
   Lock,
   UserCheck,
   FileText,
-  BadgeCheck
+  BadgeCheck,
+  TestTube,
+  PenTool
 } from 'lucide-react';
 
 export interface LabVerificationModalProps {
@@ -35,23 +40,47 @@ export const LabVerificationModal: React.FC<LabVerificationModalProps> = ({
   const { currentUser } = useAuth();
   const { showToast } = useToast();
 
-  const [pathologistName, setPathologistName] = useState(() => {
-    if (currentUser?.role === 'doctor' || currentUser?.role === 'super_admin') {
-      return currentUser.fullName.startsWith('Dr.') ? currentUser.fullName : `Dr. ${currentUser.fullName}`;
-    }
-    return 'Dr. Subhashish Roy, MD (Pathology)';
+  const reportingDoctors = DoctorMasterService.getAllReportingDoctors();
+  const technicians = TechnicianMasterService.getAllTechnicians();
+
+  const [selectedDoctorId, setSelectedDoctorId] = useState<string>(() => {
+    return reportingDoctors[0]?.id || '';
   });
 
-  const [registrationNo, setRegistrationNo] = useState('WBMC-44102');
+  const [selectedTechnicianId, setSelectedTechnicianId] = useState<string>(() => {
+    return technicians[0]?.id || '';
+  });
+
+  const [pathologistName, setPathologistName] = useState(() => {
+    return reportingDoctors[0]?.name || 'Dr. Subhashish Roy';
+  });
+
+  const [registrationNo, setRegistrationNo] = useState(() => {
+    return reportingDoctors[0]?.regNumber || 'WBMC-68421';
+  });
+
   const [clinicalNotes, setClinicalNotes] = useState(
     'All analytical parameters correlated clinically with patient history. Internal quality control verified within 2SD.'
   );
   const [isVerifying, setIsVerifying] = useState(false);
 
+  useEffect(() => {
+    if (selectedDoctorId) {
+      const doc = reportingDoctors.find(d => d.id === selectedDoctorId);
+      if (doc) {
+        setPathologistName(doc.name);
+        setRegistrationNo(doc.regNumber);
+      }
+    }
+  }, [selectedDoctorId]);
+
   if (!order) return null;
 
   const parameters = order.testResults || [];
   const hasCritical = parameters.some(p => p.flag === 'critical');
+
+  const selectedDoctor = reportingDoctors.find(d => d.id === selectedDoctorId);
+  const selectedTechnician = technicians.find(t => t.id === selectedTechnicianId);
 
   const handleVerify = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -67,21 +96,20 @@ export const LabVerificationModal: React.FC<LabVerificationModalProps> = ({
 
     setIsVerifying(true);
     try {
-      const now = new Date().toISOString();
+      // 1. Finalize & Lock in DiagnosticReportService
+      const reportRes = DiagnosticReportService.finalizeAndLockReport(order.id, {
+        technicianId: selectedTechnicianId,
+        reportingDoctorId: selectedDoctorId,
+        clinicalImpression: clinicalNotes.trim(),
+        customParameters: parameters
+      });
 
-      // 1. Update PortalService
-      const bookings = PortalService.getLabBookings();
-      const target = bookings.find(b => b.id === order.id);
-      if (target) {
-        target.status = 'report_ready';
-        target.verifiedBy = pathologistName.trim();
-        target.pathologistName = pathologistName.trim();
-        target.reportReadyAt = now;
-        target.pathologistNotes = `${clinicalNotes.trim()} [Reg: ${registrationNo.trim()}]`;
-        PortalService.saveLabBookings(bookings);
+      if (!reportRes.success) {
+        showToast('error', 'Report Locking Failed', reportRes.error || 'Could not lock diagnostic report.');
+        return;
       }
 
-      // 2. Update LaboratoryService and lock report
+      // 2. Also update LaboratoryService and lock order
       try {
         LaboratoryService.verifyAndLockReport(order.id, {
           doctorName: pathologistName.trim(),
@@ -93,8 +121,8 @@ export const LabVerificationModal: React.FC<LabVerificationModalProps> = ({
       triggerCelebrationFireworks();
       showToast(
         'success',
-        'Report Verified & Locked! 📜',
-        `Diagnostic report for ${order.patientName} (${order.bookingNo}) officially signed and released.`
+        'Official Report Finalized & Locked! 📜',
+        `Diagnostic report ${reportRes.report?.reportNumber} officially signed and locked for ${order.patientName}.`
       );
       onVerified();
       onClose();
@@ -197,35 +225,84 @@ export const LabVerificationModal: React.FC<LabVerificationModalProps> = ({
           </div>
         </div>
 
-        {/* Doctor Verification Credentials */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div className="space-y-1">
-            <label className="block text-xs font-semibold text-slate-300 flex items-center gap-1.5">
-              <UserCheck className="w-3.5 h-3.5 text-teal-400" />
-              <span>Verifying Pathologist Name *</span>
+        {/* Authorized Technician & Pathologist Verification Assignment */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 rounded-2xl bg-slate-900 border border-slate-800">
+          {/* Technician Assignment */}
+          <div className="space-y-2">
+            <label className="block text-xs font-semibold text-slate-300 flex items-center justify-between">
+              <span className="flex items-center gap-1.5">
+                <TestTube className="w-3.5 h-3.5 text-teal-400" />
+                <span>Performing Medical Technologist *</span>
+              </span>
+              <span className="text-[10px] text-teal-400 font-mono">LIS Master</span>
             </label>
-            <input
-              type="text"
-              value={pathologistName}
-              onChange={(e) => setPathologistName(e.target.value)}
+            <select
+              value={selectedTechnicianId}
+              onChange={(e) => setSelectedTechnicianId(e.target.value)}
               className="w-full p-2.5 rounded-xl bg-slate-800 border border-slate-700 text-xs text-white focus:border-teal-500 font-medium"
               required
-            />
+            >
+              {technicians.map(t => (
+                <option key={t.id} value={t.id}>
+                  {t.name} ({t.qualification}) — {t.technicianCode}
+                </option>
+              ))}
+            </select>
+
+            {selectedTechnician && (
+              <div className="p-2.5 rounded-xl bg-slate-950 border border-slate-800/80 flex items-center justify-between">
+                <div className="text-[10px]">
+                  <span className="text-slate-400 block">{selectedTechnician.designation}</span>
+                  <span className="text-teal-400 font-mono font-bold">Reg: {selectedTechnician.regNumber}</span>
+                </div>
+                {selectedTechnician.signatureUrl ? (
+                  <div className="h-8 w-24 bg-white/90 rounded p-0.5 flex items-center justify-center">
+                    <img src={selectedTechnician.signatureUrl} alt="Tech Sig" className="max-h-full object-contain" />
+                  </div>
+                ) : (
+                  <span className="text-[9px] text-amber-400 font-mono">No Sig</span>
+                )}
+              </div>
+            )}
           </div>
 
-          <div className="space-y-1">
-            <label className="block text-xs font-semibold text-slate-300 flex items-center gap-1.5">
-              <BadgeCheck className="w-3.5 h-3.5 text-teal-400" />
-              <span>Medical Council Reg. Number *</span>
+          {/* Reporting Pathologist / Doctor Assignment */}
+          <div className="space-y-2">
+            <label className="block text-xs font-semibold text-slate-300 flex items-center justify-between">
+              <span className="flex items-center gap-1.5">
+                <UserCheck className="w-3.5 h-3.5 text-teal-400" />
+                <span>Authorized Reporting Doctor *</span>
+              </span>
+              <span className="text-[10px] text-amber-400 font-mono">Medical Council</span>
             </label>
-            <input
-              type="text"
-              value={registrationNo}
-              onChange={(e) => setRegistrationNo(e.target.value)}
-              className="w-full p-2.5 rounded-xl bg-slate-800 border border-slate-700 text-xs text-white focus:border-teal-500 font-mono font-bold"
-              placeholder="E.g. WBMC-44102 / MCI-98210"
+            <select
+              value={selectedDoctorId}
+              onChange={(e) => setSelectedDoctorId(e.target.value)}
+              className="w-full p-2.5 rounded-xl bg-slate-800 border border-slate-700 text-xs text-white focus:border-teal-500 font-medium"
               required
-            />
+            >
+              {reportingDoctors.map(d => (
+                <option key={d.id} value={d.id}>
+                  {d.name} ({d.qualification}) — {d.regNumber}
+                </option>
+              ))}
+            </select>
+
+            {selectedDoctor && (
+              <div className="p-2.5 rounded-xl bg-slate-950 border border-slate-800/80 flex items-center justify-between">
+                <div className="text-[10px]">
+                  <span className="text-slate-400 block">{selectedDoctor.designation || selectedDoctor.speciality}</span>
+                  <span className="text-teal-400 font-mono font-bold">Council Reg: {selectedDoctor.regNumber}</span>
+                </div>
+                {selectedDoctor.signatureUrl ? (
+                  <div className="h-8 w-24 bg-white/90 rounded p-0.5 flex items-center justify-center">
+                    <img src={selectedDoctor.signatureUrl} alt="Doc Sig" className="max-h-full object-contain" />
+                  </div>
+                ) : (
+                  <span className="text-[9px] text-amber-400 font-mono">No Sig</span>
+                )}
+              </div>
+            )}
           </div>
 
           <div className="sm:col-span-2 space-y-1">

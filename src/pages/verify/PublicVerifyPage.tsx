@@ -41,7 +41,8 @@ import {
   Home,
   UserCheck,
   ExternalLink,
-  CreditCard
+  CreditCard,
+  TestTube
 } from 'lucide-react';
 
 export const PublicVerifyPage: React.FC = () => {
@@ -401,12 +402,18 @@ export const PublicVerifyPage: React.FC = () => {
 
                   <div className="text-left flex-1">
                     <span className="text-[9px] font-bold uppercase tracking-widest block opacity-80">
-                      {result.type === 'staff_pass' ? 'Staff Credential Authenticity' : 'Official Patient Health Card Authenticity'}
+                      {result.type === 'staff_pass'
+                        ? 'Staff Credential Authenticity'
+                        : result.type === 'diagnostic_report'
+                        ? 'Medical Diagnostic Report Authenticity'
+                        : 'Official Patient Health Card Authenticity'}
                     </span>
                     <strong className="text-base font-black tracking-wide block">
                       {result.cardStatus === 'active'
                         ? result.type === 'staff_pass'
                           ? '✅ AUTHENTICATED STAFF CREDENTIAL PASS'
+                          : result.type === 'diagnostic_report'
+                          ? '✅ OFFICIAL VERIFIED DIAGNOSTIC REPORT'
                           : '✅ OFFICIAL VERIFIED ACTIVE HEALTH CARD'
                         : '⛔ CREDENTIAL INACTIVE / NOT FOUND'}
                     </strong>
@@ -685,6 +692,128 @@ export const PublicVerifyPage: React.FC = () => {
                         </div>
                       </div>
                     )}
+                  </div>
+                )}
+
+                {/* ================= MEDICAL DIAGNOSTIC REPORT AUTHENTICITY DETAILS ================= */}
+                {result.type === 'diagnostic_report' && result.report && (
+                  <div className="space-y-4">
+                    <div
+                      className={`p-5 rounded-2xl border space-y-4 text-xs ${
+                        isDarkMode ? 'bg-slate-800/60 border-slate-700/60' : 'bg-slate-50 border-slate-200'
+                      }`}
+                    >
+                      {/* Top Investigation Banner */}
+                      <div className="flex items-center justify-between border-b pb-3 border-slate-200 dark:border-slate-700">
+                        <div className="flex items-center gap-3">
+                          <div className="w-12 h-12 rounded-2xl bg-teal-500/20 border border-teal-500/40 flex items-center justify-center font-black text-teal-400 text-lg">
+                            <TestTube className="w-6 h-6 text-teal-400" />
+                          </div>
+                          <div className="text-left">
+                            <span className="text-[10px] text-teal-500 font-mono font-bold block">
+                              REPORT NO: {result.report.reportNumber}
+                            </span>
+                            <strong className="text-sm font-black block uppercase text-slate-900 dark:text-white">
+                              {result.report.testName}
+                            </strong>
+                            <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
+                              Department: {result.report.department} • Order: {result.report.orderNumber}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="flex flex-col items-end">
+                          <span className="px-2.5 py-1 rounded-lg bg-emerald-600 text-white text-xs font-black flex items-center gap-1 shadow-sm">
+                            <CheckCircle2 className="w-3.5 h-3.5" /> VERIFIED
+                          </span>
+                          <span className="text-[9px] font-mono text-slate-400 mt-1">
+                            {result.report.isLocked ? 'LOCKED MEDICAL RECORD' : 'INTERIM'}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Patient & Accession Demographics */}
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-left">
+                        <div>
+                          <span className="text-[10px] text-slate-400 uppercase block">Patient Name</span>
+                          <strong className="text-slate-900 dark:text-white font-bold block">
+                            {result.report.patientName}
+                          </strong>
+                          <span className="text-[10px] text-slate-500 font-mono">
+                            UHID: {result.report.maskedPatientId}
+                          </span>
+                        </div>
+
+                        <div>
+                          <span className="text-[10px] text-slate-400 uppercase block">Demographics</span>
+                          <span className="font-bold text-slate-700 dark:text-slate-300">
+                            {result.report.age} Yrs / {result.report.gender.toUpperCase()}
+                          </span>
+                        </div>
+
+                        <div>
+                          <span className="text-[10px] text-slate-400 uppercase block">Sample Barcode</span>
+                          <strong className="font-mono text-teal-500">
+                            {result.report.sampleBarcode}
+                          </strong>
+                          <span className="text-[9.5px] text-slate-400 block">{result.report.specimenType}</span>
+                        </div>
+
+                        <div>
+                          <span className="text-[10px] text-slate-400 uppercase block">Report Release</span>
+                          <span className="font-mono text-emerald-500 font-bold block">
+                            {formatDate(result.report.reportDate)}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Clinical Verification & Authorities Box */}
+                      <div className="p-3.5 bg-slate-900/90 rounded-xl border border-slate-700/80 space-y-2 text-left">
+                        <span className="text-[10px] font-bold text-teal-400 uppercase tracking-wider block">
+                          Verified Medical Sign-off Authorities:
+                        </span>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-[11px]">
+                          <div>
+                            <span className="text-slate-400 text-[10px] block">Authorized Reporting Pathologist:</span>
+                            <strong className="text-white block">{result.report.reportingDoctorName}</strong>
+                            <span className="text-slate-400 text-[10px]">
+                              {result.report.reportingDoctorDesignation} • Reg: {result.report.reportingDoctorRegNo}
+                            </span>
+                          </div>
+
+                          <div>
+                            <span className="text-slate-400 text-[10px] block">Verified By Technologist:</span>
+                            <strong className="text-white block">{result.report.technicianName}</strong>
+                            <span className="text-slate-400 text-[10px]">
+                              {result.report.technicianDesignation}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Confidentiality Notice */}
+                      <div className="p-3 bg-amber-950/30 border border-amber-500/30 rounded-xl flex items-start gap-2 text-[11px] text-amber-200">
+                        <ShieldCheck className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                        <span>
+                          <strong>Clinical Privacy Notice:</strong> In compliance with healthcare data protection standards, individual diagnostic test results and sensitive findings are confidential and accessible only via authorized patient/staff portal login.
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Portal Login Link */}
+                    <div className="p-4 rounded-2xl bg-gradient-to-r from-teal-950/80 via-slate-900 to-indigo-950/80 border border-teal-500/40 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
+                      <div>
+                        <strong className="text-white block">Need Full Diagnostic Report & Test Values?</strong>
+                        <span className="text-slate-400 text-[11px]">
+                          Log in to the cashless Patient Portal with your registered phone number or Health Card.
+                        </span>
+                      </div>
+                      <Link to="/portal">
+                        <Button variant="primary" size="sm" rightIcon={<ArrowRight className="w-4 h-4" />}>
+                          Open Patient Portal
+                        </Button>
+                      </Link>
+                    </div>
                   </div>
                 )}
 

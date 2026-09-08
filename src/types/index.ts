@@ -708,7 +708,7 @@ export interface FirestoreDriftReport {
 
 export interface VerificationResult {
   verified: boolean;
-  type?: 'health_card' | 'staff_pass';
+  type?: 'health_card' | 'staff_pass' | 'diagnostic_report';
   cardStatus: CardStatus | 'not_found';
   message: string;
   verificationCode: string;
@@ -744,6 +744,33 @@ export interface VerificationResult {
     joiningDate?: string;
     cardThemeWish?: string;
     cardMaterialWish?: string;
+  };
+  report?: {
+    reportNumber: string;
+    orderNumber: string;
+    bookingNo: string;
+    patientName: string;
+    maskedPatientId: string;
+    age: number;
+    gender: string;
+    testName: string;
+    testCategory: string;
+    department: string;
+    sampleBarcode: string;
+    specimenType: string;
+    sampleCollectedAt: string;
+    sampleReceivedAt: string;
+    reportDate: string;
+    status: 'draft' | 'verified' | 'finalized' | 'amended';
+    isLocked: boolean;
+    technicianName: string;
+    technicianDesignation: string;
+    reportingDoctorName: string;
+    reportingDoctorDesignation: string;
+    reportingDoctorRegNo: string;
+    laboratoryName: string;
+    centerLocation: string;
+    verificationHash: string;
   };
   membership?: {
     name: string;
@@ -910,6 +937,78 @@ export interface LabOrderRecord {
   updatedAt: string;
   createdBy?: string;
 }
+
+export interface LabTechnicianItem {
+  id: string;
+  technicianCode: string; // e.g. LT-001
+  name: string;
+  qualification: string;
+  designation: string;
+  department: string;
+  regNumber: string;
+  phone: string;
+  email: string;
+  signatureUrl?: string;
+  stampUrl?: string;
+  status: 'active' | 'on_leave' | 'inactive';
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface DiagnosticReportRecord {
+  id: string;
+  reportNumber: string; // LMDX-RPT-YYYY-XXXXXX
+  orderId: string;
+  orderNumber: string;
+  bookingNo: string;
+  patientId: string;
+  patientName: string;
+  patientAge: number;
+  patientGender: string;
+  patientPhone?: string;
+  cardNo?: string;
+  membershipTier?: string;
+  referringDoctorName: string;
+  sampleBarcode: string;
+  sampleTubeType: string;
+  sampleCollectedAt?: string;
+  sampleReceivedAt?: string;
+  testName: string;
+  testCategory: string; // Hematology | Biochemistry | Clinical Pathology | Serology | Microbiology | Hormones | Urine | etc.
+  department: string;
+  parameters: LabParameterResult[];
+  clinicalImpression?: string;
+  technicianId?: string;
+  technicianName?: string;
+  technicianQualification?: string;
+  technicianDesignation?: string;
+  technicianRegNo?: string;
+  technicianSignatureUrl?: string;
+  reportingDoctorId?: string;
+  reportingDoctorName?: string;
+  reportingDoctorQualification?: string;
+  reportingDoctorDesignation?: string;
+  reportingDoctorRegNo?: string;
+  reportingDoctorSignatureUrl?: string;
+  reportingDoctorStampUrl?: string;
+  companySnapshot?: CompanyProfile;
+  status: 'draft' | 'verified' | 'finalized' | 'amended';
+  isLocked: boolean;
+  lockedAt?: string;
+  finalizedAt?: string;
+  verificationCode: string;
+  verificationHash?: string;
+  qrVerificationUrl?: string;
+  amendmentHistory?: Array<{
+    amendedAt: string;
+    amendedBy: string;
+    reason: string;
+    previousParameters: LabParameterResult[];
+  }>;
+  createdAt: string;
+  updatedAt: string;
+}
+
 
 export interface ClinicalVitals {
   bpSystolic?: number;

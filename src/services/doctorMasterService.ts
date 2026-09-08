@@ -31,6 +31,12 @@ export interface DoctorMasterItem {
   opdRoom: string;
   avatarUrl: string;
   
+  // Diagnostic Reporting Authority & Digital Signatures
+  isReportingDoctor?: boolean;
+  designation?: string;
+  signatureUrl?: string;
+  stampUrl?: string;
+
   // Staff User Account & Credentials
   username: string;
   pinCode: string;
@@ -250,6 +256,11 @@ export class DoctorMasterService {
   public static getDoctorById(id: string): DoctorMasterItem | undefined {
     return this.getAllDoctors().find(d => d.id === id || d.doctorCode === id || d.username === id);
   }
+
+  public static getAllReportingDoctors(): DoctorMasterItem[] {
+    return this.getAllDoctors().filter(d => d.status === 'active' && (d.isReportingDoctor ?? true));
+  }
+
 
   // ==========================================
   // CREATE / REGISTER DOCTOR WITH AUTO USER ID & PASS

@@ -434,7 +434,56 @@ export class CardService {
     }
     cleanCode = cleanCode.replace(/[^a-zA-Z0-9\-_:]/g, '').toUpperCase();
 
-    const nowIso = new Date().toISOString();
+    // 0. Check Diagnostic Reports (e.g. LMDX-RPT-YYYY-XXXXXX or RPT-...)
+    if (cleanCode.startsWith('LMDX-RPT-') || cleanCode.startsWith('RPT-') || cleanCode.includes('RPT')) {
+      const reports = StorageService.getItem<any[]>('labmedix_diagnostic_reports_v1', []);
+      const report = reports.find(
+        r =>
+          (r.reportNumber && r.reportNumber.toUpperCase() === cleanCode) ||
+          (r.id && r.id.toUpperCase() === cleanCode) ||
+          (r.verificationCode && r.verificationCode.toUpperCase() === cleanCode) ||
+          cleanCode.includes(r.reportNumber.toUpperCase())
+      );
+
+      if (report) {
+        return {
+          verified: true,
+          type: 'diagnostic_report',
+          cardStatus: 'active',
+          message: 'Officially Authenticated Medical Diagnostic Laboratory Report (ISO 9001:2015 & NABH Certified).',
+          verificationCode: report.reportNumber,
+          report: {
+            reportNumber: report.reportNumber,
+            orderNumber: report.orderNumber,
+            bookingNo: report.bookingNo,
+            patientName: report.patientName,
+            maskedPatientId: report.patientId && report.patientId.length > 8 ? `${report.patientId.slice(0, 5)}***${report.patientId.slice(-3)}` : (report.patientId || 'LMDX-PATIENT'),
+            age: report.patientAge || 45,
+            gender: report.patientGender || 'male',
+            testName: report.testName,
+            testCategory: report.testCategory || 'Clinical Pathology',
+            department: report.department || 'Diagnostic Pathology',
+            sampleBarcode: report.sampleBarcode || 'Accessioned Barcode',
+            specimenType: report.sampleTubeType || 'Blood / Serum Specimen',
+            sampleCollectedAt: report.sampleCollectedAt || report.createdAt,
+            sampleReceivedAt: report.sampleReceivedAt || report.createdAt,
+            reportDate: report.finalizedAt || report.createdAt,
+            status: report.status,
+            isLocked: report.isLocked,
+            technicianName: report.technicianName || 'Authorized Medical Laboratory Technologist',
+            technicianDesignation: report.technicianDesignation || 'Medical Technologist',
+            reportingDoctorName: report.reportingDoctorName || 'Authorized Consultant Pathologist',
+            reportingDoctorDesignation: report.reportingDoctorDesignation || 'Consultant Pathologist',
+            reportingDoctorRegNo: report.reportingDoctorRegNo || 'Medical Council Certified',
+            laboratoryName: company.name,
+            centerLocation: `${company.district}, ${company.state}`,
+            verificationHash: report.verificationHash || 'VERIFIED-SEAL'
+          },
+          issueDate: report.finalizedAt || report.createdAt,
+          company
+        };
+      }
+    }
 
     // 1. Check Staff Employee Passes first
     const users = StorageService.getUsers();

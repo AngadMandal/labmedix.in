@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { DoctorMasterItem, DoctorMasterService } from '../../services/doctorMasterService';
 import { Modal } from '../common/Modal';
 import { Button } from '../common/Button';
@@ -22,7 +22,12 @@ import {
   Award,
   Lock,
   Clock,
-  Calendar
+  Calendar,
+  PenTool,
+  Upload,
+  Eraser,
+  CheckCircle2,
+  FileCheck
 } from 'lucide-react';
 
 interface DoctorMasterEditModalProps {
@@ -47,6 +52,8 @@ export const DoctorMasterEditModal: React.FC<DoctorMasterEditModalProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [name, setName] = useState('');
   const [qualification, setQualification] = useState('');
+  const [designation, setDesignation] = useState('');
+  const [isReportingDoctor, setIsReportingDoctor] = useState(true);
   const [speciality, setSpeciality] = useState('Cardiology & Interventional Medicine');
   const [department, setDepartment] = useState('Cardiology OPD');
   const [regNumber, setRegNumber] = useState('');
@@ -55,6 +62,13 @@ export const DoctorMasterEditModal: React.FC<DoctorMasterEditModalProps> = ({
   const [opdRoom, setOpdRoom] = useState('Room 102 (First Floor)');
   const [avatarUrl, setAvatarUrl] = useState('');
   
+  // Signatures & Stamp
+  const [signatureUrl, setSignatureUrl] = useState('');
+  const [stampUrl, setStampUrl] = useState('');
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const [isDrawing, setIsDrawing] = useState(false);
+  const [showCanvas, setShowCanvas] = useState(false);
+
   // Credentials
   const [username, setUsername] = useState('');
   const [pinCode, setPinCode] = useState('1234');
@@ -74,6 +88,8 @@ export const DoctorMasterEditModal: React.FC<DoctorMasterEditModalProps> = ({
     if (doctor) {
       setName(doctor.name);
       setQualification(doctor.qualification);
+      setDesignation(doctor.designation || `Consultant (${doctor.speciality})`);
+      setIsReportingDoctor(doctor.isReportingDoctor ?? true);
       setSpeciality(doctor.speciality);
       setDepartment(doctor.department);
       setRegNumber(doctor.regNumber);
@@ -81,6 +97,8 @@ export const DoctorMasterEditModal: React.FC<DoctorMasterEditModalProps> = ({
       setEmail(doctor.email);
       setOpdRoom(doctor.opdRoom);
       setAvatarUrl(doctor.avatarUrl);
+      setSignatureUrl(doctor.signatureUrl || '');
+      setStampUrl(doctor.stampUrl || '');
       setUsername(doctor.username);
       setPinCode(doctor.pinCode || '1234');
       setStandardFee(doctor.standardFee);
@@ -93,6 +111,8 @@ export const DoctorMasterEditModal: React.FC<DoctorMasterEditModalProps> = ({
     } else {
       setName('');
       setQualification('MBBS, MD (Medicine)');
+      setDesignation('Senior Consultant Physician & Clinical Pathologist');
+      setIsReportingDoctor(true);
       setSpeciality('Cardiology & Interventional Medicine');
       setDepartment('Cardiology OPD');
       setRegNumber(`WBMC-${Math.floor(50000 + Math.random() * 40000)}`);
@@ -100,6 +120,8 @@ export const DoctorMasterEditModal: React.FC<DoctorMasterEditModalProps> = ({
       setEmail('');
       setOpdRoom('Room 102 (First Floor)');
       setAvatarUrl('https://images.unsplash.com/photo-1622253692010-333f2da6031d?w=400&auto=format&fit=crop&q=80');
+      setSignatureUrl('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 60"><path d="M10,40 Q30,10 60,35 T110,25 T150,45 T190,20" fill="none" stroke="%231e3a8a" stroke-width="2.5" stroke-linecap="round"/></svg>');
+      setStampUrl('');
       setUsername('');
       setPinCode('1234');
       setStandardFee(800);
@@ -111,6 +133,85 @@ export const DoctorMasterEditModal: React.FC<DoctorMasterEditModalProps> = ({
       setOpdTiming('10:00 AM - 02:00 PM');
     }
   }, [doctor, isOpen]);
+
+  // Canvas drawing
+  const startDrawing = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    setIsDrawing(true);
+    const rect = canvas.getBoundingClientRect();
+    const x = 'touches' in e ? e.touches[0].clientX - rect.left : e.clientX - rect.left;
+    const y = 'touches' in e ? e.touches[0].clientY - rect.top : e.clientY - rect.top;
+
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineWidth = 2.5;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = '#1e3a8a';
+  };
+
+  const draw = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
+    if (!isDrawing) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const rect = canvas.getBoundingClientRect();
+    const x = 'touches' in e ? e.touches[0].clientX - rect.left : e.clientX - rect.left;
+    const y = 'touches' in e ? e.touches[0].clientY - rect.top : e.clientY - rect.top;
+
+    ctx.lineTo(x, y);
+    ctx.stroke();
+  };
+
+  const stopDrawing = () => {
+    setIsDrawing(false);
+  };
+
+  const clearCanvas = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+  };
+
+  const applyDrawnSignature = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const dataUrl = canvas.toDataURL('image/png');
+    setSignatureUrl(dataUrl);
+    setShowCanvas(false);
+    showToast('success', 'Digital Signature Applied', 'Doctor digital signature saved.');
+  };
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>, type: 'signature' | 'stamp') => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 2 * 1024 * 1024) {
+      showToast('error', 'File Too Large', 'Please upload an image under 2MB.');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const res = reader.result as string;
+      if (type === 'signature') {
+        setSignatureUrl(res);
+        showToast('success', 'Signature Uploaded', 'Doctor signature image updated.');
+      } else {
+        setStampUrl(res);
+        showToast('success', 'Stamp Uploaded', 'Council seal/stamp updated.');
+      }
+    };
+    reader.readAsDataURL(file);
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -134,6 +235,8 @@ export const DoctorMasterEditModal: React.FC<DoctorMasterEditModalProps> = ({
         const res = DoctorMasterService.updateDoctor(doctor.id, {
           name,
           qualification,
+          designation,
+          isReportingDoctor,
           speciality,
           department,
           regNumber,
@@ -141,6 +244,8 @@ export const DoctorMasterEditModal: React.FC<DoctorMasterEditModalProps> = ({
           email,
           opdRoom,
           avatarUrl,
+          signatureUrl,
+          stampUrl,
           pinCode,
           standardFee,
           followUpFee,
@@ -153,7 +258,7 @@ export const DoctorMasterEditModal: React.FC<DoctorMasterEditModalProps> = ({
 
         if (res.success) {
           triggerCelebrationFireworks();
-          showToast('success', 'Doctor Master Updated', `${name} profile and commission matrix updated.`);
+          showToast('success', 'Doctor Master Updated', `${name} profile, credentials and signatures updated.`);
           onSaved();
           onClose();
         } else {
@@ -163,6 +268,8 @@ export const DoctorMasterEditModal: React.FC<DoctorMasterEditModalProps> = ({
         const res = DoctorMasterService.createDoctor({
           name,
           qualification,
+          designation,
+          isReportingDoctor,
           speciality,
           department,
           regNumber,
@@ -170,6 +277,8 @@ export const DoctorMasterEditModal: React.FC<DoctorMasterEditModalProps> = ({
           email: email || `${cleanUsername}@labmedix.org`,
           opdRoom,
           avatarUrl: avatarUrl || 'https://images.unsplash.com/photo-1622253692010-333f2da6031d?w=400&auto=format&fit=crop&q=80',
+          signatureUrl,
+          stampUrl,
           username: cleanUsername,
           pinCode,
           standardFee,
@@ -219,10 +328,23 @@ export const DoctorMasterEditModal: React.FC<DoctorMasterEditModalProps> = ({
 
         {/* SECTION 1: CLINICAL CREDENTIALS & DEMOGRAPHICS */}
         <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-3">
-          <strong className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
-            <Stethoscope className="w-4 h-4 text-teal-500" />
-            <span>Physician Profile & Clinical Qualifications</span>
-          </strong>
+          <div className="flex items-center justify-between">
+            <strong className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+              <Stethoscope className="w-4 h-4 text-teal-500" />
+              <span>Physician Profile & Clinical Qualifications</span>
+            </strong>
+            <label className="flex items-center gap-2 cursor-pointer bg-teal-500/10 px-2.5 py-1 rounded-xl border border-teal-500/30">
+              <input
+                type="checkbox"
+                checked={isReportingDoctor}
+                onChange={(e) => setIsReportingDoctor(e.target.checked)}
+                className="rounded text-teal-600 focus:ring-teal-500"
+              />
+              <span className="text-[10px] font-bold text-teal-700 dark:text-teal-300">
+                Authorized Diagnostic Reporting Doctor
+              </span>
+            </label>
+          </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="space-y-1">
@@ -246,6 +368,17 @@ export const DoctorMasterEditModal: React.FC<DoctorMasterEditModalProps> = ({
                 value={qualification}
                 onChange={(e) => setQualification(e.target.value)}
                 required
+              />
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 block">
+                Official Clinical Designation:
+              </label>
+              <Input
+                placeholder="e.g. Senior Consultant Pathologist & Head of Diagnostics"
+                value={designation}
+                onChange={(e) => setDesignation(e.target.value)}
               />
             </div>
 
@@ -323,8 +456,102 @@ export const DoctorMasterEditModal: React.FC<DoctorMasterEditModalProps> = ({
           </div>
         </div>
 
-        {/* SECTION 2: AUTO USER ID & SECURITY PIN */}
+        {/* SECTION 2: AUTHORIZED DIGITAL SIGNATURE & STAMP */}
         <div className="p-3.5 rounded-2xl bg-slate-900 border border-slate-800 space-y-3">
+          <div className="flex items-center justify-between">
+            <strong className="text-xs font-bold text-white flex items-center gap-1.5">
+              <PenTool className="w-4 h-4 text-teal-400" />
+              <span>Doctor Digital Signature & Council Seal</span>
+            </strong>
+            <span className="text-[10px] text-teal-400 font-mono">
+              Diagnostic Sign-off
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="space-y-2 p-2.5 bg-slate-950 rounded-xl border border-slate-800">
+              <span className="text-[10px] font-bold text-slate-400 uppercase block">Digital Signature Graphic</span>
+              {signatureUrl ? (
+                <div className="h-16 p-2 bg-white rounded-lg border border-slate-300 flex items-center justify-center">
+                  <img src={signatureUrl} alt="Signature" className="max-h-full max-w-full object-contain" />
+                </div>
+              ) : (
+                <div className="h-16 rounded-lg border border-dashed border-slate-700 flex items-center justify-center text-slate-500 text-[10px]">
+                  No signature configured
+                </div>
+              )}
+              <div className="flex gap-2">
+                <label className="flex-1 cursor-pointer">
+                  <span className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] font-bold flex items-center justify-center gap-1">
+                    <Upload className="w-3 h-3" /> Upload
+                  </span>
+                  <input type="file" accept="image/*" className="hidden" onChange={(e) => handleFileUpload(e, 'signature')} />
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setShowCanvas(!showCanvas)}
+                  className="px-2 py-1 rounded bg-teal-600/20 text-teal-300 border border-teal-500/40 text-[10px] font-bold flex items-center gap-1"
+                >
+                  <PenTool className="w-3 h-3" /> {showCanvas ? 'Close' : 'Draw'}
+                </button>
+              </div>
+            </div>
+
+            <div className="space-y-2 p-2.5 bg-slate-950 rounded-xl border border-slate-800">
+              <span className="text-[10px] font-bold text-slate-400 uppercase block">Doctor Seal / Stamp (Optional)</span>
+              {stampUrl ? (
+                <div className="h-16 p-2 bg-white rounded-lg border border-slate-300 flex items-center justify-center">
+                  <img src={stampUrl} alt="Stamp" className="max-h-full max-w-full object-contain" />
+                </div>
+              ) : (
+                <div className="h-16 rounded-lg border border-dashed border-slate-700 flex items-center justify-center text-slate-500 text-[10px]">
+                  No stamp attached
+                </div>
+              )}
+              <label className="block cursor-pointer">
+                <span className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] font-bold flex items-center justify-center gap-1">
+                  <Upload className="w-3 h-3" /> Upload Stamp
+                </span>
+                <input type="file" accept="image/*" className="hidden" onChange={(e) => handleFileUpload(e, 'stamp')} />
+              </label>
+            </div>
+          </div>
+
+          {showCanvas && (
+            <div className="p-3 bg-slate-950 border border-teal-500/40 rounded-xl space-y-2">
+              <div className="flex items-center justify-between text-[10px] text-teal-400 font-bold">
+                <span>Draw Doctor Signature with mouse or stylus:</span>
+                <div className="flex gap-2">
+                  <button type="button" onClick={clearCanvas} className="text-rose-400 hover:underline flex items-center gap-0.5">
+                    <Eraser className="w-3 h-3" /> Clear
+                  </button>
+                  <button type="button" onClick={applyDrawnSignature} className="bg-teal-600 text-white px-2 py-0.5 rounded font-bold">
+                    Adopt Signature ✓
+                  </button>
+                </div>
+              </div>
+              <div className="bg-white rounded-lg p-1">
+                <canvas
+                  ref={canvasRef}
+                  width={460}
+                  height={100}
+                  onMouseDown={startDrawing}
+                  onMouseMove={draw}
+                  onMouseUp={stopDrawing}
+                  onMouseLeave={stopDrawing}
+                  onTouchStart={startDrawing}
+                  onTouchMove={draw}
+                  onTouchEnd={stopDrawing}
+                  className="w-full h-[100px] cursor-crosshair touch-none"
+                />
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* SECTION 3: AUTO USER ID & SECURITY PIN */}
+        <div className="p-3.5 rounded-2xl bg-slate-900 border border-slate-800 space-y-3">
+
           <div className="flex items-center justify-between">
             <strong className="text-xs font-bold text-white flex items-center gap-1.5">
               <KeyRound className="w-4 h-4 text-amber-400" />

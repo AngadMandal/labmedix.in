@@ -14,6 +14,11 @@ import { LabReportPrintModal } from '../../components/emr/LabReportPrintModal';
 import { LabResultEntryModal } from '../../components/laboratory/LabResultEntryModal';
 import { LabVerificationModal } from '../../components/laboratory/LabVerificationModal';
 import { CreateLabOrderModal } from '../../components/laboratory/CreateLabOrderModal';
+import { TechnicianMasterEditModal } from '../../components/laboratory/TechnicianMasterEditModal';
+import { DoctorMasterEditModal } from '../../components/emr/DoctorMasterEditModal';
+import { TechnicianMasterService } from '../../services/technicianMasterService';
+import { DoctorMasterService, DoctorMasterItem } from '../../services/doctorMasterService';
+import { LabTechnicianItem } from '../../types';
 import { Modal } from '../../components/common/Modal';
 import {
   TestTube,
@@ -36,7 +41,15 @@ import {
   User,
   FlaskConical,
   Activity,
-  CheckSquare
+  CheckSquare,
+  Stethoscope,
+  PenTool,
+  Award,
+  FileCheck,
+  Edit3,
+  Trash2,
+  Building,
+  Check
 } from 'lucide-react';
 
 export const LaboratoryPage: React.FC = () => {
@@ -44,7 +57,7 @@ export const LaboratoryPage: React.FC = () => {
   const { showToast } = useToast();
 
   // Navigation Tab
-  const [activeTab, setActiveTab] = useState<'orders' | 'accessioning' | 'catalog' | 'packages'>('orders');
+  const [activeTab, setActiveTab] = useState<'orders' | 'accessioning' | 'catalog' | 'packages' | 'doctors_technicians'>('orders');
 
   // Core Data
   const [labOrders, setLabOrders] = useState<BloodTestBooking[]>(() => PortalService.getLabBookings());
@@ -52,6 +65,16 @@ export const LaboratoryPage: React.FC = () => {
   const [packages, setPackages] = useState<HealthPackageItem[]>(() => CatalogService.getPackages());
   const [patients, setPatients] = useState<Patient[]>(() => StorageService.getPatients());
   const [cards, setCards] = useState<HealthCard[]>(() => StorageService.getCards());
+
+  // Technicians & Doctors Master
+  const [technicians, setTechnicians] = useState<LabTechnicianItem[]>(() => TechnicianMasterService.getAllTechnicians());
+  const [doctors, setDoctors] = useState<DoctorMasterItem[]>(() => DoctorMasterService.getAllDoctors());
+  const [selectedTechnicianForEdit, setSelectedTechnicianForEdit] = useState<LabTechnicianItem | null>(null);
+  const [isTechModalOpen, setIsTechModalOpen] = useState(false);
+  const [selectedDoctorForEdit, setSelectedDoctorForEdit] = useState<DoctorMasterItem | null>(null);
+  const [isDoctorModalOpen, setIsDoctorModalOpen] = useState(false);
+  const [techSearchQuery, setTechSearchQuery] = useState('');
+  const [docSearchQuery, setDocSearchQuery] = useState('');
 
   // Search & Filters
   const [searchQuery, setSearchQuery] = useState('');
@@ -81,8 +104,15 @@ export const LaboratoryPage: React.FC = () => {
     });
 
     const handleSync = (e: CustomEvent) => {
-      if (!e.detail?.key || e.detail.key === 'labmedix_portal_lab_bookings_v1') {
+      if (
+        !e.detail?.key ||
+        e.detail.key === 'labmedix_portal_lab_bookings_v1' ||
+        e.detail.key === 'labmedix_technicians_v1' ||
+        e.detail.key === 'labmedix_doctors_v1'
+      ) {
         setLabOrders(PortalService.getLabBookings());
+        setTechnicians(TechnicianMasterService.getAllTechnicians());
+        setDoctors(DoctorMasterService.getAllDoctors());
       }
     };
     window.addEventListener('labmedix_data_synced', handleSync as EventListener);
@@ -100,12 +130,39 @@ export const LaboratoryPage: React.FC = () => {
       setLabOrders(PortalService.getLabBookings());
       setTests(CatalogService.getTests());
       setPackages(CatalogService.getPackages());
+      setTechnicians(TechnicianMasterService.getAllTechnicians());
+      setDoctors(DoctorMasterService.getAllDoctors());
       showToast('success', 'Central Sync Complete', 'Diagnostic laboratory data updated from Firestore.');
     } catch {
       setLabOrders(PortalService.getLabBookings());
+      setTechnicians(TechnicianMasterService.getAllTechnicians());
+      setDoctors(DoctorMasterService.getAllDoctors());
       showToast('info', 'Local Cache Updated', 'Laboratory orders refreshed.');
     } finally {
       setIsRefreshing(false);
+    }
+  };
+
+  const handleDeleteTechnician = (tech: LabTechnicianItem) => {
+    if (window.confirm(`Are you sure you want to remove ${tech.name} (${tech.technicianCode}) from the authorized technician registry?`)) {
+      TechnicianMasterService.deleteTechnician(tech.id, currentUser?.role || 'super_admin');
+      setTechnicians(TechnicianMasterService.getAllTechnicians());
+      showToast('success', 'Technologist Removed', `${tech.name} has been removed.`);
+    }
+  };
+
+  const handleToggleTechStatus = (tech: LabTechnicianItem) => {
+    const nextStatus = tech.status === 'active' ? 'inactive' : 'active';
+    TechnicianMasterService.updateTechnician(tech.id, { status: nextStatus }, currentUser?.role || 'super_admin');
+    setTechnicians(TechnicianMasterService.getAllTechnicians());
+    showToast('success', 'Status Updated', `${tech.name} is now ${nextStatus === 'active' ? 'Active' : 'Inactive'}.`);
+  };
+
+  const handleDeleteDoctor = (doc: DoctorMasterItem) => {
+    if (window.confirm(`Are you sure you want to remove Dr. ${doc.name} from the medical registry?`)) {
+      DoctorMasterService.deleteDoctor(doc.id, currentUser?.role || 'super_admin');
+      setDoctors(DoctorMasterService.getAllDoctors());
+      showToast('success', 'Doctor Removed', `Dr. ${doc.name} has been removed.`);
     }
   };
 
@@ -351,6 +408,18 @@ export const LaboratoryPage: React.FC = () => {
         >
           <Package className="w-4 h-4" />
           <span>Health Packages ({packages.length})</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('doctors_technicians')}
+          className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 ${
+            activeTab === 'doctors_technicians'
+              ? 'bg-teal-600 text-white shadow-md'
+              : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+          }`}
+        >
+          <PenTool className="w-4 h-4" />
+          <span>Doctors & Technicians / Signatures</span>
         </button>
       </div>
 
@@ -754,6 +823,363 @@ export const LaboratoryPage: React.FC = () => {
         </div>
       )}
 
+      {/* Tab 5: Doctors & Technicians / Signatures Master */}
+      {activeTab === 'doctors_technicians' && (
+        <div className="space-y-6">
+          {/* Top Banner Notice */}
+          <div className="p-5 rounded-3xl bg-slate-900/90 border border-teal-500/30 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-xl">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2 text-teal-400 font-bold text-sm">
+                <ShieldCheck className="w-5 h-5 text-teal-400" />
+                <span>Authorized Signatory & Diagnostic Master</span>
+              </div>
+              <p className="text-xs text-slate-300 max-w-2xl">
+                Certified Medical Laboratory Technologists (MLT) and Consulting Pathologists with verified council registrations and cryptographic digital signatures. Configured credentials and signatures are automatically stamped on verified Diagnostic Reports.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2 flex-wrap">
+              <button
+                onClick={() => {
+                  setSelectedTechnicianForEdit(null);
+                  setIsTechModalOpen(true);
+                }}
+                className="px-3.5 py-2 rounded-xl bg-teal-600 hover:bg-teal-500 text-white text-xs font-bold transition flex items-center gap-2 shadow-lg shadow-teal-600/20"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Add Technologist</span>
+              </button>
+
+              <button
+                onClick={() => {
+                  setSelectedDoctorForEdit(null);
+                  setIsDoctorModalOpen(true);
+                }}
+                className="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition flex items-center gap-2 shadow-lg shadow-blue-600/20"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Add Doctor / Pathologist</span>
+              </button>
+            </div>
+          </div>
+
+          {/* 2-Column Master Grid */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Column 1: Laboratory Technologists */}
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="p-1.5 rounded-lg bg-teal-500/20 text-teal-300 border border-teal-500/30">
+                    <TestTube className="w-4 h-4" />
+                  </div>
+                  <h2 className="text-sm font-black text-white uppercase tracking-wider">
+                    Laboratory Technologists ({technicians.length})
+                  </h2>
+                </div>
+              </div>
+
+              {/* Technologist Search */}
+              <div className="relative">
+                <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="text"
+                  value={techSearchQuery}
+                  onChange={(e) => setTechSearchQuery(e.target.value)}
+                  placeholder="Search technologist by name, code, qualification..."
+                  className="w-full pl-10 pr-4 py-2 rounded-xl bg-slate-900 border border-slate-800 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-teal-500"
+                />
+              </div>
+
+              {/* Technologists List */}
+              <div className="space-y-3">
+                {technicians
+                  .filter((t) => {
+                    if (!techSearchQuery.trim()) return true;
+                    const q = techSearchQuery.toLowerCase();
+                    return (
+                      t.name.toLowerCase().includes(q) ||
+                      t.technicianCode.toLowerCase().includes(q) ||
+                      t.qualification.toLowerCase().includes(q) ||
+                      t.department.toLowerCase().includes(q)
+                    );
+                  })
+                  .map((tech) => (
+                    <div
+                      key={tech.id}
+                      className="p-4 rounded-2xl bg-slate-900/80 border border-slate-800 hover:border-slate-700 transition space-y-3"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-teal-500/20 text-teal-300 border border-teal-500/30">
+                              {tech.technicianCode}
+                            </span>
+                            <span
+                              className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                                tech.status === 'active'
+                                  ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                                  : 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
+                              }`}
+                            >
+                              {tech.status === 'active' ? 'Active' : 'Inactive'}
+                            </span>
+                          </div>
+                          <h3 className="text-sm font-black text-white mt-1">{tech.name}</h3>
+                          <p className="text-xs text-slate-300">{tech.designation}</p>
+                          <p className="text-[11px] text-teal-400">{tech.qualification}</p>
+                        </div>
+
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            onClick={() => {
+                              setSelectedTechnicianForEdit(tech);
+                              setIsTechModalOpen(true);
+                            }}
+                            className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-teal-300 text-xs font-bold transition border border-slate-700"
+                            title="Edit Credentials & Signature"
+                          >
+                            <Edit3 className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => handleToggleTechStatus(tech)}
+                            className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold transition border border-slate-700"
+                            title={tech.status === 'active' ? 'Deactivate' : 'Activate'}
+                          >
+                            <Check className="w-3.5 h-3.5" />
+                          </button>
+                          {currentUser?.role === 'super_admin' && (
+                            <button
+                              onClick={() => handleDeleteTechnician(tech)}
+                              className="p-2 rounded-xl bg-slate-800 hover:bg-rose-900/50 text-rose-400 text-xs font-bold transition border border-slate-700"
+                              title="Delete Technologist"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-800/80 text-[11px] text-slate-400">
+                        <div>
+                          <span className="text-slate-500">Department:</span>
+                          <p className="text-slate-300 font-medium">{tech.department}</p>
+                        </div>
+                        <div>
+                          <span className="text-slate-500">Reg No:</span>
+                          <p className="text-slate-300 font-medium">{tech.regNumber || 'Not Specified'}</p>
+                        </div>
+                      </div>
+
+                      {/* Signature Preview */}
+                      <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between">
+                        <span className="text-[11px] text-slate-500">Digital Signature:</span>
+                        {tech.signatureUrl ? (
+                          <div className="flex items-center gap-2">
+                            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
+                              <CheckCircle2 className="w-3 h-3" />
+                              <span>Configured</span>
+                            </span>
+                            <div className="w-16 h-8 bg-white/95 rounded border border-slate-600 p-0.5 flex items-center justify-center overflow-hidden">
+                              <img src={tech.signatureUrl} alt="Signature" className="max-h-full object-contain" />
+                            </div>
+                          </div>
+                        ) : (
+                          <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center gap-1">
+                            <AlertCircle className="w-3 h-3" />
+                            <span>Pending Signature</span>
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+              </div>
+            </div>
+
+            {/* Column 2: Reporting Pathologists & Doctors */}
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="p-1.5 rounded-lg bg-blue-500/20 text-blue-300 border border-blue-500/30">
+                    <Stethoscope className="w-4 h-4" />
+                  </div>
+                  <h2 className="text-sm font-black text-white uppercase tracking-wider">
+                    Pathologists & Doctors ({doctors.length})
+                  </h2>
+                </div>
+              </div>
+
+              {/* Doctors Search */}
+              <div className="relative">
+                <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="text"
+                  value={docSearchQuery}
+                  onChange={(e) => setDocSearchQuery(e.target.value)}
+                  placeholder="Search doctor by name, qualification, department..."
+                  className="w-full pl-10 pr-4 py-2 rounded-xl bg-slate-900 border border-slate-800 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-teal-500"
+                />
+              </div>
+
+              {/* Doctors List */}
+              <div className="space-y-3">
+                {doctors
+                  .filter((d) => {
+                    if (!docSearchQuery.trim()) return true;
+                    const q = docSearchQuery.toLowerCase();
+                    return (
+                      d.name.toLowerCase().includes(q) ||
+                      d.qualification.toLowerCase().includes(q) ||
+                      d.department.toLowerCase().includes(q) ||
+                      (d.designation && d.designation.toLowerCase().includes(q))
+                    );
+                  })
+                  .map((doc) => (
+                    <div
+                      key={doc.id}
+                      className="p-4 rounded-2xl bg-slate-900/80 border border-slate-800 hover:border-slate-700 transition space-y-3"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span
+                              className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                                doc.isReportingDoctor
+                                  ? 'bg-teal-500/20 text-teal-300 border border-teal-500/30'
+                                  : 'bg-slate-700 text-slate-300'
+                              }`}
+                            >
+                              {doc.isReportingDoctor ? 'Reporting Pathologist' : 'Consulting Doctor'}
+                            </span>
+                            {doc.regNumber && (
+                              <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-slate-800 text-slate-400 border border-slate-700">
+                                {doc.regNumber}
+                              </span>
+                            )}
+                          </div>
+                          <h3 className="text-sm font-black text-white mt-1">Dr. {doc.name}</h3>
+                          <p className="text-xs text-slate-300">{doc.designation || 'Consultant'}</p>
+                          <p className="text-[11px] text-blue-400">{doc.qualification}</p>
+                        </div>
+
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            onClick={() => {
+                              setSelectedDoctorForEdit(doc);
+                              setIsDoctorModalOpen(true);
+                            }}
+                            className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-blue-300 text-xs font-bold transition border border-slate-700"
+                            title="Edit Credentials & Signature"
+                          >
+                            <Edit3 className="w-3.5 h-3.5" />
+                          </button>
+                          {currentUser?.role === 'super_admin' && (
+                            <button
+                              onClick={() => handleDeleteDoctor(doc)}
+                              className="p-2 rounded-xl bg-slate-800 hover:bg-rose-900/50 text-rose-400 text-xs font-bold transition border border-slate-700"
+                              title="Delete Doctor"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-800/80 text-[11px] text-slate-400">
+                        <div>
+                          <span className="text-slate-500">Department:</span>
+                          <p className="text-slate-300 font-medium">{doc.department}</p>
+                        </div>
+                        <div>
+                          <span className="text-slate-500">Consultation Fee:</span>
+                          <p className="text-slate-300 font-medium">{formatCurrency(doc.standardFee || 0)}</p>
+                        </div>
+                      </div>
+
+                      {/* Signature & Stamp Previews */}
+                      <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between gap-2 flex-wrap">
+                        <div className="flex items-center gap-2">
+                          <span className="text-[11px] text-slate-500">Signature:</span>
+                          {doc.signatureUrl ? (
+                            <div className="w-14 h-7 bg-white/95 rounded border border-slate-600 p-0.5 flex items-center justify-center overflow-hidden">
+                              <img src={doc.signatureUrl} alt="Signature" className="max-h-full object-contain" />
+                            </div>
+                          ) : (
+                            <span className="text-[10px] text-amber-400/80">Pending</span>
+                          )}
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <span className="text-[11px] text-slate-500">Council Stamp:</span>
+                          {doc.stampUrl ? (
+                            <div className="w-12 h-7 bg-white/95 rounded border border-slate-600 p-0.5 flex items-center justify-center overflow-hidden">
+                              <img src={doc.stampUrl} alt="Stamp" className="max-h-full object-contain" />
+                            </div>
+                          ) : (
+                            <span className="text-[10px] text-slate-500">None</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Central Diagnostic Center Identity Card */}
+          {(() => {
+            const company = StorageService.getCompanyProfile();
+            return (
+              <div className="p-6 rounded-3xl bg-slate-900/90 border border-slate-800 space-y-4 shadow-xl">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div className="flex items-center gap-2">
+                    <div className="p-2 rounded-xl bg-teal-600/20 text-teal-400 border border-teal-500/30">
+                      <Building className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-black text-white">Central Diagnostic Laboratory Profile</h3>
+                      <p className="text-xs text-slate-400">
+                        Automatically populates report headers, accreditation badges & patient verification certificates.
+                      </p>
+                    </div>
+                  </div>
+                  <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1.5">
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>Live Synced to Diagnostic Reports</span>
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 pt-2">
+                  <div className="p-3.5 rounded-2xl bg-slate-800/60 border border-slate-700/60 space-y-1">
+                    <span className="text-[10px] uppercase font-bold text-slate-400">Diagnostic Center</span>
+                    <p className="text-xs font-bold text-white truncate">{company.name}</p>
+                    <p className="text-[11px] text-teal-400 truncate">{company.tagline || 'Advanced Diagnostic Network'}</p>
+                  </div>
+
+                  <div className="p-3.5 rounded-2xl bg-slate-800/60 border border-slate-700/60 space-y-1">
+                    <span className="text-[10px] uppercase font-bold text-slate-400">Official Contact</span>
+                    <p className="text-xs font-bold text-white truncate">{company.phone}</p>
+                    <p className="text-[11px] text-slate-400 truncate">{company.email}</p>
+                  </div>
+
+                  <div className="p-3.5 rounded-2xl bg-slate-800/60 border border-slate-700/60 space-y-1">
+                    <span className="text-[10px] uppercase font-bold text-slate-400">Accreditation / Reg #</span>
+                    <p className="text-xs font-bold text-white truncate">
+                      {company.registrationNo || company.gstin || 'Govt / NABL Reg. Configured'}
+                    </p>
+                    <p className="text-[11px] text-teal-400 truncate">{company.website || 'labmedix.in'}</p>
+                  </div>
+
+                  <div className="p-3.5 rounded-2xl bg-slate-800/60 border border-slate-700/60 space-y-1">
+                    <span className="text-[10px] uppercase font-bold text-slate-400">Primary Facility Address</span>
+                    <p className="text-xs text-slate-300 line-clamp-2">{company.address}</p>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+        </div>
+      )}
+
       {/* Create Lab Order / Walk-in Booking Modal */}
       <CreateLabOrderModal
         isOpen={isNewOrderModalOpen}
@@ -804,6 +1230,34 @@ export const LaboratoryPage: React.FC = () => {
           booking={selectedOrderForReport}
         />
       )}
+
+      {/* Technician Master Edit / Add Modal */}
+      <TechnicianMasterEditModal
+        isOpen={isTechModalOpen}
+        onClose={() => {
+          setIsTechModalOpen(false);
+          setSelectedTechnicianForEdit(null);
+        }}
+        technician={selectedTechnicianForEdit}
+        onSaved={() => {
+          setTechnicians(TechnicianMasterService.getAllTechnicians());
+        }}
+        isSuperAdmin={currentUser?.role === 'super_admin'}
+      />
+
+      {/* Doctor Master Edit / Add Modal */}
+      <DoctorMasterEditModal
+        isOpen={isDoctorModalOpen}
+        onClose={() => {
+          setIsDoctorModalOpen(false);
+          setSelectedDoctorForEdit(null);
+        }}
+        doctor={selectedDoctorForEdit}
+        onSaved={() => {
+          setDoctors(DoctorMasterService.getAllDoctors());
+        }}
+        isSuperAdmin={currentUser?.role === 'super_admin'}
+      />
     </div>
   );
 };

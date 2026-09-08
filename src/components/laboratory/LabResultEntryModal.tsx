@@ -3,6 +3,7 @@ import { Modal } from '../common/Modal';
 import { Button } from '../common/Button';
 import { BloodTestBooking, LabTestResultParameter, PortalService } from '../../services/portalService';
 import { LaboratoryService } from '../../services/laboratoryService';
+import { TechnicianMasterService } from '../../services/technicianMasterService';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import {
@@ -14,7 +15,8 @@ import {
   Cpu,
   FileText,
   Clock,
-  Sparkles
+  Sparkles,
+  UserCheck
 } from 'lucide-react';
 
 export interface LabResultEntryModalProps {
@@ -36,6 +38,8 @@ export const LabResultEntryModal: React.FC<LabResultEntryModalProps> = ({
   const { currentUser } = useAuth();
   const { showToast } = useToast();
 
+  const technicians = TechnicianMasterService.getAllTechnicians();
+  const [selectedTechnicianId, setSelectedTechnicianId] = useState(() => technicians[0]?.id || '');
   const [parameters, setParameters] = useState<LabTestResultParameter[]>([]);
   const [technicianNotes, setTechnicianNotes] = useState('');
   const [analyzerMethod, setAnalyzerMethod] = useState('Fully Automated 5-Part Cell Analyzer / Photometry');
@@ -326,8 +330,26 @@ export const LabResultEntryModal: React.FC<LabResultEntryModalProps> = ({
           </div>
         </div>
 
-        {/* Analyzer Instrument & Method Details */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        {/* Analyzer Instrument, Technologist & Method Details */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="space-y-1">
+            <label className="block text-xs font-semibold text-slate-300 flex items-center gap-1.5">
+              <UserCheck className="w-3.5 h-3.5 text-teal-400" />
+              <span>Performing Laboratory Technologist *</span>
+            </label>
+            <select
+              value={selectedTechnicianId}
+              onChange={(e) => setSelectedTechnicianId(e.target.value)}
+              className="w-full p-2.5 rounded-xl bg-slate-800 border border-slate-700 text-xs text-white focus:border-teal-500 font-medium"
+            >
+              {technicians.map(t => (
+                <option key={t.id} value={t.id}>
+                  {t.name} ({t.technicianCode})
+                </option>
+              ))}
+            </select>
+          </div>
+
           <div className="space-y-1">
             <label className="block text-xs font-semibold text-slate-300 flex items-center gap-1.5">
               <Cpu className="w-3.5 h-3.5 text-teal-400" />
@@ -345,7 +367,7 @@ export const LabResultEntryModal: React.FC<LabResultEntryModalProps> = ({
           <div className="space-y-1">
             <label className="block text-xs font-semibold text-slate-300 flex items-center gap-1.5">
               <FileText className="w-3.5 h-3.5 text-teal-400" />
-              <span>Technician Remarks / Observations</span>
+              <span>Technician Remarks / Notes</span>
             </label>
             <input
               type="text"
