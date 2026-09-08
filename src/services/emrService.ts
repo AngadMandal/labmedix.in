@@ -2,7 +2,9 @@ import { ClinicalEncounter, PrescribedMedication, OrderedLabTest, ClinicalVitals
 import { StorageService } from './storage';
 import { AuditService } from './auditService';
 import { ApiSyncService } from './apiSyncService';
-import { generateUuid } from '../utils/idGenerator';
+import { generateUuid, generateQueueToken } from '../utils/idGenerator';
+import { BillService } from './billService';
+import { DoctorMasterService } from './doctorMasterService';
 
 const EMR_STORAGE_KEY = 'labmedix_clinical_encounters';
 
@@ -245,9 +247,14 @@ export class EMRService {
       }
     }
 
+    const existingTokens = appointments.map(a => a.queueToken || a.appointmentNo || '');
+    const queueToken = appointmentData.queueToken || generateQueueToken(existingTokens);
+    const appointmentNo = appointmentData.appointmentNo || queueToken;
+
     const newApt: PatientAppointment = {
       id: `apt_${generateUuid().slice(0, 8)}`,
-      appointmentNo: appointmentData.appointmentNo || `APT-2026-${Math.floor(1000 + Math.random() * 9000)}`,
+      appointmentNo,
+      queueToken,
       patientId: appointmentData.patientId,
       patientName: appointmentData.patientName,
       patientPhone: appointmentData.patientPhone || '+91 98300 00000',
@@ -280,7 +287,8 @@ export class EMRService {
 
     appointments.unshift(newApt);
     StorageService.saveAppointments(appointments);
-    AuditService.log('APPOINTMENT_CREATED', 'clinical', `Scheduled live doctor consultation ${newApt.appointmentNo} [Seal: ${securitySeal}] for Card: ${newApt.cardNo || 'N/A'} (${newApt.patientName})`);
+    ApiSyncService.saveDocument('appointments', newApt.id, newApt).catch(() => {});
+    AuditService.log('APPOINTMENT_CREATED', 'clinical', `Scheduled live doctor consultation ${newApt.appointmentNo} (Queue: ${queueToken}) [Seal: ${securitySeal}] for Card: ${newApt.cardNo || 'N/A'} (${newApt.patientName})`);
     return newApt;
   }
 
@@ -303,14 +311,49 @@ export class EMRService {
 
   public static updateAppointmentStatus(id: string, status: PatientAppointment['status']): PatientAppointment | null {
     const appointments = this.getAllAppointments();
-    const apt = appointments.find(a => a.id === id);
+    const apt = appointments.find(a => a.id === id || a.appointmentNo === id);
     if (!apt) return null;
 
     apt.status = status;
     apt.updatedAt = new Date().toISOString();
 
+    // When consultation is completed, auto-generate official hospital bill & attribute revenue to doctor
+    if (status === 'completed' && !apt.billId) {
+      try {
+        const fee = Number(apt.consultationFee || 0);
+        if (fee > 0) {
+          const bill = BillService.createHospitalBill({
+            patientId: apt.patientId,
+            patientName: apt.patientName,
+            patientMobile: apt.patientPhone,
+            healthCardNumber: apt.cardNo,
+            healthCardId: apt.cardId,
+            billCategory: 'opd_consultation',
+            items: [
+              {
+                description: `OPD Consultation: ${apt.doctorName} (${apt.department}) [Token: ${apt.queueToken || apt.appointmentNo}]`,
+                quantity: 1,
+                unitPrice: fee,
+                total: fee
+              }
+            ],
+            paidAmount: apt.walletDebitStatus === 'pending' ? 0 : fee,
+            paymentMethod: apt.walletDebitStatus === 'free_card_benefit' ? 'wallet' : 'cash',
+            notes: `OPD Consultation Token ${apt.queueToken || apt.appointmentNo} completed. Complaint: ${apt.chiefComplaint}`
+          });
+          apt.billId = bill.id;
+        }
+
+        // Attribute consultation to Doctor Master metrics & commission
+        DoctorMasterService.attributeConsultationAndReferral(apt.doctorId, fee, 0);
+      } catch (err) {
+        console.error('Failed to auto-generate bill for completed appointment:', err);
+      }
+    }
+
     StorageService.saveAppointments(appointments);
-    AuditService.log('APPOINTMENT_UPDATED', 'patient', `Updated appointment ${apt.appointmentNo} status to ${status}`);
+    ApiSyncService.saveDocument('appointments', apt.id, apt).catch(() => {});
+    AuditService.log('APPOINTMENT_UPDATED', 'clinical', `Updated appointment ${apt.appointmentNo} status to ${status}`);
     return apt;
   }
 

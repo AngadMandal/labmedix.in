@@ -378,11 +378,13 @@ export const AppointmentsPage: React.FC = () => {
             className="px-3 py-2.5 rounded-xl bg-slate-800 border border-slate-700 text-xs text-white font-medium focus:outline-none focus:border-teal-500"
           >
             <option value="all">All Statuses</option>
-            <option value="pending_doctor_approval">Pending Approval</option>
-            <option value="doctor_confirmed">Confirmed / Waiting</option>
+            <option value="pending_doctor_approval">Booked (Pending Approval)</option>
+            <option value="doctor_confirmed">Confirmed</option>
+            <option value="waiting">Waiting in Clinic</option>
             <option value="in_consultation">In Consultation</option>
             <option value="completed">Completed</option>
             <option value="cancelled">Cancelled</option>
+            <option value="no_show">No Show</option>
           </select>
         </div>
       </div>
@@ -437,11 +439,13 @@ export const AppointmentsPage: React.FC = () => {
               <tbody className="divide-y divide-slate-800">
                 {filteredAppointments.map((apt) => {
                   const statusBadges: Record<string, { label: string; color: string }> = {
-                    pending_doctor_approval: { label: 'Pending Approval', color: 'bg-amber-950 text-amber-300 border-amber-500/30' },
-                    doctor_confirmed: { label: 'Waiting Room', color: 'bg-teal-950 text-teal-300 border-teal-500/30' },
+                    pending_doctor_approval: { label: 'Booked / Pending', color: 'bg-amber-950 text-amber-300 border-amber-500/30' },
+                    doctor_confirmed: { label: 'Confirmed', color: 'bg-blue-950 text-blue-300 border-blue-500/30' },
+                    waiting: { label: 'Waiting in Clinic', color: 'bg-teal-950 text-teal-300 border-teal-500/30' },
                     in_consultation: { label: 'In Consultation', color: 'bg-indigo-950 text-indigo-300 border-indigo-500/30 animate-pulse' },
                     completed: { label: 'Completed', color: 'bg-emerald-950 text-emerald-300 border-emerald-500/30' },
-                    cancelled: { label: 'Cancelled', color: 'bg-rose-950 text-rose-300 border-rose-500/30' }
+                    cancelled: { label: 'Cancelled', color: 'bg-rose-950 text-rose-300 border-rose-500/30' },
+                    no_show: { label: 'No Show', color: 'bg-slate-800 text-slate-400 border-slate-700' }
                   };
 
                   const badge = statusBadges[apt.status] || { label: apt.status, color: 'bg-slate-800 text-slate-300 border-slate-700' };
@@ -450,7 +454,12 @@ export const AppointmentsPage: React.FC = () => {
                     <tr key={apt.id} className="hover:bg-slate-800/40 transition-colors">
                       {/* Token & Date */}
                       <td className="px-4 py-3 font-mono">
-                        <div className="font-bold text-white">{apt.appointmentNo}</div>
+                        <div className="font-bold text-white flex items-center gap-1.5">
+                          <span>{apt.queueToken || apt.appointmentNo}</span>
+                          {apt.queueToken && apt.appointmentNo !== apt.queueToken && (
+                            <span className="text-[10px] text-slate-400">({apt.appointmentNo})</span>
+                          )}
+                        </div>
                         <div className="text-[10px] text-slate-400">
                           {formatDate(apt.patientWishDate || apt.createdAt)} • {apt.patientWishTime || 'OPD'}
                         </div>
@@ -520,34 +529,87 @@ export const AppointmentsPage: React.FC = () => {
 
                           {/* Progression actions */}
                           {apt.status === 'pending_doctor_approval' && (
-                            <button
-                              onClick={() => handleUpdateStatus(apt.id, 'doctor_confirmed')}
-                              className="px-2.5 py-1 rounded-lg bg-teal-600 hover:bg-teal-500 text-white font-bold text-[10px] transition"
-                            >
-                              Confirm
-                            </button>
+                            <>
+                              <button
+                                onClick={() => handleUpdateStatus(apt.id, 'doctor_confirmed')}
+                                className="px-2.5 py-1 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-bold text-[10px] transition"
+                              >
+                                Confirm
+                              </button>
+                              <button
+                                onClick={() => handleUpdateStatus(apt.id, 'cancelled')}
+                                className="px-2 py-1 rounded-lg bg-rose-900/60 hover:bg-rose-800 text-rose-200 font-bold text-[10px] transition"
+                              >
+                                Cancel
+                              </button>
+                            </>
                           )}
 
                           {apt.status === 'doctor_confirmed' && (
-                            <button
-                              onClick={() => {
-                                handleUpdateStatus(apt.id, 'in_consultation');
-                                navigate(`/emr?patientId=${apt.patientId}`);
-                              }}
-                              className="px-2.5 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-[10px] transition"
-                              title="Begin doctor consultation in EMR"
-                            >
-                              Call In (EMR)
-                            </button>
+                            <>
+                              <button
+                                onClick={() => handleUpdateStatus(apt.id, 'waiting')}
+                                className="px-2.5 py-1 rounded-lg bg-teal-600 hover:bg-teal-500 text-white font-bold text-[10px] transition"
+                                title="Mark patient arrived in waiting clinic"
+                              >
+                                Check-In
+                              </button>
+                              <button
+                                onClick={() => {
+                                  handleUpdateStatus(apt.id, 'in_consultation');
+                                  navigate(`/emr?patientId=${apt.patientId}`);
+                                }}
+                                className="px-2.5 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-[10px] transition"
+                                title="Begin doctor consultation in EMR"
+                              >
+                                Call In
+                              </button>
+                              <button
+                                onClick={() => handleUpdateStatus(apt.id, 'no_show')}
+                                className="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 font-bold text-[10px] transition"
+                                title="Mark No Show"
+                              >
+                                No Show
+                              </button>
+                            </>
+                          )}
+
+                          {apt.status === 'waiting' && (
+                            <>
+                              <button
+                                onClick={() => {
+                                  handleUpdateStatus(apt.id, 'in_consultation');
+                                  navigate(`/emr?patientId=${apt.patientId}`);
+                                }}
+                                className="px-2.5 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-[10px] transition"
+                                title="Begin doctor consultation in EMR"
+                              >
+                                Call In
+                              </button>
+                              <button
+                                onClick={() => handleUpdateStatus(apt.id, 'no_show')}
+                                className="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 font-bold text-[10px] transition"
+                                title="Mark No Show"
+                              >
+                                No Show
+                              </button>
+                            </>
                           )}
 
                           {apt.status === 'in_consultation' && (
                             <button
                               onClick={() => handleUpdateStatus(apt.id, 'completed')}
                               className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[10px] transition"
+                              title="Complete consultation and generate hospital bill"
                             >
-                              Complete
+                              Complete & Bill
                             </button>
+                          )}
+
+                          {apt.status === 'completed' && (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-400">
+                              <CheckCircle2 className="w-3.5 h-3.5" /> Billed
+                            </span>
                           )}
                         </div>
                       </td>

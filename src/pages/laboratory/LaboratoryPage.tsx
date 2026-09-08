@@ -8,6 +8,7 @@ import { StorageService } from '../../services/storage';
 import { ApiSyncService } from '../../services/apiSyncService';
 import { Patient, HealthCard } from '../../types';
 import { formatCurrency, formatDate, formatDateTime } from '../../utils/formatters';
+import { generateSampleBarcode } from '../../utils/idGenerator';
 import { PhlebotomySampleLabelModal } from '../../components/patients/PhlebotomySampleLabelModal';
 import { LabReportPrintModal } from '../../components/emr/LabReportPrintModal';
 import { LabResultEntryModal } from '../../components/laboratory/LabResultEntryModal';
@@ -110,7 +111,7 @@ export const LaboratoryPage: React.FC = () => {
 
   // Status progression
   const handleMarkSampleCollected = (order: BloodTestBooking) => {
-    const code = order.sampleBarcode || `LMX-BAR-${Date.now().toString().slice(-6)}`;
+    const code = order.sampleBarcode || generateSampleBarcode(labOrders.map(o => o.sampleBarcode || ''));
     const updated = PortalService.markSampleCollected(order.id, {
       barcode: code,
       tubeType: order.sampleTubeType || 'EDTA Tube',
@@ -141,7 +142,7 @@ export const LaboratoryPage: React.FC = () => {
       return;
     }
 
-    const code = sampleBarcode.trim() || `LMX-${Math.floor(100000 + Math.random() * 900000)}`;
+    const code = sampleBarcode.trim() || generateSampleBarcode(labOrders.map(o => o.sampleBarcode || ''));
     PortalService.markSampleCollected(order.id, {
       barcode: code,
       tubeType: sampleTubeType,

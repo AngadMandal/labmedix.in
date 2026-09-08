@@ -160,6 +160,7 @@ export const ReportsPage: React.FC = () => {
   const auditLogs = StorageService.getAuditLogs();
   const users = StorageService.getUsers();
   const company = StorageService.getCompanyProfile();
+  const bills = StorageService.getBills();
 
   // Current Logged-in User & Personal / Department Data
   const currentUser = StorageService.getCurrentUser();
@@ -248,81 +249,92 @@ export const ReportsPage: React.FC = () => {
     showToast('success', 'Live Data Synchronized', 'Branch financials & velocity refreshed in real time.');
   };
 
-  // Branch Multiplier for true-to-life branch filtering simulation
-  const branchMultiplier = useMemo(() => {
-    switch (selectedBranch) {
-      case 'hq_kolkata':
-        return 0.55;
-      case 'salt_lake':
-        return 0.22;
-      case 'park_street':
-        return 0.13;
-      case 'howrah':
-        return 0.10;
-      default:
-        return 1.0;
-    }
-  }, [selectedBranch]);
+  // Branch Filtering for genuine multi-centre records (Consolidated or branch-specific)
+  const branchPatients = useMemo(() => {
+    if (selectedBranch === 'all') return patients;
+    return patients.filter(p => ((p as any).branchId || (p as any).branch || 'hq_kolkata') === selectedBranch);
+  }, [patients, selectedBranch]);
 
-  // Core Financial Calculations
+  const branchCards = useMemo(() => {
+    if (selectedBranch === 'all') return cards;
+    return cards.filter(c => ((c as any).branchId || (c as any).branch || 'hq_kolkata') === selectedBranch);
+  }, [cards, selectedBranch]);
+
+  const branchBills = useMemo(() => {
+    if (selectedBranch === 'all') return bills;
+    return bills.filter(b => ((b as any).branchId || (b as any).branch || 'hq_kolkata') === selectedBranch);
+  }, [bills, selectedBranch]);
+
+  const branchWallets = useMemo(() => {
+    if (selectedBranch === 'all') return wallets;
+    return wallets.filter(w => {
+      const pt = patients.find(p => p.id === w.patientId);
+      return ((pt as any)?.branchId || (pt as any)?.branch || 'hq_kolkata') === selectedBranch;
+    });
+  }, [wallets, patients, selectedBranch]);
+
+  // Core Financial Calculations (Strictly 100% Live Genuine Data)
   const totalRegistrationRevenue = useMemo(() => {
-    const base = cards.reduce((acc, c) => {
+    return branchCards.reduce((acc, c) => {
       const mem = memberships.find(m => m.id === c.membershipId);
       return acc + (mem?.registrationFee || 0);
     }, 0);
-    return Math.round(base * branchMultiplier);
-  }, [cards, memberships, branchMultiplier]);
+  }, [branchCards, memberships]);
 
   const totalWalletFloat = useMemo(() => {
-    const base = wallets.reduce((acc, w) => acc + (w.balance || 0), 0);
-    return Math.round(base * branchMultiplier);
-  }, [wallets, branchMultiplier]);
+    return branchWallets.reduce((acc, w) => acc + (w.balance || 0), 0);
+  }, [branchWallets]);
 
   const totalWalletDeposits = useMemo(() => {
-    const base = wallets.reduce((acc, w) => acc + (w.totalCredits || 0), 0);
-    return Math.round(base * branchMultiplier);
-  }, [wallets, branchMultiplier]);
+    return branchWallets.reduce((acc, w) => acc + (w.totalCredits || 0), 0);
+  }, [branchWallets]);
 
   const totalBillingDeductions = useMemo(() => {
-    const base = wallets.reduce((acc, w) => acc + (w.totalDebits || 0), 0);
-    return Math.round(base * branchMultiplier);
-  }, [wallets, branchMultiplier]);
+    return branchWallets.reduce((acc, w) => acc + (w.totalDebits || 0), 0);
+  }, [branchWallets]);
 
   const activeCardCount = useMemo(() => {
-    const active = cards.filter(c => c.status === 'active').length;
-    return Math.max(1, Math.round(active * branchMultiplier));
-  }, [cards, branchMultiplier]);
+    return branchCards.filter(c => c.status === 'active').length;
+  }, [branchCards]);
 
   const activePatientsCount = useMemo(() => {
-    return Math.max(1, Math.round(patients.length * branchMultiplier));
-  }, [patients, branchMultiplier]);
+    return branchPatients.length;
+  }, [branchPatients]);
 
-  // Registration Velocity Trend Data (Daily simulation with gradient curves)
+  // Registration Velocity Trend Data (Real aggregated activity for past 7 days)
   const registrationVelocityData = useMemo(() => {
-    const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-    return days.map((day, idx) => {
-      const factor = 1 + Math.sin(idx * 1.2) * 0.35;
-      const basePatients = Math.round(Math.max(2, (patients.length / 7) * factor * branchMultiplier));
-      const baseCards = Math.round(Math.max(1, basePatients * 0.88));
-      const floatRecharged = Math.round(basePatients * 750 + Math.random() * 500);
-      const deductions = Math.round(floatRecharged * 0.62);
+    const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const now = new Date();
+    const last7Days = Array.from({ length: 7 }, (_, i) => {
+      const d = new Date();
+      d.setDate(now.getDate() - (6 - i));
+      const dateStr = d.toISOString().slice(0, 10);
+      const dayName = dayNames[d.getDay()];
+      return { dateStr, dayName };
+    });
+
+    return last7Days.map(({ dateStr, dayName }) => {
+      const newPatients = branchPatients.filter(p => (p.createdAt || '').slice(0, 10) === dateStr).length;
+      const cardsIssued = branchCards.filter(c => (c.issueDate || c.createdAt || '').slice(0, 10) === dateStr).length;
+      const dayBills = branchBills.filter(b => (b.date || b.createdAt || '').slice(0, 10) === dateStr);
+      const prepaidRecharged = transactions.filter(t => t.type === 'credit' && (t.date || '').slice(0, 10) === dateStr).reduce((s, t) => s + (t.amount || 0), 0);
+      const billingRedeemed = dayBills.reduce((s, b) => s + (b.paidAmount || 0), 0);
 
       return {
-        day,
-        newPatients: basePatients,
-        cardsIssued: baseCards,
-        prepaidRecharged: floatRecharged,
-        billingRedeemed: deductions
+        day: dayName,
+        newPatients,
+        cardsIssued,
+        prepaidRecharged,
+        billingRedeemed
       };
     });
-  }, [patients.length, branchMultiplier]);
+  }, [branchPatients, branchCards, branchBills, transactions]);
 
-  // Membership Revenue Breakdown
+  // Membership Revenue Breakdown from genuine card issues
   const membershipRevenueData = useMemo(() => {
     return memberships.map((mem) => {
-      const rawCount = cards.filter(c => c.membershipId === mem.id).length;
-      const count = Math.max(1, Math.round(rawCount * branchMultiplier));
-      const revenue = count * mem.registrationFee;
+      const count = branchCards.filter(c => c.membershipId === mem.id).length;
+      const revenue = count * (mem.registrationFee || 0);
       return {
         name: mem.name,
         cardsIssued: count,
@@ -330,23 +342,25 @@ export const ReportsPage: React.FC = () => {
         color: mem.color || '#0D9488'
       };
     });
-  }, [memberships, cards, branchMultiplier]);
+  }, [memberships, branchCards]);
 
-  // Staff Productivity Matrix
+  // Staff Productivity Matrix from real operator actions
   const staffProductivityData = useMemo(() => {
     return users.map((u, idx) => {
       const userPatients = patients.filter(
         p => p.createdBy === u.fullName || p.createdBy === u.username || p.createdBy === u.id
       ).length;
-      const userAuditActions = auditLogs.filter(
+      const userCards = cards.filter(
+        c => (userPatients > 0 && c.patientId && patients.some(p => p.id === c.patientId && (p.createdBy === u.fullName || p.createdBy === u.username)))
+      ).length;
+      const actionsCount = auditLogs.filter(
         l => l.userId === u.id || l.userName === u.fullName
       ).length;
 
-      const registeredCount = Math.max(userPatients, Math.round((12 - idx * 1.5) * branchMultiplier));
-      const cardsPrinted = Math.round(registeredCount * 0.95);
-      const actionsCount = Math.max(userAuditActions, registeredCount * 3 + Math.floor(Math.random() * 10));
-      const accuracyScore = Math.min(100, Math.round(96 + Math.random() * 3.8));
-      const avgProcessMinutes = (3.2 + (idx * 0.4)).toFixed(1);
+      const registeredCount = userPatients;
+      const cardsPrinted = userCards;
+      const accuracyScore = Math.max(90, Math.min(100, 100 - auditLogs.filter(l => (l.userId === u.id || l.userName === u.fullName) && l.severity === 'critical').length * 5));
+      const avgProcessMinutes = userPatients > 0 ? (actionsCount / (userPatients * 2)).toFixed(1) : '2.5';
 
       return {
         user: u,
@@ -357,19 +371,38 @@ export const ReportsPage: React.FC = () => {
         avgProcessMinutes,
         rankBadge: idx === 0 ? '🥇 TOP PRODUCER' : idx === 1 ? '🥈 HIGH VELOCITY' : idx === 2 ? '🥉 SPECIALIST' : '⭐ OPERATOR'
       };
-    }).sort((a, b) => b.registeredCount - a.registeredCount);
-  }, [users, patients, auditLogs, branchMultiplier]);
+    }).sort((a, b) => (b.registeredCount + b.actionsCount) - (a.registeredCount + a.actionsCount));
+  }, [users, patients, cards, auditLogs]);
 
-  // Department Collections Data calculated dynamically
+  // Department Collections Data calculated dynamically from real hospital bills
   const deptCollectionsData = useMemo(() => {
+    const labBills = branchBills.filter(b => b.billCategory === 'lab_diagnostics');
+    const opdBills = branchBills.filter(b => b.billCategory === 'opd_consultation');
+    const rxBills = branchBills.filter(b => b.billCategory === 'pharmacy_dispensing' || (b.billCategory as string) === 'pharmacy_pos');
+    const cardBills = branchBills.filter(b => b.billCategory === 'card_enrollment');
+    const otherBills = branchBills.filter(b => b.billCategory !== 'lab_diagnostics' && b.billCategory !== 'opd_consultation' && b.billCategory !== 'pharmacy_dispensing' && (b.billCategory as string) !== 'pharmacy_pos' && b.billCategory !== 'card_enrollment');
+
+    const sumCategory = (list: typeof branchBills, label: string) => {
+      const gross = list.reduce((sum, b) => sum + (b.baseCardCharge || b.netPayable || 0), 0);
+      const disc = list.reduce((sum, b) => sum + (b.discountAmount || 0), 0);
+      const net = list.reduce((sum, b) => sum + (b.netPayable || 0), 0);
+      return {
+        label,
+        gross: gross > 0 ? gross : net,
+        disc,
+        net,
+        count: list.length
+      };
+    };
+
     return [
-      { label: 'Pathology & Molecular Lab', gross: Math.round(245000 * branchMultiplier), disc: Math.round(49000 * branchMultiplier), net: Math.round(196000 * branchMultiplier), count: Math.round(184 * branchMultiplier) },
-      { label: 'OPD Doctor Consultations', gross: Math.round(182000 * branchMultiplier), disc: Math.round(36400 * branchMultiplier), net: Math.round(145600 * branchMultiplier), count: Math.round(142 * branchMultiplier) },
-      { label: 'Pharmacy & Dispensary', gross: Math.round(124000 * branchMultiplier), disc: Math.round(18600 * branchMultiplier), net: Math.round(105400 * branchMultiplier), count: Math.round(210 * branchMultiplier) },
-      { label: 'Daycare OT & Procedures', gross: Math.round(95000 * branchMultiplier), disc: Math.round(14250 * branchMultiplier), net: Math.round(80750 * branchMultiplier), count: Math.round(32 * branchMultiplier) },
-      { label: 'Health Card Subscriptions', gross: Math.round(112000 * branchMultiplier), disc: Math.round(11200 * branchMultiplier), net: Math.round(100800 * branchMultiplier), count: Math.round(98 * branchMultiplier) }
+      sumCategory(labBills, 'Pathology & Molecular Lab'),
+      sumCategory(opdBills, 'OPD Doctor Consultations'),
+      sumCategory(rxBills, 'Pharmacy & Dispensary'),
+      sumCategory(cardBills, 'Health Card Subscriptions'),
+      sumCategory(otherBills, 'Daycare OT & Procedures')
     ];
-  }, [branchMultiplier]);
+  }, [branchBills]);
 
   // Export Modal & Execution States
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);

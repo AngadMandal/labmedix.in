@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
-import { StaffCardRequestService } from '../../services/staffCardRequestService';
+import { TransactionService } from '../../services/transactionService';
 import { StorageService } from '../../services/storage';
 import { ApiSyncService } from '../../services/apiSyncService';
-import { StaffCardTransaction, User } from '../../types';
+import { CentralTransaction, User } from '../../types';
 import { formatCurrency, formatDate, formatDateTime } from '../../utils/formatters';
 import { Modal } from '../../components/common/Modal';
 import {
@@ -24,7 +24,8 @@ import {
   Building,
   Printer,
   FileSpreadsheet,
-  AlertCircle
+  AlertCircle,
+  PlusCircle
 } from 'lucide-react';
 
 export const TransactionsPage: React.FC = () => {
@@ -37,33 +38,44 @@ export const TransactionsPage: React.FC = () => {
   const canViewAll = isSuperAdmin || isAdmin || isManager;
 
   // State
-  const [allTransactions, setAllTransactions] = useState<StaffCardTransaction[]>(() => StorageService.getCardRequestTransactions());
+  const [allTransactions, setAllTransactions] = useState<CentralTransaction[]>(() => TransactionService.getAll());
   const [staffUsers, setStaffUsers] = useState<User[]>(() => StorageService.getUsers());
   const [searchQuery, setSearchQuery] = useState('');
+  const [moduleFilter, setModuleFilter] = useState<string>('all');
   const [methodFilter, setMethodFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [staffFilter, setStaffFilter] = useState<string>('all');
   const [dateFilter, setDateFilter] = useState<string>('all'); // 'all', 'today', 'week', 'month'
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [selectedTxnForReceipt, setSelectedTxnForReceipt] = useState<StaffCardTransaction | null>(null);
+  const [selectedTxnForReceipt, setSelectedTxnForReceipt] = useState<CentralTransaction | null>(null);
+
+  // Due collection modal state
+  const [collectDueTxn, setCollectDueTxn] = useState<CentralTransaction | null>(null);
+  const [collectDueAmount, setCollectDueAmount] = useState<string>('');
+  const [isCollecting, setIsCollecting] = useState(false);
 
   // Real-time Firestore sync & cross-tab events
   useEffect(() => {
-    const unsub = ApiSyncService.subscribeToCollection<StaffCardTransaction>('card_transactions', (items) => {
+    const unsubTxns = ApiSyncService.subscribeToCollection<CentralTransaction>('transactions', (items) => {
       if (items) {
-        setAllTransactions(StorageService.getCardRequestTransactions());
+        setAllTransactions(TransactionService.getAll());
       }
     });
 
+    const unsubCardTxns = ApiSyncService.subscribeToCollection<any>('card_transactions', () => {
+      setAllTransactions(TransactionService.getAll());
+    });
+
     const handleSync = (e: CustomEvent) => {
-      if (!e.detail?.key || e.detail.key === 'labmedix_card_request_transactions_v1' || e.detail.key === 'labmedix_bills_v1') {
-        setAllTransactions(StorageService.getCardRequestTransactions());
+      if (!e.detail?.key || e.detail.key === 'labmedix_central_transactions_v1' || e.detail.key === 'labmedix_card_request_transactions_v1' || e.detail.key === 'labmedix_bills_v1') {
+        setAllTransactions(TransactionService.getAll());
       }
     };
     window.addEventListener('labmedix_data_synced', handleSync as EventListener);
 
     return () => {
-      unsub();
+      unsubTxns();
+      unsubCardTxns();
       window.removeEventListener('labmedix_data_synced', handleSync as EventListener);
     };
   }, []);
@@ -72,11 +84,11 @@ export const TransactionsPage: React.FC = () => {
     setIsRefreshing(true);
     try {
       await ApiSyncService.pullAll();
-      setAllTransactions(StorageService.getCardRequestTransactions());
+      setAllTransactions(TransactionService.getAll());
       setStaffUsers(StorageService.getUsers());
       showToast('success', 'Central Sync Complete', 'Transactions reconciled with central Firestore.');
     } catch {
-      setAllTransactions(StorageService.getCardRequestTransactions());
+      setAllTransactions(TransactionService.getAll());
       showToast('info', 'Local Cache Updated', 'Transactions refreshed.');
     } finally {
       setIsRefreshing(false);
@@ -87,10 +99,10 @@ export const TransactionsPage: React.FC = () => {
   const scopedTransactions = useMemo(() => {
     if (canViewAll) {
       if (staffFilter === 'all') return allTransactions;
-      return allTransactions.filter(t => t.staffUserId === staffFilter || t.staffName === staffFilter);
+      return allTransactions.filter(t => t.staffId === staffFilter || t.staffName === staffFilter);
     }
-    // Staff sees only their own transactions
-    return StaffCardRequestService.getStaffTransactions(currentUser);
+    // Staff sees only their own collections
+    return allTransactions.filter(t => t.staffId === currentUser?.id || t.staffName === currentUser?.fullName);
   }, [allTransactions, canViewAll, staffFilter, currentUser]);
 
   // Applied Filters
@@ -99,27 +111,34 @@ export const TransactionsPage: React.FC = () => {
     const todayStr = now.toISOString().slice(0, 10);
 
     return scopedTransactions.filter((txn) => {
+      // Module Filter
+      if (moduleFilter !== 'all' && txn.module !== moduleFilter) {
+        return false;
+      }
+
       // Payment Method Filter
       if (methodFilter !== 'all' && (txn.paymentMethod || '').toLowerCase() !== methodFilter.toLowerCase()) {
         return false;
       }
 
       // Status Filter
-      const txnStatus = txn.paymentStatus || txn.status || 'paid';
-      if (statusFilter !== 'all' && txnStatus !== statusFilter) {
-        return false;
+      const txnStatus = txn.paymentStatus || 'paid';
+      if (statusFilter !== 'all') {
+        if (statusFilter === 'paid' && txnStatus !== 'paid') return false;
+        if (statusFilter === 'due' && !['partial_due', 'unpaid_due', 'pending'].includes(txnStatus)) return false;
+        if (statusFilter === 'waived' && txnStatus !== 'waived') return false;
       }
 
       // Date Filter
       if (dateFilter === 'today') {
-        const txnDate = (txn.createdAt || '').slice(0, 10);
+        const txnDate = (txn.date || txn.createdAt || '').slice(0, 10);
         if (txnDate !== todayStr) return false;
       } else if (dateFilter === 'week') {
         const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
-        if ((txn.createdAt || '') < weekAgo) return false;
+        if ((txn.date || txn.createdAt || '') < weekAgo) return false;
       } else if (dateFilter === 'month') {
         const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
-        if ((txn.createdAt || '') < monthAgo) return false;
+        if ((txn.date || txn.createdAt || '') < monthAgo) return false;
       }
 
       // Search Query
@@ -129,15 +148,15 @@ export const TransactionsPage: React.FC = () => {
         const matchesPatient = (txn.patientName || '').toLowerCase().includes(q);
         const matchesStaff = (txn.staffName || '').toLowerCase().includes(q);
         const matchesBill = (txn.billNumber || '').toLowerCase().includes(q);
-        const matchesRef = (txn.paymentReference || '').toLowerCase().includes(q);
-        if (!matchesId && !matchesPatient && !matchesStaff && !matchesBill && !matchesRef) {
+        const matchesService = (txn.service || '').toLowerCase().includes(q);
+        if (!matchesId && !matchesPatient && !matchesStaff && !matchesBill && !matchesService) {
           return false;
         }
       }
 
       return true;
     });
-  }, [scopedTransactions, methodFilter, statusFilter, dateFilter, searchQuery]);
+  }, [scopedTransactions, moduleFilter, methodFilter, statusFilter, dateFilter, searchQuery]);
 
   // Financial Metrics
   const metrics = useMemo(() => {
@@ -307,6 +326,22 @@ export const TransactionsPage: React.FC = () => {
             </select>
           )}
 
+          {/* Module / Department Filter */}
+          <select
+            value={moduleFilter}
+            onChange={(e) => setModuleFilter(e.target.value)}
+            className="px-3 py-2.5 rounded-xl bg-slate-800 border border-slate-700 text-xs text-white font-medium focus:outline-none focus:border-cyan-500"
+          >
+            <option value="all">All Hospital Departments</option>
+            <option value="consultation">Doctor Consultations</option>
+            <option value="laboratory">Diagnostic Pathology</option>
+            <option value="pharmacy">Pharmacy Dispensing</option>
+            <option value="cards">Smart Health Cards</option>
+            <option value="family">Family Shield</option>
+            <option value="wallet">Wallet Deposits</option>
+            <option value="other">General Billing</option>
+          </select>
+
           {/* Date Filter */}
           <select
             value={dateFilter}
@@ -398,12 +433,17 @@ export const TransactionsPage: React.FC = () => {
                     <tr key={txn.id} className="hover:bg-slate-800/40 transition-colors">
                       <td className="px-4 py-3 font-mono">
                         <div className="font-bold text-white">{txn.transactionId || txn.id}</div>
-                        <div className="text-[10px] text-slate-400">{formatDateTime(txn.createdAt)}</div>
+                        <div className="text-[10px] text-slate-400">{formatDateTime(txn.date || txn.createdAt)}</div>
                       </td>
 
                       <td className="px-4 py-3 font-medium text-white">
                         <div>{txn.patientName}</div>
-                        <div className="text-[10px] text-slate-400">{txn.membershipName || txn.notes || 'Hospital Service'}</div>
+                        <div className="text-[10px] text-cyan-400 font-bold">{txn.service || txn.membershipName || 'Hospital Service'}</div>
+                        {txn.module && (
+                          <span className="inline-block mt-0.5 px-1.5 py-0.2 rounded text-[9px] font-mono bg-slate-800 text-slate-400 border border-slate-700">
+                            {txn.module.toUpperCase()}
+                          </span>
+                        )}
                       </td>
 
                       <td className="px-4 py-3 font-mono text-cyan-300">
@@ -415,11 +455,11 @@ export const TransactionsPage: React.FC = () => {
                       </td>
 
                       <td className="px-4 py-3 font-mono text-emerald-300 font-bold">
-                        {formatCurrency(Number(txn.paidAmount || 0))}
+                        {formatCurrency(Number(txn.paid !== undefined ? txn.paid : (txn.paidAmount || 0)))}
                       </td>
 
-                      <td className="px-4 py-3 font-mono text-amber-300">
-                        {formatCurrency(Number(txn.dueAmount || 0))}
+                      <td className="px-4 py-3 font-mono text-amber-300 font-bold">
+                        {formatCurrency(Number(txn.due !== undefined ? txn.due : (txn.dueAmount || 0)))}
                       </td>
 
                       <td className="px-4 py-3 font-mono uppercase text-[11px] text-slate-300">
@@ -433,25 +473,40 @@ export const TransactionsPage: React.FC = () => {
 
                       <td className="px-4 py-3">
                         {(() => {
-                          const displayStatus = txn.paymentStatus || txn.status || 'paid';
+                          const displayStatus = txn.paymentStatus || 'paid';
                           return (
                             <span className={`px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase border ${
                               statusColors[displayStatus] || 'bg-slate-800 text-slate-300 border-slate-700'
                             }`}>
-                              {displayStatus}
+                              {displayStatus.replace('_', ' ')}
                             </span>
                           );
                         })()}
                       </td>
 
                       <td className="px-4 py-3 text-right">
-                        <button
-                          onClick={() => setSelectedTxnForReceipt(txn)}
-                          className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-cyan-300 hover:text-white transition"
-                          title="Print Receipt Slip"
-                        >
-                          <Printer className="w-4 h-4" />
-                        </button>
+                        <div className="flex items-center justify-end gap-1.5">
+                          {Number(txn.due !== undefined ? txn.due : txn.dueAmount) > 0 && (
+                            <button
+                              onClick={() => {
+                                setCollectDueTxn(txn);
+                                setCollectDueAmount(String(txn.due !== undefined ? txn.due : txn.dueAmount));
+                              }}
+                              className="px-2 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 text-[10px] font-bold border border-amber-500/40 transition flex items-center gap-1"
+                              title="Collect Remaining Due"
+                            >
+                              <PlusCircle className="w-3 h-3" />
+                              <span>Collect</span>
+                            </button>
+                          )}
+                          <button
+                            onClick={() => setSelectedTxnForReceipt(txn)}
+                            className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-cyan-300 hover:text-white transition"
+                            title="Print Receipt Slip"
+                          >
+                            <Printer className="w-4 h-4" />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -467,40 +522,58 @@ export const TransactionsPage: React.FC = () => {
         <Modal
           isOpen={!!selectedTxnForReceipt}
           onClose={() => setSelectedTxnForReceipt(null)}
-          title="Payment Receipt Slip"
+          title="Official Hospital Payment Receipt"
           maxWidth="md"
         >
-          <div className="p-4 space-y-4 text-center bg-white text-slate-900 rounded-2xl shadow-inner font-sans text-xs">
+          <div className="p-5 space-y-4 text-center bg-white text-slate-900 rounded-2xl shadow-inner font-sans text-xs">
             <div className="border-b border-slate-200 pb-3">
-              <h3 className="text-lg font-black tracking-tight text-slate-900">LABMEDIX HEALTHCARE</h3>
-              <p className="text-[11px] text-slate-500">Official Cash Desk Payment Receipt</p>
+              <h3 className="text-lg font-black tracking-tight text-slate-900">LABMEDIX MULTI-SPECIALITY HEALTHCARE</h3>
+              <p className="text-[11px] text-slate-500">Official Institutional Payment Receipt & Tax Seal</p>
             </div>
 
-            <div className="py-2 bg-emerald-50 rounded-xl border border-emerald-200 text-center">
+            <div className="py-3 bg-emerald-50 rounded-xl border border-emerald-200 text-center">
               <div className="text-[10px] font-bold text-emerald-800 uppercase">Amount Received</div>
               <div className="text-2xl font-black text-emerald-700 font-mono">
-                {formatCurrency(Number(selectedTxnForReceipt.paidAmount || 0))}
+                {formatCurrency(Number(selectedTxnForReceipt.paid !== undefined ? selectedTxnForReceipt.paid : (selectedTxnForReceipt.paidAmount || 0)))}
               </div>
               <div className="text-[10px] text-emerald-600 font-mono mt-0.5">
-                Status: PAID via {selectedTxnForReceipt.paymentMethod?.toUpperCase()}
+                Payment Channel: {String(selectedTxnForReceipt.paymentMethod || 'cash').toUpperCase()} • Status: {String(selectedTxnForReceipt.paymentStatus || 'paid').toUpperCase()}
               </div>
             </div>
 
-            <div className="text-left space-y-2 border border-slate-200 p-3 rounded-xl">
+            <div className="text-left space-y-2 border border-slate-200 p-3.5 rounded-xl">
               <div className="flex justify-between">
                 <span className="text-slate-500">Txn ID:</span>
                 <strong className="font-mono text-slate-900">{selectedTxnForReceipt.transactionId || selectedTxnForReceipt.id}</strong>
               </div>
               <div className="flex justify-between">
+                <span className="text-slate-500">Bill Number:</span>
+                <span className="font-mono text-slate-900 font-bold">{selectedTxnForReceipt.billNumber || 'INVOICE-POS'}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Service Department:</span>
+                <span className="text-slate-800 font-medium">{selectedTxnForReceipt.service || selectedTxnForReceipt.notes || 'General Service'}</span>
+              </div>
+              <div className="flex justify-between">
                 <span className="text-slate-500">Date & Time:</span>
-                <span className="text-slate-700">{formatDateTime(selectedTxnForReceipt.createdAt)}</span>
+                <span className="text-slate-700">{formatDateTime(selectedTxnForReceipt.date || selectedTxnForReceipt.createdAt)}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-500">Patient:</span>
-                <strong className="text-slate-900">{selectedTxnForReceipt.patientName}</strong>
+                <strong className="text-slate-900">{selectedTxnForReceipt.patientName} ({selectedTxnForReceipt.patientId})</strong>
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-500">Collected By:</span>
+                <span className="text-slate-500">Total Billed:</span>
+                <span className="text-slate-800">{formatCurrency(Number(selectedTxnForReceipt.amount || 0))}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Remaining Due:</span>
+                <strong className={Number(selectedTxnForReceipt.due || 0) > 0 ? 'text-amber-600 font-mono' : 'text-slate-700 font-mono'}>
+                  {formatCurrency(Number(selectedTxnForReceipt.due !== undefined ? selectedTxnForReceipt.due : (selectedTxnForReceipt.dueAmount || 0)))}
+                </strong>
+              </div>
+              <div className="flex justify-between border-t border-slate-100 pt-1.5">
+                <span className="text-slate-500">Authorized Collector:</span>
                 <span className="text-slate-700">{selectedTxnForReceipt.staffName} ({selectedTxnForReceipt.staffRole})</span>
               </div>
             </div>
@@ -508,18 +581,88 @@ export const TransactionsPage: React.FC = () => {
             <div className="pt-2 flex items-center justify-center gap-2">
               <button
                 onClick={() => window.print()}
-                className="px-5 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs shadow-md"
+                className="px-5 py-2.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs shadow-md"
               >
-                Print Slip
+                Print Official Slip
               </button>
               <button
                 onClick={() => setSelectedTxnForReceipt(null)}
-                className="px-4 py-2 rounded-xl bg-slate-200 text-slate-700 font-bold text-xs"
+                className="px-4 py-2.5 rounded-xl bg-slate-200 text-slate-700 font-bold text-xs"
               >
                 Close
               </button>
             </div>
           </div>
+        </Modal>
+      )}
+
+      {/* Collect Due Payment Modal */}
+      {collectDueTxn && (
+        <Modal
+          isOpen={!!collectDueTxn}
+          onClose={() => setCollectDueTxn(null)}
+          title="Collect Outstanding Due Balance"
+          maxWidth="sm"
+        >
+          <form
+            onSubmit={async (e) => {
+              e.preventDefault();
+              const amt = Number(collectDueAmount);
+              if (isNaN(amt) || amt <= 0) {
+                showToast('error', 'Invalid Amount', 'Please enter a valid collection amount.');
+                return;
+              }
+              setIsCollecting(true);
+              const updated = await TransactionService.recordPaymentOnDue(
+                collectDueTxn.id,
+                amt,
+                currentUser?.fullName || 'Cashier Desk'
+              );
+              setIsCollecting(false);
+              if (updated) {
+                showToast('success', 'Due Collected', `₹${amt} collected for ${collectDueTxn.patientName}. Remaining Due: ₹${updated.due}`);
+                setAllTransactions(TransactionService.getAll());
+                setCollectDueTxn(null);
+              }
+            }}
+            className="p-5 space-y-4 text-xs text-white"
+          >
+            <div className="p-3 bg-slate-800/80 rounded-xl border border-slate-700 space-y-1">
+              <div className="text-slate-400">Patient: <strong className="text-white">{collectDueTxn.patientName}</strong></div>
+              <div className="text-slate-400">Bill #: <span className="text-cyan-400 font-mono">{collectDueTxn.billNumber}</span></div>
+              <div className="text-slate-400">Current Due Balance: <strong className="text-amber-400 font-mono text-sm">{formatCurrency(Number(collectDueTxn.due !== undefined ? collectDueTxn.due : collectDueTxn.dueAmount))}</strong></div>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-slate-300 block">Amount Being Collected (₹):</label>
+              <input
+                type="number"
+                min="1"
+                max={Number(collectDueTxn.due !== undefined ? collectDueTxn.due : collectDueTxn.dueAmount)}
+                value={collectDueAmount}
+                onChange={(e) => setCollectDueAmount(e.target.value)}
+                className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-white font-mono text-sm focus:outline-none focus:border-cyan-500"
+                required
+              />
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setCollectDueTxn(null)}
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 rounded-xl text-slate-300 font-bold"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={isCollecting}
+                className="px-5 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 rounded-xl text-white font-bold shadow-lg shadow-emerald-500/20 disabled:opacity-50"
+              >
+                {isCollecting ? 'Recording...' : 'Confirm Collection'}
+              </button>
+            </div>
+          </form>
         </Modal>
       )}
     </div>

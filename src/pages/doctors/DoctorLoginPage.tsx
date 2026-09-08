@@ -10,6 +10,8 @@ import { LabMedixLogo } from '../../components/common/LabMedixLogo';
 import { Button } from '../../components/common/Button';
 import { Input } from '../../components/common/Input';
 import { triggerCelebrationFireworks } from '../../utils/confetti';
+import { PersonalizedWelcomeOverlay } from '../../components/auth/PersonalizedWelcomeOverlay';
+import { User as UserType } from '../../types';
 import {
   Stethoscope,
   Lock,
@@ -30,6 +32,7 @@ export const DoctorLoginPage: React.FC = () => {
   const { showToast } = useToast();
   const navigate = useNavigate();
 
+  const [authenticatedDoctorForWelcome, setAuthenticatedDoctorForWelcome] = useState<UserType | null>(null);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -88,7 +91,7 @@ export const DoctorLoginPage: React.FC = () => {
         
         triggerCelebrationFireworks();
         showToast('success', `Welcome, ${user.fullName}`, 'Signed into Doctor Clinical Portal successfully.');
-        navigate('/doctor-dashboard');
+        setAuthenticatedDoctorForWelcome(user);
       } else {
         setError(res.error || 'Login failed.');
       }
@@ -195,6 +198,14 @@ export const DoctorLoginPage: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* PERSONALIZED 3D VOICE WELCOME OVERLAY */}
+      {authenticatedDoctorForWelcome && (
+        <PersonalizedWelcomeOverlay
+          user={authenticatedDoctorForWelcome}
+          onComplete={() => navigate('/doctor-dashboard')}
+        />
+      )}
     </div>
   );
 };

@@ -8,7 +8,9 @@ import { FamilyService } from './familyService';
 import { AuditService } from './auditService';
 import { ApiSyncService } from './apiSyncService';
 import { PatientAppointment, CardApplicationRequest, CardApplicationHistoryItem } from '../types';
-import { generateUuid } from '../utils/idGenerator';
+import { generateUuid, generateLabOrderId, generateSampleBarcode } from '../utils/idGenerator';
+import { BillService } from './billService';
+import { DoctorMasterService } from './doctorMasterService';
 
 export interface BloodTestBookingItem {
   testName: string;
@@ -65,6 +67,7 @@ export interface BloodTestBooking {
   verifiedDoctorRegistrationNo?: string;
   verifiedAt?: string;
   clinicalNotes?: string;
+  billId?: string;
   createdAt: string;
 }
 
@@ -150,14 +153,53 @@ export class PortalService {
     const cards = StorageService.getCards();
     const patientCard = cards.find(c => c.patientId === booking.patientId && c.status === 'active') || 
                         cards.find(c => c.patientId === booking.patientId);
+    const existingOrders = all.map(b => b.bookingNo);
+    const bookingNo = generateLabOrderId(existingOrders);
 
     const newBooking: BloodTestBooking = {
       ...booking,
       cardNo: booking.cardNo || patientCard?.cardNumber,
       id: `lab_bk_${generateUuid().slice(0, 8)}`,
-      bookingNo: `LAB-2026-${String(Math.floor(1000 + Math.random() * 9000))}`,
+      bookingNo,
       createdAt: new Date().toISOString()
     };
+
+    // Auto-generate official hospital bill for diagnostic order
+    const gross = Number(newBooking.grossPrice || newBooking.netPrice || 0);
+    const net = Number(newBooking.netPrice || gross);
+    const isPaid = newBooking.paymentStatus === 'paid_wallet' || newBooking.paymentStatus === 'paid_counter';
+    try {
+      if (gross > 0) {
+        const bill = BillService.createHospitalBill({
+          patientId: newBooking.patientId,
+          patientName: newBooking.patientName,
+          patientMobile: newBooking.patientPhone,
+          healthCardNumber: newBooking.cardNo,
+          healthCardId: patientCard?.id,
+          billCategory: 'lab_diagnostics',
+          items: [
+            {
+              description: `Diagnostic Lab Requisition: ${newBooking.testName} [Booking: ${bookingNo}]`,
+              quantity: 1,
+              unitPrice: gross,
+              total: gross
+            }
+          ],
+          discountAmount: Number(newBooking.discountAmount || 0),
+          paidAmount: isPaid ? net : 0,
+          paymentMethod: newBooking.paymentStatus === 'paid_wallet' ? 'wallet' : 'cash',
+          notes: `Lab Investigation #${bookingNo} for ${newBooking.patientName}`
+        });
+        newBooking.billId = bill.id;
+      }
+    } catch (err) {
+      console.error('Failed to create hospital bill for lab booking:', err);
+    }
+
+    // Attribute referral commission to prescribing doctor if applicable
+    if (newBooking.prescribedByDoctorName && net > 0) {
+      DoctorMasterService.attributeConsultationAndReferral(newBooking.prescribedByDoctorName, 0, net);
+    }
 
     all.unshift(newBooking);
     StorageService.setItem(this.LAB_BOOKINGS_KEY, all);
@@ -193,10 +235,12 @@ export class PortalService {
 
   public static markSampleCollected(
     bookingId: string,
-    details: { barcode: string; tubeType: string; phlebotomist: string }
+    details: { barcode?: string; tubeType: string; phlebotomist: string }
   ): BloodTestBooking | null {
+    const all = this.getLabBookings();
+    const barcode = details.barcode?.trim() || generateSampleBarcode(all.map(b => b.sampleBarcode || ''));
     return this.updateLabBookingStatus(bookingId, 'sample_collected', {
-      sampleBarcode: details.barcode,
+      sampleBarcode: barcode,
       sampleTubeType: details.tubeType,
       assignedPhlebotomist: details.phlebotomist,
       sampleCollectedAt: new Date().toISOString()

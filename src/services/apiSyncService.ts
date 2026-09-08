@@ -463,6 +463,8 @@ export class ApiSyncService {
     'labmedix_card_request_transactions_v1': { type: 'collection', path: 'card_transactions' },
     'labmedix_wallet_transactions_v1': { type: 'collection', path: 'wallet_transactions' },
     'LABMEDIX_WEBSITE_CMS_CONFIG': { type: 'doc', path: 'settings/websiteCms' },
+    'labmedix_pharmacy_inventory_v1': { type: 'collection', path: 'pharmacyInventory' },
+    'labmedix_pharmacy_stock_movements_v1': { type: 'collection', path: 'stockMovements' },
     'labmedix_integrations_v4': { type: 'doc', path: 'settings/integrations' }
   };
 

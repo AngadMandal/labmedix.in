@@ -111,20 +111,35 @@ export class FamilyService {
   public static addMember(
     familyId: string,
     patientId: string,
-    relationship: string,
-    options?: { allowOverLimit?: boolean; additionalFeePaid?: boolean; additionalFeeAmount?: number }
+    relationship: string
   ): FamilyGroup | null {
     const families = StorageService.getFamilies();
     const family = families.find(f => f.id === familyId);
     if (!family) return null;
 
     if (family.members.some(m => m.patientId === patientId)) {
-      return family;
+      throw new Error('This patient is already a member of this Family Shield.');
     }
 
-    const dependentCount = family.members.filter(m => !m.isPrimary).length;
-    if (dependentCount >= 5 && !options?.allowOverLimit) {
-      throw new Error(`Plan Limit Reached: This family group already has 5 included dependents. Adding a 6th+ member requires operational fee confirmation (₹${options?.additionalFeeAmount || 299}).`);
+    // Strict 5-Member Plan Limit (Head + Up to 4 Dependents = 5 Total)
+    if (family.members.length >= 5) {
+      throw new Error('Family limit reached (5/5). Upgrade plan or remove an existing member to add another.');
+    }
+
+    // Duplicate detection: reject if matching full name and phone number already exists
+    const patients = StorageService.getPatients();
+    const incomingPatient = patients.find(p => p.id === patientId);
+    if (incomingPatient) {
+      const hasDuplicate = family.members.some(m => {
+        const existingP = patients.find(p => p.id === m.patientId);
+        if (!existingP) return false;
+        const nameMatch = existingP.fullName.trim().toLowerCase() === incomingPatient.fullName.trim().toLowerCase();
+        const phoneMatch = !!(existingP.mobile && incomingPatient.mobile && existingP.mobile.trim() === incomingPatient.mobile.trim());
+        return nameMatch && phoneMatch;
+      });
+      if (hasDuplicate) {
+        throw new Error(`Duplicate member: "${incomingPatient.fullName}" with phone ${incomingPatient.mobile} already exists in this Family Shield.`);
+      }
     }
 
     const now = new Date().toISOString();
@@ -133,15 +148,12 @@ export class FamilyService {
       relationship,
       isPrimary: false,
       status: 'active_under_primary',
-      addedAt: now,
-      additionalFeePaid: options?.additionalFeePaid,
-      additionalFeeAmount: options?.additionalFeeAmount
+      addedAt: now
     });
     family.updatedAt = now;
     StorageService.saveFamilies(families);
 
     // Update patient
-    const patients = StorageService.getPatients();
     const patient = patients.find(p => p.id === patientId);
     if (patient) {
       patient.familyId = familyId;
@@ -152,7 +164,7 @@ export class FamilyService {
     AuditService.log(
       'FAMILY_MEMBER_ADDED',
       'family',
-      `Added patient ${patientId} as ${relationship} to family ${family.familyName}${dependentCount >= 5 ? ` (Over-limit Fee: ₹${options?.additionalFeeAmount || 299})` : ''}`,
+      `Added patient ${patientId} as ${relationship} to family ${family.familyName} (${family.members.length}/5)`,
       familyId
     );
     return family;
@@ -172,21 +184,30 @@ export class FamilyService {
       bloodGroup: string;
       mobile?: string;
       photoUrl?: string;
-      allowOverLimit?: boolean;
-      additionalFeePaid?: boolean;
-      additionalFeeAmount?: number;
     }
   ): { patient: Patient; family: FamilyGroup } | null {
     const families = StorageService.getFamilies();
     const family = families.find(f => f.id === familyId);
     if (!family) return null;
 
-    const dependentCount = family.members.filter(m => !m.isPrimary).length;
-    if (dependentCount >= 5 && !data.allowOverLimit) {
-      throw new Error(`Plan Limit Reached: This family group already has 5 included dependents. Adding a 6th+ member requires operational fee confirmation (₹${data.additionalFeeAmount || 299}).`);
+    // Strict 5-Member Plan Limit
+    if (family.members.length >= 5) {
+      throw new Error('Family limit reached (5/5). Upgrade plan or remove an existing member to add another.');
     }
 
+    // Duplicate detection: reject if matching full name and phone number already exists
     const patients = StorageService.getPatients();
+    const hasDuplicate = family.members.some(m => {
+      const existingP = patients.find(p => p.id === m.patientId);
+      if (!existingP) return false;
+      const nameMatch = existingP.fullName.trim().toLowerCase() === data.fullName.trim().toLowerCase();
+      const phoneMatch = !!(data.mobile && existingP.mobile && existingP.mobile.trim() === data.mobile.trim());
+      return nameMatch && phoneMatch;
+    });
+    if (hasDuplicate) {
+      throw new Error(`Duplicate member: "${data.fullName}" with phone ${data.mobile} already exists in this Family Shield.`);
+    }
+
     const primaryHead = patients.find(p => p.id === family.primaryPatientId);
     const primaryCard = StorageService.getCards().find(c => c.patientId === primaryHead?.id);
     const membershipId = primaryCard?.membershipId || StorageService.getMemberships()[0]?.id || 'mem_gold';
@@ -228,11 +249,7 @@ export class FamilyService {
     });
 
     // Link into Family
-    this.addMember(familyId, result.patient.id, data.relationship, {
-      allowOverLimit: data.allowOverLimit,
-      additionalFeePaid: data.additionalFeePaid,
-      additionalFeeAmount: data.additionalFeeAmount
-    });
+    this.addMember(familyId, result.patient.id, data.relationship);
 
     AuditService.log('DEPENDENT_REGISTERED_AND_LINKED', 'family', `Auto-registered and linked dependent ${result.patient.fullName} (${result.patient.id}) to ${family.familyName}`, familyId);
 

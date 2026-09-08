@@ -4,6 +4,9 @@ import { AuditService } from './auditService';
 import { ApiSyncService } from './apiSyncService';
 import { generateUuid } from '../utils/idGenerator';
 
+export type HospitalBill = PatientBill;
+export type { PatientBill };
+
 export interface CreateRegistrationBillParams {
   patient: Patient;
   card?: HealthCard;
@@ -234,11 +237,133 @@ export class BillService {
     StorageService.saveCardRequestTransaction(transaction);
     ApiSyncService.saveDocument('card_transactions', transaction.id, transaction).catch(() => {});
 
+    // Also mirror into centralized transaction engine
+    try {
+      import('./transactionService').then(({ TransactionService }) => {
+        TransactionService.recordTransaction({
+          id: txnNumber,
+          transactionId: txnNumber,
+          billNumber: bill.billNumber,
+          billId: bill.id,
+          patientId: bill.patientId,
+          patientName: bill.patientName,
+          patientMobile: bill.patientMobile,
+          service: bill.membershipName || (bill.billCategory ? bill.billCategory.replace(/_/g, ' ').toUpperCase() : 'Hospital Invoice'),
+          module: bill.billCategory === 'opd_consultation' ? 'consultation' :
+                  bill.billCategory === 'lab_diagnostics' ? 'laboratory' :
+                  bill.billCategory === 'pharmacy_dispensing' ? 'pharmacy' :
+                  bill.billCategory === 'card_enrollment' ? 'cards' : 'other',
+          amount: bill.netPayable || 0,
+          discount: bill.discountAmount || 0,
+          paid: bill.paidAmount || 0,
+          due: dueAmount,
+          paymentMethod: bill.paymentMethod || 'cash',
+          paymentStatus: bill.paymentStatus === 'paid' ? 'paid' : bill.paymentStatus === 'waived' ? 'waived' : 'partial_due',
+          staffId: transaction.staffUserId,
+          staffName: transaction.staffName,
+          staffRole: transaction.staffRole,
+          date: now,
+          notes: bill.notes
+        }).catch(() => {});
+      });
+    } catch {}
+
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('labmedix_data_synced', { detail: { key: 'labmedix_card_request_transactions_v1' } }));
     }
 
     return transaction;
+  }
+
+  /**
+   * Universal Hospital Bill Generator
+   * Supports OPD Consultation, Diagnostics Lab, Pharmacy Medicines, Health Cards, Family Shield & General Services
+   */
+  public static createHospitalBill(params: {
+    patientId: string;
+    patientName: string;
+    patientMobile?: string;
+    patientAddress?: string;
+    healthCardId?: string;
+    healthCardNumber?: string;
+    billCategory: 'opd_consultation' | 'lab_diagnostics' | 'pharmacy_dispensing' | 'card_enrollment' | 'registration' | 'general';
+    items: Array<{ description: string; quantity: number; unitPrice: number; total: number }>;
+    discountAmount?: number;
+    paidAmount?: number;
+    paymentMethod: 'cash' | 'upi' | 'card' | 'netbanking' | 'wallet';
+    notes?: string;
+    currentUser?: User | null;
+  }): PatientBill {
+    const existingBills = StorageService.getBills();
+    const billNumber = this.generateBillNumber(existingBills);
+    const billId = `bill_${generateUuid().slice(0, 8)}`;
+    const now = new Date().toISOString();
+
+    const subtotal = params.items.reduce((sum, item) => sum + (Number(item.quantity || 1) * Number(item.unitPrice || 0)), 0);
+    const discount = Math.max(0, params.discountAmount || 0);
+    const netPayable = Math.max(0, subtotal - discount);
+    const paid = params.paidAmount !== undefined ? params.paidAmount : netPayable;
+
+    let paymentStatus: 'paid' | 'pending' | 'waived' = 'paid';
+    if (paid < netPayable && paid > 0) {
+      paymentStatus = 'pending';
+    } else if (paid === 0 && netPayable > 0) {
+      paymentStatus = 'pending';
+    } else if (netPayable === 0) {
+      paymentStatus = 'waived';
+    }
+
+    const staffUser = params.currentUser || StorageService.getCurrentUser();
+    const authorizedStaff = {
+      id: staffUser?.id || 'usr_staff',
+      name: staffUser?.fullName || 'Hospital Cashier',
+      role: staffUser?.role || 'cashier'
+    };
+
+    const transactionId = `TXN-BILL-${Date.now().toString(36).toUpperCase()}`;
+
+    const bill: PatientBill = {
+      id: billId,
+      billNumber,
+      date: now,
+      patientId: params.patientId,
+      patientName: params.patientName,
+      patientMobile: params.patientMobile || '',
+      patientAddress: params.patientAddress,
+      healthCardId: params.healthCardId,
+      healthCardNumber: params.healthCardNumber,
+      isCardIssued: !!params.healthCardNumber,
+      familyMemberCount: 0,
+      includedMembers: 0,
+      additionalMembers: 0,
+      baseCardCharge: subtotal,
+      additionalMemberCharge: 0,
+      discountAmount: discount,
+      netPayable,
+      paidAmount: paid,
+      paymentStatus,
+      paymentMethod: params.paymentMethod,
+      transactionId,
+      authorizedStaff,
+      billCategory: params.billCategory,
+      items: params.items,
+      notes: params.notes || `${params.billCategory.replace(/_/g, ' ').toUpperCase()} Bill for ${params.patientName}`,
+      createdAt: now
+    };
+
+    StorageService.saveBill(bill);
+    this.recordBillTransaction(bill, staffUser);
+
+    AuditService.log(
+      'HOSPITAL_BILL_CREATED',
+      'wallet',
+      `Invoice ${bill.billNumber} (${bill.billCategory}) created for ${params.patientName}. Total: ₹${netPayable}, Paid: ₹${paid}.`,
+      bill.id,
+      { billNumber: bill.billNumber, category: bill.billCategory, netPayable, paid, staff: authorizedStaff.name },
+      'financial'
+    );
+
+    return bill;
   }
 
   public static getAll(): PatientBill[] {

@@ -69,15 +69,9 @@ export const FamilyListPage: React.FC = () => {
   const [isEditFamilyModalOpen, setIsEditFamilyModalOpen] = useState(false);
   const [isAddMemberModalOpen, setIsAddMemberModalOpen] = useState(false);
   const [isEditMemberModalOpen, setIsEditMemberModalOpen] = useState(false);
-  const [isFeeConfirmModalOpen, setIsFeeConfirmModalOpen] = useState(false);
 
   const [activeFamily, setActiveFamily] = useState<FamilyGroup | null>(null);
   const [editingMember, setEditingMember] = useState<{ familyId: string; patient: Patient; memberLink: FamilyMemberLink } | null>(null);
-
-  // Fee state for 6th+ dependent
-  const [extraFeeAmount, setExtraFeeAmount] = useState<number>(299);
-  const [feePaymentMethod, setFeePaymentMethod] = useState<'cash' | 'upi' | 'wallet'>('cash');
-  const [pendingDependentData, setPendingDependentData] = useState<any>(null);
 
   // Form states for Create / Edit Family Group
   const [familyName, setFamilyName] = useState('');
@@ -190,32 +184,10 @@ export const FamilyListPage: React.FC = () => {
     e.preventDefault();
     if (!activeFamily) return;
 
-    const currentDependents = activeFamily.members.filter(m => !m.isPrimary).length;
-    if (currentDependents >= 5) {
-      // 5-member plan cap reached: Prompt for operational additional dependent fee
-      setPendingDependentData({
-        mode: addMemberMode,
-        autoData: addMemberMode === 'auto_register' ? {
-          fullName: depFullName.trim(),
-          relationship: depRelation,
-          gender: depGender,
-          age: Number(depAge) || 25,
-          bloodGroup: depBloodGroup,
-          mobile: depMobile.trim(),
-          photoUrl: depPhotoUrl
-        } : null,
-        existingPatientId: addMemberMode === 'existing' ? existingPatientId : null,
-        existingRelation: addMemberMode === 'existing' ? existingRelation : null
-      });
-      setIsFeeConfirmModalOpen(true);
+    if (activeFamily.members.length >= 5) {
+      showToast('error', 'Family Limit Reached', 'Family limit reached (5/5). Upgrade plan or remove an existing member to add another.');
       return;
     }
-
-    executeAddMember(false, 0);
-  };
-
-  const executeAddMember = (allowOverLimit: boolean, feeAmount: number) => {
-    if (!activeFamily) return;
 
     if (addMemberMode === 'auto_register') {
       if (!depFullName.trim()) {
@@ -231,62 +203,20 @@ export const FamilyListPage: React.FC = () => {
           age: Number(depAge) || 25,
           bloodGroup: depBloodGroup,
           mobile: depMobile.trim(),
-          photoUrl: depPhotoUrl,
-          allowOverLimit,
-          additionalFeePaid: allowOverLimit,
-          additionalFeeAmount: feeAmount
+          photoUrl: depPhotoUrl
         });
 
         if (res) {
-          if (allowOverLimit && feeAmount > 0) {
-            // Generate non-refundable itemized Patient Bill and book financial transaction
-            const billNumber = BillService.generateBillNumber();
-            const billId = `bill_${generateUuid().slice(0, 8)}`;
-            const newBill: PatientBill = {
-              id: billId,
-              billNumber,
-              date: new Date().toISOString(),
-              patientId: res.patient.id,
-              patientName: res.patient.fullName,
-              patientMobile: res.patient.mobile,
-              patientAddress: res.patient.address?.fullAddress || '',
-              membershipName: 'Additional Family Member Fee (6th+ Dependent)',
-              isCardIssued: false,
-              familyMemberCount: activeFamily.members.length + 1,
-              includedMembers: 5,
-              additionalMembers: 1,
-              baseCardCharge: 0,
-              additionalMemberCharge: feeAmount,
-              discountAmount: 0,
-              netPayable: feeAmount,
-              paidAmount: feeAmount,
-              paymentStatus: 'paid',
-              paymentMethod: feePaymentMethod,
-              transactionId: `TXN-FAM-${Date.now().toString(36).toUpperCase()}`,
-              authorizedStaff: {
-                id: currentUser?.id || 'usr_super_admin',
-                name: currentUser?.fullName || 'Super Administrator',
-                role: currentUser?.role || 'super_admin'
-              },
-              notes: `Additional family dependent fee for ${res.patient.fullName} linked to ${activeFamily.familyName}`,
-              createdAt: new Date().toISOString()
-            };
-            StorageService.saveBill(newBill);
-            BillService.recordBillTransaction(newBill, currentUser);
-          }
-
           triggerCelebrationFireworks();
           showToast(
             'success',
             'Dependent Registered & Linked!',
-            `${res.patient.fullName} (${res.patient.id}) enrolled under ${res.family.familyName}${allowOverLimit ? ` (Additional Fee ₹${feeAmount} Recorded)` : ''}.`
+            `${res.patient.fullName} (${res.patient.id}) enrolled under ${res.family.familyName} (Family Members: ${res.family.members.length}/5).`
           );
           setIsAddMemberModalOpen(false);
-          setIsFeeConfirmModalOpen(false);
           setDepFullName('');
           setDepAge(28);
           setDepMobile('');
-          setPendingDependentData(null);
           refreshList();
         }
       } catch (err: any) {
@@ -295,56 +225,11 @@ export const FamilyListPage: React.FC = () => {
     } else {
       if (!existingPatientId) return;
       try {
-        FamilyService.addMember(activeFamily.id, existingPatientId, existingRelation, {
-          allowOverLimit,
-          additionalFeePaid: allowOverLimit,
-          additionalFeeAmount: feeAmount
-        });
-
-        if (allowOverLimit && feeAmount > 0) {
-          const linkedPatient = patients.find(p => p.id === existingPatientId);
-          if (linkedPatient) {
-            const billNumber = BillService.generateBillNumber();
-            const billId = `bill_${generateUuid().slice(0, 8)}`;
-            const newBill: PatientBill = {
-              id: billId,
-              billNumber,
-              date: new Date().toISOString(),
-              patientId: linkedPatient.id,
-              patientName: linkedPatient.fullName,
-              patientMobile: linkedPatient.mobile,
-              patientAddress: linkedPatient.address?.fullAddress || '',
-              membershipName: 'Additional Family Member Fee (6th+ Dependent)',
-              isCardIssued: false,
-              familyMemberCount: activeFamily.members.length + 1,
-              includedMembers: 5,
-              additionalMembers: 1,
-              baseCardCharge: 0,
-              additionalMemberCharge: feeAmount,
-              discountAmount: 0,
-              netPayable: feeAmount,
-              paidAmount: feeAmount,
-              paymentStatus: 'paid',
-              paymentMethod: feePaymentMethod,
-              transactionId: `TXN-FAM-${Date.now().toString(36).toUpperCase()}`,
-              authorizedStaff: {
-                id: currentUser?.id || 'usr_super_admin',
-                name: currentUser?.fullName || 'Super Administrator',
-                role: currentUser?.role || 'super_admin'
-              },
-              notes: `Additional family dependent fee for ${linkedPatient.fullName} linked to ${activeFamily.familyName}`,
-              createdAt: new Date().toISOString()
-            };
-            StorageService.saveBill(newBill);
-            BillService.recordBillTransaction(newBill, currentUser);
-          }
-        }
-
-        showToast('success', 'Member Linked', `Linked existing registered patient to family shield${allowOverLimit ? ` (Fee ₹${feeAmount} Recorded)` : ''}.`);
+        const res = FamilyService.addMember(activeFamily.id, existingPatientId, existingRelation);
+        const linkedPatient = patients.find(p => p.id === existingPatientId);
+        showToast('success', 'Member Linked', `${linkedPatient?.fullName || 'Patient'} linked to family shield (${res?.members.length || 0}/5).`);
         setIsAddMemberModalOpen(false);
-        setIsFeeConfirmModalOpen(false);
         setExistingPatientId('');
-        setPendingDependentData(null);
         refreshList();
       } catch (err: any) {
         showToast('error', 'Enrollment Blocked', err.message || 'Could not link member.');
@@ -469,15 +354,15 @@ export const FamilyListPage: React.FC = () => {
                           <span>•</span>
                           <span>Family Members:</span>
                           <span className={`px-2 py-0.5 rounded font-bold ${
-                            fam.members.length > 5
-                              ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-300 dark:border-amber-700'
+                            fam.members.length >= 5
+                              ? 'bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300 border border-rose-300 dark:border-rose-700'
                               : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700'
                           }`}>
-                            {fam.members.length} / 5
+                            {fam.members.length}/5
                           </span>
-                          {fam.members.length > 5 && (
-                            <span className="text-[10px] text-amber-600 dark:text-amber-400 font-bold">
-                              (+{fam.members.length - 5} Extra: ₹{(fam.members.length - 5) * 299})
+                          {fam.members.length >= 5 && (
+                            <span className="text-[10px] text-rose-600 dark:text-rose-400 font-bold">
+                              (Limit Reached)
                             </span>
                           )}
                         </span>
@@ -662,17 +547,23 @@ export const FamilyListPage: React.FC = () => {
                 </div>
 
                 <div className="pt-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    leftIcon={<UserPlus className="w-3.5 h-3.5" />}
-                    onClick={() => {
-                      setActiveFamily(fam);
-                      setIsAddMemberModalOpen(true);
-                    }}
-                  >
-                    Add Dependent
-                  </Button>
+                  {fam.members.length >= 5 ? (
+                    <span className="px-3 py-1.5 rounded-xl text-xs font-bold bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400 border border-slate-200 dark:border-slate-700">
+                      Shield Full (5/5 Members)
+                    </span>
+                  ) : (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      leftIcon={<UserPlus className="w-3.5 h-3.5" />}
+                      onClick={() => {
+                        setActiveFamily(fam);
+                        setIsAddMemberModalOpen(true);
+                      }}
+                    >
+                      Add Dependent
+                    </Button>
+                  )}
                   <Button
                     size="sm"
                     variant="ghost"
@@ -1106,91 +997,6 @@ export const FamilyListPage: React.FC = () => {
               <Button type="submit" variant="primary">Save Relationship</Button>
             </div>
           </form>
-        </Modal>
-      )}
-
-      {/* 5. Additional Dependent Fee Confirmation Modal */}
-      {isFeeConfirmModalOpen && activeFamily && (
-        <Modal
-          isOpen={isFeeConfirmModalOpen}
-          onClose={() => {
-            setIsFeeConfirmModalOpen(false);
-            setPendingDependentData(null);
-          }}
-          title="Plan Cap Reached: Additional Dependent Fee Required"
-          maxWidth="md"
-        >
-          <div className="space-y-4">
-            <div className="p-4 bg-amber-50 dark:bg-amber-950/40 rounded-2xl border border-amber-200 dark:border-amber-800 flex items-start gap-3">
-              <AlertTriangle className="w-6 h-6 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
-              <div className="text-xs space-y-1">
-                <strong className="text-sm font-bold text-amber-900 dark:text-amber-200 block">
-                  Included 5-Member Plan Cap Reached
-                </strong>
-                <p className="text-amber-800 dark:text-amber-300">
-                  <strong>{activeFamily.familyName}</strong> already has {activeFamily.members.filter(m => !m.isPrimary).length} included dependents linked under the primary card.
-                </p>
-                <p className="text-slate-600 dark:text-slate-400">
-                  Adding a 6th or subsequent dependent requires operational authorization and an additional dependent membership fee according to hospital policy.
-                </p>
-              </div>
-            </div>
-
-            <div className="p-4 bg-slate-50 dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 space-y-3">
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  Additional Dependent Fee (₹)
-                </label>
-                <Input
-                  type="number"
-                  min={0}
-                  value={extraFeeAmount}
-                  onChange={(e) => setExtraFeeAmount(Number(e.target.value))}
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  Collection / Payment Method
-                </label>
-                <Select
-                  value={feePaymentMethod}
-                  onChange={(e) => setFeePaymentMethod(e.target.value as any)}
-                  options={[
-                    { value: 'cash', label: 'Cash Collection at Counter' },
-                    { value: 'upi', label: 'Direct UPI / QR' },
-                    { value: 'wallet', label: 'Deduct from Patient Wallet' }
-                  ]}
-                />
-              </div>
-
-              <div className="flex items-center gap-2 text-[11px] text-slate-500">
-                <Receipt className="w-3.5 h-3.5 text-brand-blue" />
-                <span>An itemized Patient Bill will be recorded in the hospital financial ledger.</span>
-              </div>
-            </div>
-
-            <div className="flex justify-end gap-3 pt-2">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => {
-                  setIsFeeConfirmModalOpen(false);
-                  setPendingDependentData(null);
-                }}
-              >
-                Cancel
-              </Button>
-              <Button
-                type="button"
-                variant="primary"
-                onClick={() => executeAddMember(true, extraFeeAmount)}
-              >
-                Authorize & Collect ₹{extraFeeAmount}
-              </Button>
-            </div>
-          </div>
         </Modal>
       )}
     </div>

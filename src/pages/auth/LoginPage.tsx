@@ -10,6 +10,7 @@ import { Button } from '../../components/common/Button';
 import { Input } from '../../components/common/Input';
 import { Modal } from '../../components/common/Modal';
 import { PasswordResetModal } from '../../components/auth/PasswordResetModal';
+import { PersonalizedWelcomeOverlay } from '../../components/auth/PersonalizedWelcomeOverlay';
 import { triggerCelebrationFireworks } from '../../utils/confetti';
 import {
   ShieldCheck,
@@ -26,12 +27,16 @@ import {
   KeyRound,
   Mail
 } from 'lucide-react';
+import { User as UserType } from '../../types';
 
 export const LoginPage: React.FC = () => {
   const { login } = useAuth();
   const { companyProfile } = useSettings();
   const { showToast } = useToast();
   const navigate = useNavigate();
+
+  // Welcome Experience State
+  const [authenticatedUserForWelcome, setAuthenticatedUserForWelcome] = useState<UserType | null>(null);
 
   // Primary Credentials State
   const [username, setUsername] = useState('');
@@ -120,7 +125,7 @@ export const LoginPage: React.FC = () => {
       if (res.success) {
         triggerCelebrationFireworks();
         showToast('success', `Welcome, ${validation.user.fullName}`, `Signed in with ${validation.user.role.toUpperCase()} clearance.`);
-        navigate(validation.user.role === 'doctor' ? '/doctor-dashboard' : '/dashboard');
+        setAuthenticatedUserForWelcome(validation.user);
       } else {
         setError(res.error || 'Login failed.');
       }
@@ -379,6 +384,17 @@ export const LoginPage: React.FC = () => {
           triggerCelebrationFireworks();
         }}
       />
+
+      {/* PERSONALIZED 3D VOICE WELCOME OVERLAY */}
+      {authenticatedUserForWelcome && (
+        <PersonalizedWelcomeOverlay
+          user={authenticatedUserForWelcome}
+          onComplete={() => {
+            const target = authenticatedUserForWelcome.role === 'doctor' ? '/doctor-dashboard' : '/dashboard';
+            navigate(target);
+          }}
+        />
+      )}
     </div>
   );
 };

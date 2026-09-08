@@ -3,6 +3,13 @@ import { useNavigate } from 'react-router-dom';
 import { StorageService } from '../../services/storage';
 import { BackupService } from '../../services/backupService';
 import { ApiSyncService } from '../../services/apiSyncService';
+import { EMRService } from '../../services/emrService';
+import { DoctorMasterService } from '../../services/doctorMasterService';
+import { PharmacyService } from '../../services/pharmacyService';
+import { PortalService } from '../../services/portalService';
+import { FamilyService } from '../../services/familyService';
+import { TransactionService } from '../../services/transactionService';
+import { BillService } from '../../services/billService';
 import { Patient, HealthCard, Membership, Wallet, WalletTransaction, AuditLog, User } from '../../types';
 import { useAuth } from '../../context/AuthContext';
 import { useSettings } from '../../context/SettingsContext';
@@ -37,7 +44,14 @@ import {
   Database,
   BarChart3,
   Clock,
-  PhoneCall
+  PhoneCall,
+  Stethoscope,
+  FlaskConical,
+  Pill,
+  Receipt,
+  CheckCircle2,
+  DollarSign,
+  HeartHandshake
 } from 'lucide-react';
 import {
   BarChart,
@@ -128,6 +142,39 @@ export const DashboardPage: React.FC = () => {
   const activeCards = cards.filter(c => c.status === 'active').length;
   const expiredCards = cards.filter(c => c.status === 'expired' || new Date(c.expiryDate) < new Date()).length;
   const totalWalletBalance = wallets.reduce((acc, w) => acc + (w.balance || 0), 0);
+
+  // 16 Live Command Center Metrics (Strictly Real Live Data, Zero Mock Multipliers)
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const todayPatients = patients.filter(p => (p.createdAt || '').slice(0, 10) === todayStr).length;
+  const cardRequests = PortalService.getCardApplications();
+  const pendingCardRequests = cardRequests.filter(r => 
+    r.status === 'submitted' || 
+    r.status === 'pending_review' || 
+    r.status === 'under_review' || 
+    r.status === 'pending_approval' || 
+    r.status === 'pending_verification'
+  ).length;
+  const families = FamilyService.getAll();
+  const totalFamilyMembers = families.reduce((sum: number, f) => sum + (f.members?.length || 0), 0);
+  const allAppointments = EMRService.getAllAppointments();
+  const todayAppointments = allAppointments.filter(a => a.patientWishDate === todayStr || (a.createdAt || '').slice(0, 10) === todayStr).length;
+  const allDoctors = DoctorMasterService.getAllDoctors();
+  const activeDoctors = allDoctors.filter(d => d.status === 'active').length;
+  const allLabOrders = PortalService.getLabBookings();
+  const totalLabOrders = allLabOrders.length;
+  const pendingLabReports = allLabOrders.filter(o => o.status !== 'report_ready').length;
+  const pharmacyMovements = PharmacyService.getStockMovements();
+  const pharmacyDispensedToday = pharmacyMovements.filter(m => m.type === 'STOCK_OUT_DISPENSED' && (m.timestamp || '').slice(0, 10) === todayStr).length;
+  const allBills = StorageService.getBills();
+  const todayBillingGross = allBills
+    .filter(b => (b.date || b.createdAt || '').slice(0, 10) === todayStr)
+    .reduce((sum: number, b) => sum + (b.netPayable || 0), 0);
+  const allTxns = TransactionService.getAll();
+  const totalTransactionsCount = allTxns.length;
+  const totalPaidRevenue = allTxns.reduce((sum: number, t) => sum + (t.paid || 0), 0);
+  const totalOutstandingDue = allTxns.reduce((sum: number, t) => sum + (t.due || 0), 0);
+  const pendingApprovalsCount = pendingCardRequests + allAppointments.filter(a => a.status === 'pending_doctor_approval').length;
+  const activeStaffSessions = users.filter(u => u.status === 'active').length;
 
   const membershipDistribution = memberships.map(mem => {
     const count = cards.filter(c => c.membershipId === mem.id).length;
@@ -329,51 +376,290 @@ export const DashboardPage: React.FC = () => {
       {/* Monthly Activity & Prescription Spike Heatmap */}
       <MonthlyActivityHeatmap />
 
-      {/* 4 Core Stat Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-        <StatsCard
-          title="Total Registered Patients"
-          value={totalPatients}
-          subtitle="Across all departments"
-          icon={<Users className="w-6 h-6" />}
-          trend="+14% this month"
-          trendType="positive"
-          color="blue"
-          onClick={() => navigate('/patients')}
-        />
+      {/* Central Command Center: 16 Live Real-Time Firestore Metrics */}
+      <div className="space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-900/90 border border-slate-800 p-4 rounded-2xl shadow-sm">
+          <div className="flex items-center gap-3">
+            <span className="relative flex h-3 w-3">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
+            </span>
+            <div>
+              <h3 className="text-sm font-black text-white uppercase tracking-wider flex items-center gap-2 font-mono">
+                Command Center Live Telemetry
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                  16 / 16 Sensors Online
+                </span>
+              </h3>
+              <p className="text-xs text-slate-400">Strictly synchronized live with central Firestore database.</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] font-mono text-slate-400">Ledger Float:</span>
+            <span className="text-xs font-black text-emerald-400 font-mono px-2.5 py-1 rounded-lg bg-emerald-950/50 border border-emerald-500/30">
+              {formatCurrency(totalWalletBalance)}
+            </span>
+          </div>
+        </div>
 
-        <StatsCard
-          title="Active CR80 Health Cards"
-          value={activeCards}
-          subtitle="Verified active status"
-          icon={<CreditCard className="w-6 h-6" />}
-          trend="+8% active"
-          trendType="positive"
-          color="green"
-          onClick={() => navigate('/cards')}
-        />
+        {/* 16 Metric Cards Grid */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4 xl:grid-cols-4 gap-3.5">
+          {/* 1. Total Patients */}
+          <div
+            onClick={() => navigate('/patients')}
+            className="p-4 rounded-2xl bg-slate-900/80 border border-blue-500/20 hover:border-blue-500/50 hover:bg-slate-800/80 transition-all cursor-pointer shadow-lg space-y-2 group"
+          >
+            <div className="flex items-center justify-between text-blue-400 text-xs font-bold">
+              <span>Total Patients</span>
+              <Users className="w-4 h-4 text-blue-400 group-hover:scale-110 transition" />
+            </div>
+            <p className="text-2xl font-black text-white font-mono">{totalPatients}</p>
+            <div className="text-[10px] text-slate-400 flex items-center justify-between">
+              <span>All registered</span>
+              <span className="text-blue-400 font-bold">View &rarr;</span>
+            </div>
+          </div>
 
-        <StatsCard
-          title="Expired / Pending Renewal"
-          value={expiredCards}
-          subtitle="Eligible for renewal"
-          icon={<AlertTriangle className="w-6 h-6" />}
-          trend="Follow-up queue"
-          trendType={expiredCards > 0 ? 'negative' : 'neutral'}
-          color="amber"
-          onClick={() => navigate('/cards')}
-        />
+          {/* 2. Today's Patients */}
+          <div
+            onClick={() => navigate('/patients')}
+            className="p-4 rounded-2xl bg-slate-900/80 border border-teal-500/20 hover:border-teal-500/50 hover:bg-slate-800/80 transition-all cursor-pointer shadow-lg space-y-2 group"
+          >
+            <div className="flex items-center justify-between text-teal-400 text-xs font-bold">
+              <span>Today's Patients</span>
+              <PlusCircle className="w-4 h-4 text-teal-400 group-hover:scale-110 transition" />
+            </div>
+            <p className="text-2xl font-black text-teal-300 font-mono">{todayPatients}</p>
+            <div className="text-[10px] text-slate-400 flex items-center justify-between">
+              <span>New registrations</span>
+              <span className="text-teal-400 font-bold">View &rarr;</span>
+            </div>
+          </div>
 
-        <StatsCard
-          title="Total Health Wallet Balance"
-          value={formatCurrency(totalWalletBalance)}
-          subtitle="Patient ledger float"
-          icon={<WalletIcon className="w-6 h-6" />}
-          trend="Secured float"
-          trendType="positive"
-          color="purple"
-          onClick={() => navigate('/wallet')}
-        />
+          {/* 3. Active Cards */}
+          <div
+            onClick={() => navigate('/cards')}
+            className="p-4 rounded-2xl bg-slate-900/80 border border-emerald-500/20 hover:border-emerald-500/50 hover:bg-slate-800/80 transition-all cursor-pointer shadow-lg space-y-2 group"
+          >
+            <div className="flex items-center justify-between text-emerald-400 text-xs font-bold">
+              <span>Active Health Cards</span>
+              <CreditCard className="w-4 h-4 text-emerald-400 group-hover:scale-110 transition" />
+            </div>
+            <p className="text-2xl font-black text-emerald-300 font-mono">{activeCards}</p>
+            <div className="text-[10px] text-slate-400 flex items-center justify-between">
+              <span>Verified CR80 chips</span>
+              <span className="text-emerald-400 font-bold">View &rarr;</span>
+            </div>
+          </div>
+
+          {/* 4. Pending Card Requests */}
+          <div
+            onClick={() => navigate('/cards/requests')}
+            className="p-4 rounded-2xl bg-slate-900/80 border border-amber-500/20 hover:border-amber-500/50 hover:bg-slate-800/80 transition-all cursor-pointer shadow-lg space-y-2 group"
+          >
+            <div className="flex items-center justify-between text-amber-400 text-xs font-bold">
+              <span>Pending Card Requests</span>
+              <Clock className="w-4 h-4 text-amber-400 group-hover:scale-110 transition" />
+            </div>
+            <p className="text-2xl font-black text-amber-300 font-mono">{pendingCardRequests}</p>
+            <div className="text-[10px] text-slate-400 flex items-center justify-between">
+              <span>Review lifecycle</span>
+              <span className="text-amber-400 font-bold">Review &rarr;</span>
+            </div>
+          </div>
+
+          {/* 5. Family Members */}
+          <div
+            onClick={() => navigate('/families')}
+            className="p-4 rounded-2xl bg-slate-900/80 border border-indigo-500/20 hover:border-indigo-500/50 hover:bg-slate-800/80 transition-all cursor-pointer shadow-lg space-y-2 group"
+          >
+            <div className="flex items-center justify-between text-indigo-400 text-xs font-bold">
+              <span>Family Members</span>
+              <HeartHandshake className="w-4 h-4 text-indigo-400 group-hover:scale-110 transition" />
+            </div>
+            <p className="text-2xl font-black text-indigo-300 font-mono">{totalFamilyMembers}</p>
+            <div className="text-[10px] text-slate-400 flex items-center justify-between">
+              <span>Shield (max 5/family)</span>
+              <span className="text-indigo-400 font-bold">View &rarr;</span>
+            </div>
+          </div>
+
+          {/* 6. Today's Appointments */}
+          <div
+            onClick={() => navigate('/appointments')}
+            className="p-4 rounded-2xl bg-slate-900/80 border border-cyan-500/20 hover:border-cyan-500/50 hover:bg-slate-800/80 transition-all cursor-pointer shadow-lg space-y-2 group"
+          >
+            <div className="flex items-center justify-between text-cyan-400 text-xs font-bold">
+              <span>Today's Appointments</span>
+              <Clock className="w-4 h-4 text-cyan-400 group-hover:scale-110 transition" />
+            </div>
+            <p className="text-2xl font-black text-cyan-300 font-mono">{todayAppointments}</p>
+            <div className="text-[10px] text-slate-400 flex items-center justify-between">
+              <span>OPD consultations</span>
+              <span className="text-cyan-400 font-bold">Queue &rarr;</span>
+            </div>
+          </div>
+
+          {/* 7. Active Doctors */}
+          <div
+            onClick={() => navigate('/doctors')}
+            className="p-4 rounded-2xl bg-slate-900/80 border border-rose-500/20 hover:border-rose-500/50 hover:bg-slate-800/80 transition-all cursor-pointer shadow-lg space-y-2 group"
+          >
+            <div className="flex items-center justify-between text-rose-400 text-xs font-bold">
+              <span>Active Doctors</span>
+              <Stethoscope className="w-4 h-4 text-rose-400 group-hover:scale-110 transition" />
+            </div>
+            <p className="text-2xl font-black text-rose-300 font-mono">{activeDoctors}</p>
+            <div className="text-[10px] text-slate-400 flex items-center justify-between">
+              <span>Consultants on roster</span>
+              <span className="text-rose-400 font-bold">Doctors &rarr;</span>
+            </div>
+          </div>
+
+          {/* 8. Total Lab Orders */}
+          <div
+            onClick={() => navigate('/laboratory')}
+            className="p-4 rounded-2xl bg-slate-900/80 border border-violet-500/20 hover:border-violet-500/50 hover:bg-slate-800/80 transition-all cursor-pointer shadow-lg space-y-2 group"
+          >
+            <div className="flex items-center justify-between text-violet-400 text-xs font-bold">
+              <span>Total Lab Orders</span>
+              <FlaskConical className="w-4 h-4 text-violet-400 group-hover:scale-110 transition" />
+            </div>
+            <p className="text-2xl font-black text-violet-300 font-mono">{totalLabOrders}</p>
+            <div className="text-[10px] text-slate-400 flex items-center justify-between">
+              <span>Pathology requisitions</span>
+              <span className="text-violet-400 font-bold">Lab &rarr;</span>
+            </div>
+          </div>
+
+          {/* 9. Pending Lab Reports */}
+          <div
+            onClick={() => navigate('/laboratory')}
+            className="p-4 rounded-2xl bg-slate-900/80 border border-yellow-500/20 hover:border-yellow-500/50 hover:bg-slate-800/80 transition-all cursor-pointer shadow-lg space-y-2 group"
+          >
+            <div className="flex items-center justify-between text-yellow-400 text-xs font-bold">
+              <span>Pending Lab Reports</span>
+              <Activity className="w-4 h-4 text-yellow-400 group-hover:scale-110 transition" />
+            </div>
+            <p className="text-2xl font-black text-yellow-300 font-mono">{pendingLabReports}</p>
+            <div className="text-[10px] text-slate-400 flex items-center justify-between">
+              <span>Awaiting sign-off</span>
+              <span className="text-yellow-400 font-bold">Process &rarr;</span>
+            </div>
+          </div>
+
+          {/* 10. Pharmacy Dispensed Today */}
+          <div
+            onClick={() => navigate('/pharmacy')}
+            className="p-4 rounded-2xl bg-slate-900/80 border border-lime-500/20 hover:border-lime-500/50 hover:bg-slate-800/80 transition-all cursor-pointer shadow-lg space-y-2 group"
+          >
+            <div className="flex items-center justify-between text-lime-400 text-xs font-bold">
+              <span>Pharmacy Dispensed</span>
+              <Pill className="w-4 h-4 text-lime-400 group-hover:scale-110 transition" />
+            </div>
+            <p className="text-2xl font-black text-lime-300 font-mono">{pharmacyDispensedToday}</p>
+            <div className="text-[10px] text-slate-400 flex items-center justify-between">
+              <span>Dispensed today</span>
+              <span className="text-lime-400 font-bold">Counter &rarr;</span>
+            </div>
+          </div>
+
+          {/* 11. Today's Billing Gross */}
+          <div
+            onClick={() => navigate('/transactions')}
+            className="p-4 rounded-2xl bg-slate-900/80 border border-emerald-500/20 hover:border-emerald-500/50 hover:bg-slate-800/80 transition-all cursor-pointer shadow-lg space-y-2 group"
+          >
+            <div className="flex items-center justify-between text-emerald-400 text-xs font-bold">
+              <span>Today's Gross Billing</span>
+              <Receipt className="w-4 h-4 text-emerald-400 group-hover:scale-110 transition" />
+            </div>
+            <p className="text-2xl font-black text-emerald-300 font-mono">{formatCurrency(todayBillingGross)}</p>
+            <div className="text-[10px] text-slate-400 flex items-center justify-between">
+              <span>Invoices today</span>
+              <span className="text-emerald-400 font-bold">Ledger &rarr;</span>
+            </div>
+          </div>
+
+          {/* 12. Total Transactions */}
+          <div
+            onClick={() => navigate('/transactions')}
+            className="p-4 rounded-2xl bg-slate-900/80 border border-purple-500/20 hover:border-purple-500/50 hover:bg-slate-800/80 transition-all cursor-pointer shadow-lg space-y-2 group"
+          >
+            <div className="flex items-center justify-between text-purple-400 text-xs font-bold">
+              <span>Total Transactions</span>
+              <BarChart3 className="w-4 h-4 text-purple-400 group-hover:scale-110 transition" />
+            </div>
+            <p className="text-2xl font-black text-purple-300 font-mono">{totalTransactionsCount}</p>
+            <div className="text-[10px] text-slate-400 flex items-center justify-between">
+              <span>Hospital journal</span>
+              <span className="text-purple-400 font-bold">Audit &rarr;</span>
+            </div>
+          </div>
+
+          {/* 13. Paid Ledger Total */}
+          <div
+            onClick={() => navigate('/transactions')}
+            className="p-4 rounded-2xl bg-slate-900/80 border border-teal-500/20 hover:border-teal-500/50 hover:bg-slate-800/80 transition-all cursor-pointer shadow-lg space-y-2 group"
+          >
+            <div className="flex items-center justify-between text-teal-400 text-xs font-bold">
+              <span>Paid Collections</span>
+              <DollarSign className="w-4 h-4 text-teal-400 group-hover:scale-110 transition" />
+            </div>
+            <p className="text-2xl font-black text-teal-300 font-mono">{formatCurrency(totalPaidRevenue)}</p>
+            <div className="text-[10px] text-slate-400 flex items-center justify-between">
+              <span>Realized cash & UPI</span>
+              <span className="text-teal-400 font-bold">View &rarr;</span>
+            </div>
+          </div>
+
+          {/* 14. Outstanding Dues */}
+          <div
+            onClick={() => navigate('/transactions')}
+            className="p-4 rounded-2xl bg-slate-900/80 border border-orange-500/20 hover:border-orange-500/50 hover:bg-slate-800/80 transition-all cursor-pointer shadow-lg space-y-2 group"
+          >
+            <div className="flex items-center justify-between text-orange-400 text-xs font-bold">
+              <span>Outstanding Dues</span>
+              <AlertTriangle className="w-4 h-4 text-orange-400 group-hover:scale-110 transition" />
+            </div>
+            <p className="text-2xl font-black text-orange-300 font-mono">{formatCurrency(totalOutstandingDue)}</p>
+            <div className="text-[10px] text-slate-400 flex items-center justify-between">
+              <span>Uncollected dues</span>
+              <span className="text-orange-400 font-bold">Collect &rarr;</span>
+            </div>
+          </div>
+
+          {/* 15. Pending Approvals */}
+          <div
+            onClick={() => navigate('/cards/requests')}
+            className="p-4 rounded-2xl bg-slate-900/80 border border-red-500/20 hover:border-red-500/50 hover:bg-slate-800/80 transition-all cursor-pointer shadow-lg space-y-2 group"
+          >
+            <div className="flex items-center justify-between text-red-400 text-xs font-bold">
+              <span>Pending Approvals</span>
+              <Shield className="w-4 h-4 text-red-400 group-hover:scale-110 transition" />
+            </div>
+            <p className="text-2xl font-black text-red-300 font-mono">{pendingApprovalsCount}</p>
+            <div className="text-[10px] text-slate-400 flex items-center justify-between">
+              <span>Cards & OPD reviews</span>
+              <span className="text-red-400 font-bold">Review &rarr;</span>
+            </div>
+          </div>
+
+          {/* 16. Active Staff & Doctors */}
+          <div
+            onClick={() => navigate('/users')}
+            className="p-4 rounded-2xl bg-slate-900/80 border border-sky-500/20 hover:border-sky-500/50 hover:bg-slate-800/80 transition-all cursor-pointer shadow-lg space-y-2 group"
+          >
+            <div className="flex items-center justify-between text-sky-400 text-xs font-bold">
+              <span>Active Staff & Doctors</span>
+              <UserCheck className="w-4 h-4 text-sky-400 group-hover:scale-110 transition" />
+            </div>
+            <p className="text-2xl font-black text-sky-300 font-mono">{activeStaffSessions}</p>
+            <div className="text-[10px] text-slate-400 flex items-center justify-between">
+              <span>Active accounts</span>
+              <span className="text-sky-400 font-bold">Staff &rarr;</span>
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* Patient Vitals & Bio-Telemetry Trends Module */}

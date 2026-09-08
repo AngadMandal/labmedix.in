@@ -3,7 +3,8 @@ import { StorageService } from './storage';
 import { ApiSyncService } from './apiSyncService';
 import { AuditService } from './auditService';
 import { BillService } from './billService';
-import { generateUuid } from '../utils/idGenerator';
+import { DoctorMasterService } from './doctorMasterService';
+import { generateUuid, generateLabOrderId, generateSampleBarcode } from '../utils/idGenerator';
 
 const LAB_ORDERS_KEY = 'labmedix_lab_orders_v1';
 
@@ -50,16 +51,13 @@ export class LaboratoryService {
   }
 
   public static generateOrderNumber(): string {
-    const year = new Date().getFullYear();
-    const existing = this.getAll();
-    const count = existing.length + 1;
-    return `LMDX-LAB-${year}-${String(count).padStart(6, '0')}`;
+    const existing = this.getAll().map(o => o.orderNumber);
+    return generateLabOrderId(existing);
   }
 
   public static generateSampleBarcode(): string {
-    const year = new Date().getFullYear();
-    const random = Math.floor(100000 + Math.random() * 900000);
-    return `LMX-SMP-${year}-${random}`;
+    const existing = this.getAll().map(o => o.sampleBarcode || '').filter(Boolean);
+    return generateSampleBarcode(existing);
   }
 
   /**
@@ -307,6 +305,11 @@ export class LaboratoryService {
     orders.unshift(newOrder);
     this.saveOrders(orders);
     ApiSyncService.saveDocument('labBookings', newOrder.id, newOrder).catch(() => {});
+
+    // Attribute referral commission to prescribing physician if present
+    if (input.prescribedByDoctorName && netPayable > 0) {
+      DoctorMasterService.attributeConsultationAndReferral(input.prescribedByDoctorName, 0, netPayable);
+    }
 
     AuditService.log(
       'LAB_ORDER_CREATED',

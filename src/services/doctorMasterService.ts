@@ -84,14 +84,14 @@ export class DoctorMasterService {
         followUpFee: 400,
         telemedicineFee: 500,
         cardholderDiscountPercent: 20,
-        totalFeesCollected: 38400,
-        totalConsultationsCompleted: 64,
+        totalFeesCollected: 0,
+        totalConsultationsCompleted: 0,
         bloodCommissionPercent: 20,
-        totalTestsReferredCount: 42,
-        totalReferredLabRevenue: 52000,
-        totalCommissionEarned: 10400,
-        totalCommissionPaid: 8000,
-        payableCommissionBalance: 2400,
+        totalTestsReferredCount: 0,
+        totalReferredLabRevenue: 0,
+        totalCommissionEarned: 0,
+        totalCommissionPaid: 0,
+        payableCommissionBalance: 0,
         status: 'active',
         availableDays: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
         opdTiming: '10:00 AM - 02:00 PM',
@@ -116,14 +116,14 @@ export class DoctorMasterService {
         followUpFee: 450,
         telemedicineFee: 600,
         cardholderDiscountPercent: 25,
-        totalFeesCollected: 29400,
-        totalConsultationsCompleted: 42,
+        totalFeesCollected: 0,
+        totalConsultationsCompleted: 0,
         bloodCommissionPercent: 20,
-        totalTestsReferredCount: 28,
-        totalReferredLabRevenue: 36000,
-        totalCommissionEarned: 7200,
-        totalCommissionPaid: 5000,
-        payableCommissionBalance: 2200,
+        totalTestsReferredCount: 0,
+        totalReferredLabRevenue: 0,
+        totalCommissionEarned: 0,
+        totalCommissionPaid: 0,
+        payableCommissionBalance: 0,
         status: 'active',
         availableDays: ['Mon', 'Tue', 'Wed', 'Fri', 'Sat'],
         opdTiming: '11:00 AM - 03:00 PM',
@@ -148,14 +148,14 @@ export class DoctorMasterService {
         followUpFee: 500,
         telemedicineFee: 700,
         cardholderDiscountPercent: 20,
-        totalFeesCollected: 45600,
-        totalConsultationsCompleted: 57,
+        totalFeesCollected: 0,
+        totalConsultationsCompleted: 0,
         bloodCommissionPercent: 25,
-        totalTestsReferredCount: 51,
-        totalReferredLabRevenue: 68000,
-        totalCommissionEarned: 17000,
-        totalCommissionPaid: 14000,
-        payableCommissionBalance: 3000,
+        totalTestsReferredCount: 0,
+        totalReferredLabRevenue: 0,
+        totalCommissionEarned: 0,
+        totalCommissionPaid: 0,
+        payableCommissionBalance: 0,
         status: 'active',
         availableDays: ['Mon', 'Wed', 'Thu', 'Fri'],
         opdTiming: '09:30 AM - 01:30 PM',
@@ -180,14 +180,14 @@ export class DoctorMasterService {
         followUpFee: 600,
         telemedicineFee: 850,
         cardholderDiscountPercent: 15,
-        totalFeesCollected: 58000,
-        totalConsultationsCompleted: 58,
+        totalFeesCollected: 0,
+        totalConsultationsCompleted: 0,
         bloodCommissionPercent: 20,
-        totalTestsReferredCount: 48,
-        totalReferredLabRevenue: 82000,
-        totalCommissionEarned: 16400,
-        totalCommissionPaid: 12000,
-        payableCommissionBalance: 4400,
+        totalTestsReferredCount: 0,
+        totalReferredLabRevenue: 0,
+        totalCommissionEarned: 0,
+        totalCommissionPaid: 0,
+        payableCommissionBalance: 0,
         status: 'active',
         availableDays: ['Tue', 'Wed', 'Thu', 'Sat'],
         opdTiming: '02:00 PM - 06:00 PM',
@@ -212,14 +212,14 @@ export class DoctorMasterService {
         followUpFee: 500,
         telemedicineFee: 650,
         cardholderDiscountPercent: 20,
-        totalFeesCollected: 36000,
-        totalConsultationsCompleted: 48,
+        totalFeesCollected: 0,
+        totalConsultationsCompleted: 0,
         bloodCommissionPercent: 20,
-        totalTestsReferredCount: 35,
-        totalReferredLabRevenue: 49000,
-        totalCommissionEarned: 9800,
-        totalCommissionPaid: 7500,
-        payableCommissionBalance: 2300,
+        totalTestsReferredCount: 0,
+        totalReferredLabRevenue: 0,
+        totalCommissionEarned: 0,
+        totalCommissionPaid: 0,
+        payableCommissionBalance: 0,
         status: 'active',
         availableDays: ['Mon', 'Tue', 'Thu', 'Fri', 'Sat'],
         opdTiming: '12:00 PM - 04:00 PM',
@@ -317,6 +317,7 @@ export class DoctorMasterService {
 
     doctors.push(newDoctor);
     this.saveDoctors(doctors);
+    ApiSyncService.saveDocument('doctors', newDoctor.id, newDoctor).catch(() => {});
 
     AuditService.log(
       'DOCTOR_MASTER_CREATED',
@@ -356,6 +357,7 @@ export class DoctorMasterService {
 
     doctors[index] = updated;
     this.saveDoctors(doctors);
+    ApiSyncService.saveDocument('doctors', updated.id, updated).catch(() => {});
 
     // Sync updated PIN / password & name with staff account
     const users = StorageService.getUsers();
@@ -399,7 +401,7 @@ export class DoctorMasterService {
     referredLabTestsGrossTotal: number
   ): void {
     const doctors = this.getAllDoctors();
-    const doc = doctors.find(d => d.id === doctorId || d.name === doctorId);
+    const doc = doctors.find(d => d.id === doctorId || d.name === doctorId || d.doctorCode === doctorId);
     if (!doc) return;
 
     doc.totalConsultationsCompleted += 1;
@@ -415,6 +417,7 @@ export class DoctorMasterService {
 
     doc.updatedAt = new Date().toISOString();
     this.saveDoctors(doctors);
+    ApiSyncService.saveDocument('doctors', doc.id, doc).catch(() => {});
   }
 
   // ==========================================

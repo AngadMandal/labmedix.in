@@ -445,7 +445,9 @@ export type AuditModule =
   | 'security'
   | 'users'
   | 'clinical'
-  | 'portal';
+  | 'portal'
+  | 'pharmacy'
+  | 'laboratory';
 
 export type AuditSeverity = 'info' | 'financial' | 'security' | 'warning' | 'critical';
 
@@ -981,6 +983,7 @@ export interface ClinicalEncounter {
 export interface PatientAppointment {
   id: string;
   appointmentNo: string;
+  queueToken?: string;
   patientId: string;
   patientName: string;
   patientPhone?: string;
@@ -1003,10 +1006,11 @@ export interface PatientAppointment {
   doctorConfirmedTime?: string;
   doctorNotes?: string;
   chiefComplaint: string;
-  status: 'pending_doctor_approval' | 'doctor_confirmed' | 'in_consultation' | 'completed' | 'rescheduled' | 'cancelled';
+  status: 'pending_doctor_approval' | 'doctor_confirmed' | 'waiting' | 'in_consultation' | 'completed' | 'rescheduled' | 'cancelled' | 'no_show';
   telemedicineRoomUrl?: string;
   consultationFee: number;
   walletDebitStatus?: 'paid' | 'pending' | 'free_card_benefit';
+  billId?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -1164,6 +1168,40 @@ export interface StaffCardTransaction {
   notes?: string;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface CentralTransaction {
+  id: string; // TXN-YYYY-XXXXXX
+  transactionId: string;
+  billNumber: string;
+  billId?: string;
+  patientId?: string;
+  patientName: string;
+  patientMobile?: string;
+  service: string;
+  module: 'consultation' | 'laboratory' | 'pharmacy' | 'cards' | 'family' | 'wallet' | 'opd' | 'lab' | 'other' | 'general';
+  relatedModule?: string;
+  amount: number;
+  discount?: number;
+  tax?: number;
+  paid: number;
+  due: number;
+  paidAmount?: number;
+  dueAmount?: number;
+  paymentMethod: 'cash' | 'upi' | 'card' | 'netbanking' | 'wallet' | string;
+  paymentStatus: 'paid' | 'partial_due' | 'unpaid_due' | 'partial' | 'pending' | 'waived' | 'refunded';
+  status?: string;
+  membershipName?: string;
+  paymentReference?: string;
+  staffId?: string;
+  staffName: string;
+  staffRole?: string;
+  date: string;
+  createdAt: string;
+  updatedAt?: string;
+  notes?: string;
+  referenceNo?: string;
+  lineItems?: Array<{ description: string; quantity: number; unitPrice: number; total: number }>;
 }
 
 export type VoucherCategory =
