@@ -38,6 +38,7 @@ const CashDeskBillVouchersPage = React.lazy(() => import('./pages/vouchers/CashD
 const SystemMonitoringPage = React.lazy(() => import('./pages/monitoring/SystemMonitoringPage').then(m => ({ default: m.SystemMonitoringPage })));
 const MultiDeviceManagementPage = React.lazy(() => import('./pages/devices/MultiDeviceManagementPage').then(m => ({ default: m.MultiDeviceManagementPage })));
 const PublicVerifyPage = React.lazy(() => import('./pages/verify/PublicVerifyPage').then(m => ({ default: m.PublicVerifyPage })));
+const OfficialReportViewPage = React.lazy(() => import('./pages/public/OfficialReportViewPage').then(m => ({ default: m.OfficialReportViewPage })));
 const PatientPortalPage = React.lazy(() => import('./pages/portal/PatientPortalPage').then(m => ({ default: m.PatientPortalPage })));
 const NgoWelfare = React.lazy(() => import('./pages/NgoWelfare').then(m => ({ default: m.NgoWelfare })));
 const OfflineFormPage = React.lazy(() => import('./pages/offline/OfflineFormPage').then(m => ({ default: m.OfflineFormPage })));
@@ -235,7 +236,9 @@ export const App: React.FC = () => {
             <HashRouter>
               <React.Suspense fallback={<RouteLoadingSpinner />}>
                 <Routes>
-                  {/* Public Verification Route for QR Scanners */}
+                  {/* Public Verification & Official Diagnostic Report Routes */}
+                  <Route path="/report/:reportNumber" element={<OfficialReportViewPage />} />
+                  <Route path="/report" element={<OfficialReportViewPage />} />
                   <Route path="/verify/:code" element={<PublicVerifyPage />} />
                   <Route path="/verify" element={<PublicVerifyPage />} />
 

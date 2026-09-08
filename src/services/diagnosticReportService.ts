@@ -329,4 +329,114 @@ export class DiagnosticReportService {
 
     return { success: true, report };
   }
+
+  /**
+   * Generates a collision-resistant, HashRouter-safe secure URL for patient report access.
+   */
+  public static buildSecureReportUrl(reportNumber: string, accessKey?: string): string {
+    const origin = window.location.origin;
+    const isGhPages =
+      window.location.pathname.startsWith('/LABMEDIX-AUTO-HEALTH-CARD-SYSTEM') ||
+      window.location.pathname.startsWith('/labmedix.in');
+    const base = window.location.pathname.startsWith('/LABMEDIX-AUTO-HEALTH-CARD-SYSTEM')
+      ? '/LABMEDIX-AUTO-HEALTH-CARD-SYSTEM'
+      : window.location.pathname.startsWith('/labmedix.in')
+      ? '/labmedix.in'
+      : '';
+    const keyParam = accessKey ? `?key=${encodeURIComponent(accessKey.trim())}` : '';
+    return `${origin}${base}/#/report/${encodeURIComponent(reportNumber.trim())}${keyParam}`;
+  }
+
+  /**
+   * Complete WhatsApp Link Validation & Message Generator (Requirement 4 & 5):
+   * Verifies report exists, is finalized and locked, validates patient credentials,
+   * checks operator permissions, and constructs professional verified WhatsApp dispatch link.
+   */
+  public static validateAndPrepareWhatsAppShare(
+    reportNumber: string,
+    currentUser?: any
+  ): {
+    success: boolean;
+    url?: string;
+    messageText?: string;
+    targetPhone?: string;
+    report?: DiagnosticReportRecord;
+    error?: string;
+  } {
+    // 1. Operator permission check
+    if (currentUser && currentUser.role === 'read_only') {
+      return { success: false, error: 'Access Denied: Read-only accounts cannot dispatch official diagnostic reports.' };
+    }
+
+    // 2. Report existence check
+    const report = this.getReportByReportNumber(reportNumber);
+    if (!report) {
+      return { success: false, error: `Diagnostic Report #${reportNumber} does not exist in central registry.` };
+    }
+
+    // 3. Finalization / authorization check (Requirement 17)
+    if (!report.isLocked && report.status !== 'finalized') {
+      return {
+        success: false,
+        error: `Report #${reportNumber} is still under preliminary analysis or unverified. Only finalized reports can be shared via WhatsApp.`
+      };
+    }
+
+    // 4. Patient credential integrity check
+    if (!report.patientName || !report.patientId) {
+      return { success: false, error: 'Report contains incomplete patient identification credentials.' };
+    }
+
+    // 5. Lookup patient phone number across report, patient master, and order
+    let phone = (report.patientPhone || '').replace(/\D/g, '');
+    if (!phone) {
+      const patient = StorageService.getPatients().find(p => p.id === report.patientId);
+      if (patient?.mobile) {
+        phone = patient.mobile.replace(/\D/g, '');
+      }
+    }
+    if (!phone) {
+      const booking = PortalService.getLabBookings().find(b => b.id === report.orderId || b.bookingNo === report.bookingNo);
+      if (booking?.patientPhone) {
+        phone = booking.patientPhone.replace(/\D/g, '');
+      }
+    }
+
+    // Format phone with country code (defaults to +91 for 10-digit Indian numbers)
+    let formattedPhone = phone;
+    if (phone.length === 10) {
+      formattedPhone = `91${phone}`;
+    }
+
+    // 6. Generate secure report link with authentication key
+    const secureReportLink = this.buildSecureReportUrl(report.reportNumber, report.verificationCode);
+
+    // 7. Construct official WhatsApp message format (Requirement 4)
+    const messageText =
+      `*Labmedix Official Diagnostic Report*\n\n` +
+      `*Patient:* ${report.patientName}\n` +
+      `*Report No.:* ${report.reportNumber}\n` +
+      `*Report Status:* Final\n` +
+      `*Report Link:* ${secureReportLink}\n\n` +
+      `Please tap the secure link above to view your official diagnostic report, download the verified PDF, or print your authenticated record.`;
+
+    const whatsappUrl = formattedPhone
+      ? `https://wa.me/${formattedPhone}?text=${encodeURIComponent(messageText)}`
+      : `https://wa.me/?text=${encodeURIComponent(messageText)}`;
+
+    AuditService.log(
+      'DIAGNOSTIC_REPORT_WHATSAPP_DISPATCHED',
+      'laboratory',
+      `WhatsApp report dispatch initiated for Report ${report.reportNumber} (Patient: ${report.patientName}, Phone: ${formattedPhone || 'Manual Entry'})`,
+      report.id
+    );
+
+    return {
+      success: true,
+      url: whatsappUrl,
+      messageText,
+      targetPhone: formattedPhone,
+      report
+    };
+  }
 }

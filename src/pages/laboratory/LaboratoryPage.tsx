@@ -18,6 +18,7 @@ import { TechnicianMasterEditModal } from '../../components/laboratory/Technicia
 import { DoctorMasterEditModal } from '../../components/emr/DoctorMasterEditModal';
 import { TechnicianMasterService } from '../../services/technicianMasterService';
 import { DoctorMasterService, DoctorMasterItem } from '../../services/doctorMasterService';
+import { DiagnosticReportService } from '../../services/diagnosticReportService';
 import { LabTechnicianItem } from '../../types';
 import { Modal } from '../../components/common/Modal';
 import {
@@ -49,7 +50,8 @@ import {
   Edit3,
   Trash2,
   Building,
-  Check
+  Check,
+  Share2
 } from 'lucide-react';
 
 export const LaboratoryPage: React.FC = () => {
@@ -593,8 +595,25 @@ export const LaboratoryPage: React.FC = () => {
                                   <button
                                     onClick={() => setSelectedOrderForReport(order)}
                                     className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[10px] transition shadow-sm shadow-emerald-600/30 flex items-center gap-1"
+                                    title="Open Official A4 Report Preview & PDF"
                                   >
                                     <Printer className="w-3 h-3" /> Report
+                                  </button>
+                                  <button
+                                    onClick={() => {
+                                      const rpt = DiagnosticReportService.createOrGetReportForOrder(order);
+                                      const res = DiagnosticReportService.validateAndPrepareWhatsAppShare(rpt.reportNumber, currentUser);
+                                      if (res.success && res.url) {
+                                        window.open(res.url, '_blank', 'noopener,noreferrer');
+                                        showToast('success', 'WhatsApp Dispatched', `Opened WhatsApp report link for ${order.patientName}.`);
+                                      } else {
+                                        showToast('error', 'WhatsApp Blocked', res.error || 'Report is not ready for external sharing.');
+                                      }
+                                    }}
+                                    className="p-1.5 rounded-lg bg-emerald-950/80 hover:bg-emerald-900 border border-emerald-500/40 text-emerald-300 transition"
+                                    title="Send Official Report Link via WhatsApp"
+                                  >
+                                    <Share2 className="w-3 h-3" />
                                   </button>
                                   <button
                                     onClick={() => setSelectedOrderForVerification(order)}

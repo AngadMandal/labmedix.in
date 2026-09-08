@@ -771,6 +771,7 @@ export interface VerificationResult {
     laboratoryName: string;
     centerLocation: string;
     verificationHash: string;
+    verificationCode?: string;
   };
   membership?: {
     name: string;

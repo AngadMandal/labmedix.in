@@ -412,9 +412,40 @@
     border: none !important;
   }
 
+  /* Official Diagnostic Report Master Print Styling */
+  .official-diagnostic-report-document,
+  .official-a4-page,
+  #official-diagnostic-report-page {
+    box-shadow: none !important;
+    border: none !important;
+    border-radius: 0 !important;
+    padding: 24px 28px !important;
+    margin: 0 auto !important;
+    width: 100% !important;
+    max-width: 210mm !important;
+    min-height: 297mm !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+    background: #ffffff !important;
+    color: #0f172a !important;
+  }
+
+  .official-diagnostic-report-document table,
+  .official-diagnostic-report-document table tr {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  .official-diagnostic-report-document header,
+  .official-diagnostic-report-document section,
+  .official-diagnostic-report-document footer {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
   @page {
     size: A4 portrait;
-    margin: 5mm 5mm;
+    margin: 6mm 8mm;
   }
 }
 

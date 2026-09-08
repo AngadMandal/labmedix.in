@@ -477,7 +477,8 @@ export class CardService {
             reportingDoctorRegNo: report.reportingDoctorRegNo || 'Medical Council Certified',
             laboratoryName: company.name,
             centerLocation: `${company.district}, ${company.state}`,
-            verificationHash: report.verificationHash || 'VERIFIED-SEAL'
+            verificationHash: report.verificationHash || 'VERIFIED-SEAL',
+            verificationCode: report.verificationCode || ''
           },
           issueDate: report.finalizedAt || report.createdAt,
           company

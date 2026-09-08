@@ -800,19 +800,26 @@ export const PublicVerifyPage: React.FC = () => {
                       </div>
                     </div>
 
-                    {/* Portal Login Link */}
+                    {/* View Official Diagnostic Report & Patient Portal Links */}
                     <div className="p-4 rounded-2xl bg-gradient-to-r from-teal-950/80 via-slate-900 to-indigo-950/80 border border-teal-500/40 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
-                      <div>
-                        <strong className="text-white block">Need Full Diagnostic Report & Test Values?</strong>
+                      <div className="text-left">
+                        <strong className="text-white block">Official Diagnostic Report Access</strong>
                         <span className="text-slate-400 text-[11px]">
-                          Log in to the cashless Patient Portal with your registered phone number or Health Card.
+                          View the full analytical values, reference ranges, and download official A4 PDF.
                         </span>
                       </div>
-                      <Link to="/portal">
-                        <Button variant="primary" size="sm" rightIcon={<ArrowRight className="w-4 h-4" />}>
-                          Open Patient Portal
-                        </Button>
-                      </Link>
+                      <div className="flex items-center gap-2">
+                        <Link to={`/report/${result.report.reportNumber}?key=${encodeURIComponent(result.report.verificationCode || '')}`}>
+                          <Button variant="primary" size="sm" rightIcon={<FileCheck className="w-4 h-4" />}>
+                            View Official Report
+                          </Button>
+                        </Link>
+                        <Link to="/portal">
+                          <Button variant="outline" size="sm">
+                            Patient Portal
+                          </Button>
+                        </Link>
+                      </div>
                     </div>
                   </div>
                 )}
