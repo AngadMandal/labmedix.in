@@ -115,7 +115,7 @@ export const FamilyLinkageModal: React.FC<FamilyLinkageModalProps> = ({
               <span className="text-[10px] uppercase font-bold tracking-wider text-blue-200 block">Shared Family Group</span>
               <h3 className="text-base font-black tracking-wide">{family.familyName}</h3>
               <p className="text-xs text-blue-100 font-medium">
-                {family.members.length + 1} Household Members Covered
+                Family Members: {family.members.filter(m => !m.isPrimary).length} / 5 included ({family.members.length} Total Registered)
               </p>
             </div>
           </div>
@@ -127,9 +127,18 @@ export const FamilyLinkageModal: React.FC<FamilyLinkageModalProps> = ({
 
         {/* Members List */}
         <div className="space-y-3">
-          <span className="text-xs font-bold uppercase tracking-wider text-slate-500 block">
-            Linked Household Cardholders ({family.members.length + 1})
-          </span>
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-500 block">
+              Linked Household Members
+            </span>
+            <span className={`px-2 py-0.5 rounded text-[11px] font-bold ${
+              family.members.filter(m => !m.isPrimary).length > 5
+                ? 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 border border-amber-300'
+                : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-300'
+            }`}>
+              Family Members: {family.members.filter(m => !m.isPrimary).length} / 5
+            </span>
+          </div>
 
           <div className="divide-y divide-slate-100 dark:divide-slate-800 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden bg-slate-50/50 dark:bg-slate-900/50">
             {/* 1. Primary Cardholder (Head) */}
@@ -232,10 +241,21 @@ export const FamilyLinkageModal: React.FC<FamilyLinkageModalProps> = ({
                           </div>
                         )}
                       </div>
-                      <div className="flex items-center gap-2 text-xs text-slate-500 font-mono mt-0.5">
+                      <div className="flex items-center gap-2 text-xs text-slate-500 font-mono mt-0.5 flex-wrap">
                         <span>{depPatient.id}</span>
                         <span>•</span>
-                        <span className="text-brand-blue dark:text-blue-400 font-bold">{depCard?.cardNumber || 'No Card'}</span>
+                        {depCard ? (
+                          <span className="text-brand-blue dark:text-blue-400 font-bold">Card: {depCard.cardNumber}</span>
+                        ) : (
+                          <span className="px-1.5 py-0.2 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800">
+                            🛡️ Active under Primary ({primaryCard?.cardNumber || 'Head Card'})
+                          </span>
+                        )}
+                        {mem.additionalFeePaid && (
+                          <span className="px-1.5 py-0.2 rounded text-[10px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300">
+                            +₹{mem.additionalFeeAmount || 299} Paid
+                          </span>
+                        )}
                         <span>•</span>
                         <span className="text-red-500 font-bold">{depPatient.bloodGroup}</span>
                         <span>•</span>

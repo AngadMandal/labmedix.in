@@ -96,7 +96,12 @@ export const LoginPage: React.FC = () => {
     setIsLoading(true);
 
     try {
-      const inputUser = username.trim() || 'angadmandal3@gmail.com';
+      const inputUser = username.trim();
+      if (!inputUser) {
+        setIsLoading(false);
+        setError('Please enter your unique registered staff email address.');
+        return;
+      }
 
       console.log('Attempting login for:', inputUser);
       const validation = await AuthService.validateCredentialsAsync(inputUser, password || '');

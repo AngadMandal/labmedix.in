@@ -3,12 +3,16 @@ import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import { PortalService, BloodTestBooking, LabTestResultParameter } from '../../services/portalService';
 import { CatalogService, LabTestItem, HealthPackageItem } from '../../services/catalogService';
+import { LaboratoryService } from '../../services/laboratoryService';
 import { StorageService } from '../../services/storage';
 import { ApiSyncService } from '../../services/apiSyncService';
 import { Patient, HealthCard } from '../../types';
 import { formatCurrency, formatDate, formatDateTime } from '../../utils/formatters';
 import { PhlebotomySampleLabelModal } from '../../components/patients/PhlebotomySampleLabelModal';
 import { LabReportPrintModal } from '../../components/emr/LabReportPrintModal';
+import { LabResultEntryModal } from '../../components/laboratory/LabResultEntryModal';
+import { LabVerificationModal } from '../../components/laboratory/LabVerificationModal';
+import { CreateLabOrderModal } from '../../components/laboratory/CreateLabOrderModal';
 import { Modal } from '../../components/common/Modal';
 import {
   TestTube,
@@ -30,7 +34,8 @@ import {
   ShieldCheck,
   User,
   FlaskConical,
-  Activity
+  Activity,
+  CheckSquare
 } from 'lucide-react';
 
 export const LaboratoryPage: React.FC = () => {
@@ -56,6 +61,8 @@ export const LaboratoryPage: React.FC = () => {
   // Modals
   const [selectedOrderForBarcode, setSelectedOrderForBarcode] = useState<BloodTestBooking | null>(null);
   const [selectedOrderForReport, setSelectedOrderForReport] = useState<BloodTestBooking | null>(null);
+  const [selectedOrderForResultEntry, setSelectedOrderForResultEntry] = useState<BloodTestBooking | null>(null);
+  const [selectedOrderForVerification, setSelectedOrderForVerification] = useState<BloodTestBooking | null>(null);
   const [isNewOrderModalOpen, setIsNewOrderModalOpen] = useState(false);
 
   // Accessioning quick-entry state
@@ -63,13 +70,6 @@ export const LaboratoryPage: React.FC = () => {
   const [sampleTubeType, setSampleTubeType] = useState('EDTA (K2/K3) - Lavender Cap');
   const [sampleBarcode, setSampleBarcode] = useState('');
   const [phlebotomistName, setPhlebotomistName] = useState(() => currentUser?.fullName || 'Senior Phlebotomist');
-
-  // Walk-in Lab Test Modal State
-  const [walkinPatientId, setWalkinPatientId] = useState('');
-  const [patientSearchTerm, setPatientSearchTerm] = useState('');
-  const [selectedTestIds, setSelectedTestIds] = useState<string[]>([]);
-
-  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Real-time Firestore sync & cross-tab events
   useEffect(() => {
@@ -129,20 +129,6 @@ export const LaboratoryPage: React.FC = () => {
       ApiSyncService.saveDocument('labBookings', updated.id, updated).catch(() => {});
       setLabOrders(PortalService.getLabBookings());
       showToast('success', 'Sample Received in Lab', `Order ${order.bookingNo} is now undergoing clinical analysis.`);
-    }
-  };
-
-  const handleReleaseReport = (order: BloodTestBooking) => {
-    const defaultParams: LabTestResultParameter[] = [
-      { parameterName: 'Hemoglobin (Hb)', observedValue: '14.2', referenceRange: '13.0 - 17.0', unit: 'g/dL', flag: 'normal' },
-      { parameterName: 'Total Leukocyte Count (TLC)', observedValue: '7,800', referenceRange: '4,000 - 11,000', unit: 'cells/mcL', flag: 'normal' },
-      { parameterName: 'Platelet Count', observedValue: '2.5', referenceRange: '1.5 - 4.5', unit: 'Lakhs/mcL', flag: 'normal' }
-    ];
-    const updated = PortalService.updateTestResults(order.id, defaultParams, 'All haematological parameters within normal biological reference intervals.');
-    if (updated) {
-      ApiSyncService.saveDocument('labBookings', updated.id, updated).catch(() => {});
-      setLabOrders(PortalService.getLabBookings());
-      showToast('success', 'Report Released', `Diagnostic report ready for ${order.patientName}.`);
     }
   };
 
@@ -241,6 +227,14 @@ export const LaboratoryPage: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-3 flex-wrap">
+          <button
+            onClick={() => setIsNewOrderModalOpen(true)}
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-teal-600 hover:bg-teal-500 text-white text-xs font-black shadow-lg shadow-teal-600/30 transition border border-teal-400/30"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Book Lab Test</span>
+          </button>
+
           <button
             onClick={handleRefresh}
             disabled={isRefreshing}
@@ -487,10 +481,10 @@ export const LaboratoryPage: React.FC = () => {
                               </button>
 
                               {/* Progression Action */}
-                              {order.status === 'confirmed' && (
+                              {(order.status === 'confirmed' || order.status === 'phlebotomist_assigned') && (
                                 <button
                                   onClick={() => handleMarkSampleCollected(order)}
-                                  className="px-2.5 py-1 rounded-lg bg-purple-600 hover:bg-purple-500 text-white font-bold text-[10px] transition"
+                                  className="px-2.5 py-1 rounded-lg bg-purple-600 hover:bg-purple-500 text-white font-bold text-[10px] transition shadow-sm shadow-purple-600/30"
                                 >
                                   Collect Sample
                                 </button>
@@ -499,28 +493,47 @@ export const LaboratoryPage: React.FC = () => {
                               {order.status === 'sample_collected' && (
                                 <button
                                   onClick={() => handleReceiveInLab(order)}
-                                  className="px-2.5 py-1 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-[10px] transition"
+                                  className="px-2.5 py-1 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-[10px] transition shadow-sm shadow-cyan-600/30"
                                 >
                                   Receive in Lab
                                 </button>
                               )}
 
                               {order.status === 'processing' && (
-                                <button
-                                  onClick={() => handleReleaseReport(order)}
-                                  className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[10px] transition"
-                                >
-                                  Release Report
-                                </button>
+                                <div className="flex items-center gap-1">
+                                  <button
+                                    onClick={() => setSelectedOrderForResultEntry(order)}
+                                    className="px-2.5 py-1 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-bold text-[10px] transition shadow-sm shadow-blue-600/30"
+                                  >
+                                    Enter Results
+                                  </button>
+                                  {order.testResults && order.testResults.length > 0 && (
+                                    <button
+                                      onClick={() => setSelectedOrderForVerification(order)}
+                                      className="px-2.5 py-1 rounded-lg bg-amber-600 hover:bg-amber-500 text-white font-bold text-[10px] transition shadow-sm shadow-amber-600/30"
+                                    >
+                                      Verify & Sign
+                                    </button>
+                                  )}
+                                </div>
                               )}
 
                               {order.status === 'report_ready' && (
-                                <button
-                                  onClick={() => setSelectedOrderForReport(order)}
-                                  className="px-2.5 py-1 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-bold text-[10px] transition flex items-center gap-1"
-                                >
-                                  <Printer className="w-3 h-3" /> Report
-                                </button>
+                                <div className="flex items-center gap-1">
+                                  <button
+                                    onClick={() => setSelectedOrderForReport(order)}
+                                    className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[10px] transition shadow-sm shadow-emerald-600/30 flex items-center gap-1"
+                                  >
+                                    <Printer className="w-3 h-3" /> Report
+                                  </button>
+                                  <button
+                                    onClick={() => setSelectedOrderForVerification(order)}
+                                    className="p-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition text-[10px] border border-slate-700"
+                                    title="Review / Re-verify"
+                                  >
+                                    Review
+                                  </button>
+                                </div>
                               )}
                             </div>
                           </td>
@@ -738,6 +751,39 @@ export const LaboratoryPage: React.FC = () => {
             </div>
           ))}
         </div>
+      )}
+
+      {/* Create Lab Order / Walk-in Booking Modal */}
+      <CreateLabOrderModal
+        isOpen={isNewOrderModalOpen}
+        onClose={() => setIsNewOrderModalOpen(false)}
+        onOrderCreated={() => {
+          setLabOrders(PortalService.getLabBookings());
+        }}
+      />
+
+      {/* Lab Result Entry Modal for Technicians */}
+      {selectedOrderForResultEntry && (
+        <LabResultEntryModal
+          isOpen={!!selectedOrderForResultEntry}
+          onClose={() => setSelectedOrderForResultEntry(null)}
+          booking={selectedOrderForResultEntry}
+          onResultsSaved={() => {
+            setLabOrders(PortalService.getLabBookings());
+          }}
+        />
+      )}
+
+      {/* Lab Verification & Digital Signature Modal for Pathologists */}
+      {selectedOrderForVerification && (
+        <LabVerificationModal
+          isOpen={!!selectedOrderForVerification}
+          onClose={() => setSelectedOrderForVerification(null)}
+          booking={selectedOrderForVerification}
+          onVerified={() => {
+            setLabOrders(PortalService.getLabBookings());
+          }}
+        />
       )}
 
       {/* Barcode Label Modal */}

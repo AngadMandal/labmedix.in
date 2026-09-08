@@ -133,19 +133,42 @@ export const DashboardPage: React.FC = () => {
     const count = cards.filter(c => c.membershipId === mem.id).length;
     return {
       name: mem.name,
-      value: count || 1,
+      value: count,
       color: mem.color
     };
-  });
+  }).filter(m => m.value > 0);
 
-  const monthlyData = [
-    { month: 'Jan', cards: 12, renewals: 2 },
-    { month: 'Feb', cards: 18, renewals: 5 },
-    { month: 'Mar', cards: 24, renewals: 8 },
-    { month: 'Apr', cards: 32, renewals: 12 },
-    { month: 'May', cards: 45, renewals: 15 },
-    { month: 'Jun', cards: Math.max(cards.length, 52), renewals: 20 }
-  ];
+  // Dynamically compute real monthly card issuances & renewals from production timestamps
+  const monthlyData = React.useMemo(() => {
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const now = new Date();
+    const result = [];
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const year = d.getFullYear();
+      const monthIdx = d.getMonth();
+      const monthLabel = monthNames[monthIdx];
+
+      const issuedInMonth = cards.filter(c => {
+        if (!c.issueDate) return false;
+        const cDate = new Date(c.issueDate);
+        return cDate.getFullYear() === year && cDate.getMonth() === monthIdx;
+      }).length;
+
+      const renewalsInMonth = cards.filter(c => {
+        if (!c.lastRenewedAt) return false;
+        const rDate = new Date(c.lastRenewedAt);
+        return rDate.getFullYear() === year && rDate.getMonth() === monthIdx;
+      }).length;
+
+      result.push({
+        month: monthLabel,
+        cards: issuedInMonth,
+        renewals: renewalsInMonth
+      });
+    }
+    return result;
+  }, [cards]);
 
   const handleMobileSearch = (e: React.FormEvent) => {
     e.preventDefault();

@@ -7,6 +7,7 @@ export type Role =
   | 'cashier'
   | 'lab_staff'
   | 'phlebotomist'
+  | 'pharmacist'
   | 'marketing'
   | 'card_operator'
   | 'read_only';
@@ -336,10 +337,25 @@ export interface Membership {
   updatedAt?: string;
 }
 
+export type FamilyMemberStatus =
+  | 'added'
+  | 'pending'
+  | 'active_under_primary'
+  | 'individual_card_requested'
+  | 'individual_card_approved'
+  | 'individual_card_issued'
+  | 'removed';
+
 export interface FamilyMemberLink {
   patientId: string;
   relationship: string;
   isPrimary: boolean;
+  status?: FamilyMemberStatus;
+  individualCardId?: string;
+  individualCardNumber?: string;
+  addedAt?: string;
+  additionalFeePaid?: boolean;
+  additionalFeeAmount?: number;
 }
 
 export interface FamilyGroup {
@@ -760,6 +776,139 @@ export interface OrderedLabTest {
   estimatedCost: number;
 }
 
+export type LabOrderStatus =
+  | 'booked'
+  | 'order_created'
+  | 'sample_collection_pending'
+  | 'phlebotomy_assigned'
+  | 'sample_collected'
+  | 'sample_received_in_lab'
+  | 'in_lab'
+  | 'processing'
+  | 'results_entered'
+  | 'results_verified'
+  | 'verified'
+  | 'report_ready'
+  | 'delivered'
+  | 'cancelled'
+  | 'recollection_needed';
+
+export type LabResultStatus =
+  | 'pending_entry'
+  | 'draft_entered'
+  | 'verified'
+  | 'final'
+  | 'amended';
+
+export type LabParameterFlag = 'normal' | 'low' | 'high' | 'critical';
+
+export interface LabParameterResult {
+  id?: string;
+  parameterId?: string;
+  parameterName: string;
+  observedValue: string;
+  unit: string;
+  referenceRange: string;
+  flag: LabParameterFlag;
+  critical?: boolean;
+  method?: string;
+  notes?: string;
+}
+
+export interface LabOrderRecord {
+  id: string; // e.g. LAB-ORD-2026-000101
+  orderNumber: string;
+  bookingNo?: string;
+  patientId: string;
+  patientName: string;
+  patientPhone?: string;
+  patientAge?: number;
+  patientGender?: 'male' | 'female' | 'other';
+  healthCardId?: string;
+  cardNo?: string;
+  cardTier?: string;
+  membershipTier?: string;
+  testNames?: string[];
+  testName?: string;
+  testId?: string;
+  category?: string;
+  department: string;
+  specimenType?: string;
+  sampleType?: string;
+  tubeType?: string; // e.g. EDTA (Lavender), Serum (Red), etc.
+  sampleTubeType?: string;
+  vialBarcode?: string;
+  sampleBarcode?: string;
+  urgency?: 'routine' | 'urgent' | 'emergency';
+  priority?: 'routine' | 'urgent' | 'stat';
+  orderingDoctorName?: string;
+  prescribedByDoctorName?: string;
+  orderingDoctorId?: string;
+  encounterNo?: string;
+  status: LabOrderStatus;
+  resultStatus?: LabResultStatus;
+  paymentStatus?: 'paid' | 'pending' | 'partially_paid' | 'waived';
+  grossAmount?: number;
+  mrp?: number;
+  discountPercentage?: number;
+  discountAmount?: number;
+  netAmount?: number;
+  netPayable?: number;
+  paidAmount?: number;
+  dueAmount?: number;
+  isPaid?: boolean;
+  paymentMethod?: string;
+  billId?: string;
+  billNumber?: string;
+  transactionId?: string;
+  
+  // Staff tracking
+  createdByStaffId?: string;
+  createdByStaffName?: string;
+  phlebotomistId?: string;
+  phlebotomistName?: string;
+  collectedAt?: string;
+  sampleCollectedAt?: string;
+  sampleCollectedBy?: string;
+  receivedInLabAt?: string;
+  sampleReceivedAt?: string;
+  sampleReceivedBy?: string;
+  receivedByTechnician?: string;
+  
+  // Results & Verification
+  parameters?: LabParameterResult[];
+  results?: LabParameterResult[];
+  technicianRemarks?: string;
+  technicianNotes?: string;
+  clinicalNotes?: string;
+  resultsEnteredAt?: string;
+  resultsEnteredBy?: string;
+  
+  verifiedAt?: string;
+  verifiedBy?: string;
+  verifiedDoctorName?: string;
+  verifiedDoctorRegistrationNo?: string;
+  verifiedByDoctorName?: string;
+  pathologistNotes?: string;
+  verifyingDoctorRegNo?: string;
+  verifyingDoctorDesignation?: string;
+  isLocked?: boolean;
+  lockedAt?: string;
+  reportUrl?: string;
+  
+  // Amendment tracking if report corrected
+  amendmentHistory?: Array<{
+    amendedAt: string;
+    amendedBy: string;
+    reason: string;
+    previousParameters: LabParameterResult[];
+  }>;
+  
+  createdAt: string;
+  updatedAt: string;
+  createdBy?: string;
+}
+
 export interface ClinicalVitals {
   bpSystolic?: number;
   bpDiastolic?: number;
@@ -873,7 +1022,10 @@ export interface ApplicationFamilyMember {
   mobile?: string;
   photoUrl?: string;
   medicalNotes?: string;
-  issueCard?: boolean; // Whether an individual CR80 Health Card is requested for this member
+  issueCard?: boolean; // Whether an individual CR80 Health Card is explicitly requested
+  status?: FamilyMemberStatus;
+  individualCardId?: string;
+  individualCardNumber?: string;
 }
 
 export interface CardApplicationHistoryItem {
@@ -1437,4 +1589,3 @@ export interface CentralMultiDeviceMetrics {
   walQueueSize: number;
   isCentralFirestoreLive: boolean;
 }
-

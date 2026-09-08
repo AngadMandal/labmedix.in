@@ -180,17 +180,42 @@ export const CardApplicationReviewModal: React.FC<CardApplicationReviewModalProp
     );
     setIsProcessing(false);
 
-    if (res.success && res.patient && res.card) {
+    if (res.success) {
+      showToast(
+        'success',
+        'Application Approved! ✅',
+        `Request ${application.trackingId || application.applicationNo} has been verified and approved. Physical card is now ready for explicit issuance.`
+      );
+      onApproved();
+      onClose();
+    } else {
+      showToast('error', 'Approval Error', res.error || 'Failed to approve application.');
+    }
+  };
+
+  const handleIssueCard = async () => {
+    if (!canApprove) {
+      showToast('error', 'Permission Denied', 'You do not have permission to issue health cards.');
+      return;
+    }
+    setIsProcessing(true);
+    const res = await PortalService.issueHealthCardForApplication(
+      application.id,
+      currentUser?.fullName || 'Authorized Staff'
+    );
+    setIsProcessing(false);
+
+    if (res.success && res.card) {
       triggerCelebrationFireworks();
       showToast(
         'success',
         'Official Health Card Minted & Issued! 🚀',
-        `Patient ${res.patient.fullName} (${res.patient.id}) active. Health Card ${res.card.cardNumber} issued!`
+        `Patient ${res.patient?.fullName || application.fullName} active. Health Card ${res.card.cardNumber} successfully issued!`
       );
       onApproved(res.card, res.patient);
       onClose();
     } else {
-      showToast('error', 'Approval Error', res.error || 'Failed to approve application.');
+      showToast('error', 'Issuance Error', res.error || 'Failed to issue card.');
     }
   };
 
@@ -710,7 +735,7 @@ export const CardApplicationReviewModal: React.FC<CardApplicationReviewModalProp
             </Button>
           </div>
 
-          {(canApprove || canReject) && application.status !== 'approved' && application.status !== 'issued' && (
+          {(canApprove || canReject) && application.status !== 'approved' && application.status !== 'issued' && application.status !== 'card_issued' && (
             <div className="flex flex-wrap items-center gap-2">
               {canReject && (
                 <Button
@@ -770,13 +795,33 @@ export const CardApplicationReviewModal: React.FC<CardApplicationReviewModalProp
                   isLoading={isProcessing}
                   leftIcon={<CheckCircle2 className="w-4 h-4" />}
                 >
-                  Approve & Issue Health Card
+                  Approve Application
                 </Button>
               )}
             </div>
           )}
 
-          {(application.status === 'approved' || application.status === 'issued') && (
+          {application.status === 'approved' && !application.approvedCardNumber && (
+            <div className="flex flex-wrap items-center gap-3">
+              <span className="px-3 py-1 rounded-full text-xs font-bold bg-amber-400/20 text-amber-300 border border-amber-400/40">
+                ✅ Application Approved (Ready for Issuance)
+              </span>
+              {canApprove && (
+                <Button
+                  type="button"
+                  variant="primary"
+                  className="bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-500 text-white font-black shadow-xl"
+                  onClick={handleIssueCard}
+                  isLoading={isProcessing}
+                  leftIcon={<CreditCard className="w-4 h-4" />}
+                >
+                  Issue Physical Health Card
+                </Button>
+              )}
+            </div>
+          )}
+
+          {(application.approvedCardNumber || application.status === 'issued' || application.status === 'card_issued') && (
             <span className="text-emerald-400 font-mono font-bold flex items-center gap-1.5">
               <Check className="w-4 h-4" /> Card Issued: {application.approvedCardNumber} [Patient ID: {application.approvedPatientId}]
             </span>

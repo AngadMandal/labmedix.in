@@ -153,13 +153,29 @@ export const CardRequestsPage: React.FC = () => {
     return { total, pending, approved, issued, revenue };
   }, [applications, scopeFilter, currentUser]);
 
-  // Direct Quick Approval (Admin only)
-  const handleQuickApproveAndIssue = async (app: CardApplicationRequest) => {
+  // Step 1: Super Admin Approval (Verifies documents & payment, marks ready for issuance)
+  const handleApproveRequest = async (app: CardApplicationRequest) => {
     if (!isAdmin && !isManager) return;
     try {
       const res = await PortalService.approveCardApplication(app.id, currentUser?.fullName || 'Super Administrator');
       if (res.success) {
-        showToast('success', 'Health Card Minted & Issued', `Card #${res.card?.cardNumber} has been activated.`);
+        showToast('success', 'Card Request Approved! ✅', `Application #${app.applicationNo || app.trackingId} verified. Ready for physical card issuance.`);
+        setApplications(PortalService.getCardApplications());
+      } else {
+        showToast('error', 'Approval Failed', res.error || 'Could not approve request.');
+      }
+    } catch (err: any) {
+      showToast('error', 'Approval Error', err.message || 'An unexpected error occurred.');
+    }
+  };
+
+  // Step 2: Explicit Physical Card Issuance (Mints card number, CVV, and activates)
+  const handleIssuePhysicalCard = async (app: CardApplicationRequest) => {
+    if (!isAdmin && !isManager) return;
+    try {
+      const res = await PortalService.issueHealthCardForApplication(app.id, currentUser?.fullName || 'Super Administrator');
+      if (res.success && res.card) {
+        showToast('success', 'Health Card Minted & Issued! 🚀', `Card #${res.card.cardNumber} activated.`);
         setApplications(PortalService.getCardApplications());
       } else {
         showToast('error', 'Issuance Failed', res.error || 'Could not issue card.');
@@ -488,15 +504,31 @@ export const CardRequestsPage: React.FC = () => {
                             <Eye className="w-4 h-4" />
                           </button>
 
-                          {/* Direct Quick Approve & Issue (Super Admin only for pending/approved) */}
-                          {(isAdmin || isManager) && app.status !== 'card_issued' && app.status !== 'rejected' && (
+                          {/* Separate Step 1 (Approve) & Step 2 (Issue Card) */}
+                          {(isAdmin || isManager) && (app.status === 'pending_review' || app.status === 'pending_approval' || app.status === 'under_review' || app.status === 'submitted') && (
                             <button
-                              onClick={() => handleQuickApproveAndIssue(app)}
+                              onClick={() => handleApproveRequest(app)}
+                              className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[10px] transition shadow-sm"
+                              title="Verify payment and approve application"
+                            >
+                              Approve
+                            </button>
+                          )}
+
+                          {(isAdmin || isManager) && app.status === 'approved' && !app.approvedCardNumber && (
+                            <button
+                              onClick={() => handleIssuePhysicalCard(app)}
                               className="px-2.5 py-1 rounded-lg bg-purple-600 hover:bg-purple-500 text-white font-bold text-[10px] transition shadow-sm"
-                              title="Single-click Mint & Issue Health Card"
+                              title="Mint and activate official Health Card"
                             >
                               Issue Card
                             </button>
+                          )}
+
+                          {(app.approvedCardNumber || app.status === 'card_issued' || app.status === 'issued') && (
+                            <span className="px-2 py-0.5 rounded text-[10px] font-bold text-purple-300 bg-purple-950/60 border border-purple-500/30">
+                              Active
+                            </span>
                           )}
                         </div>
                       </td>

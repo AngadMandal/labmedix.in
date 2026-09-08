@@ -20,6 +20,13 @@ export class FamilyService {
   }
 
   public static createFamily(familyName: string, primaryPatientId: string): FamilyGroup {
+    // Robustness: If arguments were swapped (e.g. createFamily(patientId, familyName))
+    if (familyName.startsWith('p_') || familyName.startsWith('LMDX-') || (!familyName.includes(' ') && primaryPatientId.includes(' '))) {
+      const temp = familyName;
+      familyName = primaryPatientId;
+      primaryPatientId = temp;
+    }
+
     const families = StorageService.getFamilies();
     const id = generateFamilyId(families.map(f => f.id));
     const now = new Date().toISOString();
@@ -32,7 +39,9 @@ export class FamilyService {
         {
           patientId: primaryPatientId,
           relationship: 'Primary Member (Head)',
-          isPrimary: true
+          isPrimary: true,
+          status: 'active_under_primary',
+          addedAt: now
         }
       ],
       createdAt: now,
@@ -99,7 +108,12 @@ export class FamilyService {
     return family;
   }
 
-  public static addMember(familyId: string, patientId: string, relationship: string): FamilyGroup | null {
+  public static addMember(
+    familyId: string,
+    patientId: string,
+    relationship: string,
+    options?: { allowOverLimit?: boolean; additionalFeePaid?: boolean; additionalFeeAmount?: number }
+  ): FamilyGroup | null {
     const families = StorageService.getFamilies();
     const family = families.find(f => f.id === familyId);
     if (!family) return null;
@@ -108,12 +122,22 @@ export class FamilyService {
       return family;
     }
 
+    const dependentCount = family.members.filter(m => !m.isPrimary).length;
+    if (dependentCount >= 5 && !options?.allowOverLimit) {
+      throw new Error(`Plan Limit Reached: This family group already has 5 included dependents. Adding a 6th+ member requires operational fee confirmation (₹${options?.additionalFeeAmount || 299}).`);
+    }
+
+    const now = new Date().toISOString();
     family.members.push({
       patientId,
       relationship,
-      isPrimary: false
+      isPrimary: false,
+      status: 'active_under_primary',
+      addedAt: now,
+      additionalFeePaid: options?.additionalFeePaid,
+      additionalFeeAmount: options?.additionalFeeAmount
     });
-    family.updatedAt = new Date().toISOString();
+    family.updatedAt = now;
     StorageService.saveFamilies(families);
 
     // Update patient
@@ -125,12 +149,18 @@ export class FamilyService {
       StorageService.savePatients(patients);
     }
 
-    AuditService.log('FAMILY_MEMBER_ADDED', 'family', `Added patient ${patientId} as ${relationship} to family ${family.familyName}`, familyId);
+    AuditService.log(
+      'FAMILY_MEMBER_ADDED',
+      'family',
+      `Added patient ${patientId} as ${relationship} to family ${family.familyName}${dependentCount >= 5 ? ` (Over-limit Fee: ₹${options?.additionalFeeAmount || 299})` : ''}`,
+      familyId
+    );
     return family;
   }
 
   /**
    * Fast Auto-Register & Link Dependent directly into Family Shield
+   * Dependents are registered under active_under_primary without auto-minting individual cards.
    */
   public static registerAndLinkDependent(
     familyId: string,
@@ -142,11 +172,19 @@ export class FamilyService {
       bloodGroup: string;
       mobile?: string;
       photoUrl?: string;
+      allowOverLimit?: boolean;
+      additionalFeePaid?: boolean;
+      additionalFeeAmount?: number;
     }
-  ): { patient: Patient; card: HealthCard; family: FamilyGroup } | null {
+  ): { patient: Patient; family: FamilyGroup } | null {
     const families = StorageService.getFamilies();
     const family = families.find(f => f.id === familyId);
     if (!family) return null;
+
+    const dependentCount = family.members.filter(m => !m.isPrimary).length;
+    if (dependentCount >= 5 && !data.allowOverLimit) {
+      throw new Error(`Plan Limit Reached: This family group already has 5 included dependents. Adding a 6th+ member requires operational fee confirmation (₹${data.additionalFeeAmount || 299}).`);
+    }
 
     const patients = StorageService.getPatients();
     const primaryHead = patients.find(p => p.id === family.primaryPatientId);
@@ -157,7 +195,7 @@ export class FamilyService {
     const birthYear = new Date().getFullYear() - (data.age || 25);
     const dob = `${birthYear}-01-01`;
 
-    // Create Patient via PatientService (auto-generates Patient ID, Health Card, and Wallet)
+    // Create Patient via PatientService with issueHealthCard: false (Dependents are active_under_primary)
     const result = PatientService.createPatient({
       fullName: data.fullName.trim(),
       dob,
@@ -186,18 +224,21 @@ export class FamilyService {
         importantNotes: `Covered under ${family.familyName} Family Shield`
       },
       membershipId,
-      issueHealthCard: true
+      issueHealthCard: false
     });
 
     // Link into Family
-    this.addMember(familyId, result.patient.id, data.relationship);
+    this.addMember(familyId, result.patient.id, data.relationship, {
+      allowOverLimit: data.allowOverLimit,
+      additionalFeePaid: data.additionalFeePaid,
+      additionalFeeAmount: data.additionalFeeAmount
+    });
 
     AuditService.log('DEPENDENT_REGISTERED_AND_LINKED', 'family', `Auto-registered and linked dependent ${result.patient.fullName} (${result.patient.id}) to ${family.familyName}`, familyId);
 
     const updatedFamily = StorageService.getFamilies().find(f => f.id === familyId)!;
     return {
       patient: result.patient,
-      card: result.card!,
       family: updatedFamily
     };
   }

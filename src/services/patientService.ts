@@ -364,48 +364,10 @@ export class PatientService {
         };
         wallets.push(memberWallet);
 
-        let memberCard: HealthCard | undefined;
-        let memberCardId: string | undefined;
-
-        // Individual card issued ONLY IF card issuance is enabled AND member card checkbox is checked
-        if (isCardIssued && member.issueCard) {
-          const memberCardNumber = generateCardNumber(Array.from(usedCardNumbers));
-          usedCardNumbers.add(memberCardNumber);
-          memberCardId = `card_${generateUuid().slice(0, 8)}`;
-
-          memberCard = {
-            id: memberCardId,
-            cardNumber: memberCardNumber,
-            patientId: memberPatientId,
-            membershipId: selectedMembership.id,
-            issueDate: now.toISOString().split('T')[0],
-            expiryDate: expiry.toISOString().split('T')[0],
-            status: 'active',
-            cvv: generateCardCvv(),
-            verificationCode: generateVerificationCode(),
-            designConfig: {
-              ...DEFAULT_CARD_DESIGN,
-              preset: primaryPreset as any,
-              material: (input.cardMaterial as any) || 'gloss',
-              showFamilyBadge: true
-            },
-            statusHistory: [
-              {
-                id: generateUuid(),
-                cardId: memberCardId,
-                date: now.toISOString(),
-                previousStatus: 'active',
-                newStatus: 'active',
-                changedBy: currentUser?.fullName || 'System',
-                reason: `Issued family health card under ${familyGroup?.familyName}`
-              }
-            ],
-            renewedCount: 0,
-            createdAt: now.toISOString(),
-            updatedAt: now.toISOString()
-          };
-          cards.push(memberCard);
-        }
+        // Multi-member policy: Dependents are covered under primary card (active_under_primary).
+        // Individual cards are NEVER auto-minted for dependents unless requested via explicit card issuance.
+        let memberCard: HealthCard | undefined = undefined;
+        let memberCardId: string | undefined = undefined;
 
         // Calculate approximate DOB if not provided
         let memberDob = member.dob;
@@ -455,7 +417,7 @@ export class PatientService {
           },
           familyId,
           isFamilyHead: false,
-          healthCardId: memberCardId,
+          healthCardId: undefined,
           walletId: memberWalletId,
           isDeleted: false,
           createdAt: now.toISOString(),
@@ -465,16 +427,18 @@ export class PatientService {
 
         patients.unshift(memberPatient);
 
-        // Add to family group members list
+        // Add to family group members list with active_under_primary status
         familyGroup?.members.push({
           patientId: memberPatientId,
           relationship: member.relationship || 'Dependent',
-          isPrimary: false
+          isPrimary: false,
+          status: 'active_under_primary',
+          addedAt: now.toISOString()
         });
 
         issuedFamilyCards.push({
           patient: memberPatient,
-          card: memberCard,
+          card: undefined,
           relationship: member.relationship || 'Dependent'
         });
       });

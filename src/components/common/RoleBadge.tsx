@@ -79,6 +79,8 @@ export const RoleBadge: React.FC<RoleBadgeProps> = ({
         return 'LEVEL 3 DIAGNOSTIC LAB';
       case 'phlebotomist':
         return 'LEVEL 3 PHLEBOTOMY & SAMPLING';
+      case 'pharmacist':
+        return 'LEVEL 3 PHARMACY & DISPENSING';
       case 'card_operator':
         return 'LEVEL 3 CR80 STUDIO';
       case 'marketing':
@@ -165,6 +167,14 @@ export const RoleBadge: React.FC<RoleBadgeProps> = ({
       glow: 'shadow-rose-500/20',
       ribbonGradient: 'linear-gradient(90deg, #881337 0%, #BE123C 50%, #881337 100%)',
       clearanceBg: 'bg-rose-900/90 text-rose-200 border-rose-400/50'
+    },
+    pharmacist: {
+      bg: 'bg-emerald-50 dark:bg-emerald-950/60',
+      text: 'text-emerald-800 dark:text-emerald-200',
+      border: 'border-emerald-300 dark:border-emerald-700',
+      glow: 'shadow-emerald-500/20',
+      ribbonGradient: 'linear-gradient(90deg, #065F46 0%, #059669 50%, #065F46 100%)',
+      clearanceBg: 'bg-emerald-950 text-emerald-300 border-emerald-400/50'
     },
     marketing: {
       bg: 'bg-amber-50 dark:bg-amber-950/60',

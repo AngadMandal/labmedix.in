@@ -49,153 +49,59 @@ export const MonthlyActivityHeatmap: React.FC<{ className?: string }> = ({ class
   const cards = StorageService.getCards();
   const encounters = EMRService.getAllEncounters();
 
-  // Full 12-month rich annual timeline data (incorporating live patient count)
-  const annualMonthlyData: MonthlyHeatmapData[] = [
-    {
-      month: 'Jan',
-      monthFullName: 'January 2026',
-      monthIndex: 0,
-      registrations: 42,
-      prescriptions: 88,
-      labTests: 64,
-      cardIssuances: 38,
-      intensityPct: 55,
-      peakDay: 'Jan 15 (Wed)',
-      spikeReason: 'Annual Health Camp & Platinum Card Launch'
-    },
-    {
-      month: 'Feb',
-      monthFullName: 'February 2026',
-      monthIndex: 1,
-      registrations: 58,
-      prescriptions: 112,
-      labTests: 92,
-      cardIssuances: 54,
-      intensityPct: 68,
-      peakDay: 'Feb 12 (Thu)',
-      spikeReason: 'Cardiology OPD Screening Drive'
-    },
-    {
-      month: 'Mar',
-      monthFullName: 'March 2026',
-      monthIndex: 2,
-      registrations: 74,
-      prescriptions: 145,
-      labTests: 128,
-      cardIssuances: 70,
-      intensityPct: 78,
-      peakDay: 'Mar 20 (Fri)',
-      spikeReason: 'Corporate Wellness & Family Health Enrollments'
-    },
-    {
-      month: 'Apr',
-      monthFullName: 'April 2026',
-      monthIndex: 3,
-      registrations: 65,
-      prescriptions: 130,
-      labTests: 115,
-      cardIssuances: 60,
-      intensityPct: 72,
-      peakDay: 'Apr 08 (Tue)',
-      spikeReason: 'World Health Day Special Diagnostic Packages'
-    },
-    {
-      month: 'May',
-      monthFullName: 'May 2026',
-      monthIndex: 4,
-      registrations: 92,
-      prescriptions: 198,
-      labTests: 172,
-      cardIssuances: 88,
-      intensityPct: 92,
-      peakDay: 'May 18 (Mon)',
-      spikeReason: 'Summer Health Checkup & Senior Citizen Privilege Drive'
-    },
-    {
-      month: 'Jun',
-      monthFullName: 'June 2026',
-      monthIndex: 5,
-      registrations: Math.max(patients.length * 8, 115),
-      prescriptions: 240,
-      labTests: 210,
-      cardIssuances: Math.max(cards.length * 6, 105),
-      intensityPct: 98,
-      peakDay: 'Jun 22 (Mon)',
-      spikeReason: 'Monsoon Preventive Health Drive (Peak Registration Spike)'
-    },
-    {
-      month: 'Jul',
-      monthFullName: 'July 2026',
-      monthIndex: 6,
-      registrations: 84,
-      prescriptions: 175,
-      labTests: 154,
-      cardIssuances: 80,
-      intensityPct: 84,
-      peakDay: 'Jul 14 (Tue)',
-      spikeReason: 'Diabetic & Metabolic Health Screening Drive'
-    },
-    {
-      month: 'Aug',
-      monthFullName: 'August 2026',
-      monthIndex: 7,
-      registrations: 78,
-      prescriptions: 160,
-      labTests: 142,
-      cardIssuances: 72,
-      intensityPct: 80,
-      peakDay: 'Aug 19 (Wed)',
-      spikeReason: 'Independence Week Community Health Camp'
-    },
-    {
-      month: 'Sep',
-      monthFullName: 'September 2026',
-      monthIndex: 8,
-      registrations: 95,
-      prescriptions: 215,
-      labTests: 188,
-      cardIssuances: 90,
-      intensityPct: 94,
-      peakDay: 'Sep 25 (Fri)',
-      spikeReason: 'Pre-Festive Health Card Mega Drive'
-    },
-    {
-      month: 'Oct',
-      monthFullName: 'October 2026',
-      monthIndex: 9,
-      registrations: 88,
-      prescriptions: 185,
-      labTests: 160,
-      cardIssuances: 82,
-      intensityPct: 86,
-      peakDay: 'Oct 10 (Sat)',
-      spikeReason: 'Puja Healthcare Float & Cashless OPD Camp'
-    },
-    {
-      month: 'Nov',
-      monthFullName: 'November 2026',
-      monthIndex: 10,
-      registrations: 70,
-      prescriptions: 140,
-      labTests: 120,
-      cardIssuances: 66,
-      intensityPct: 74,
-      peakDay: 'Nov 16 (Mon)',
-      spikeReason: 'Winter Respiratory & Orthopaedic Clinic'
-    },
-    {
-      month: 'Dec',
-      monthFullName: 'December 2026',
-      monthIndex: 11,
-      registrations: 102,
-      prescriptions: 225,
-      labTests: 195,
-      cardIssuances: 96,
-      intensityPct: 96,
-      peakDay: 'Dec 28 (Mon)',
-      spikeReason: 'Year-End Comprehensive Family Privilege Renewal'
-    }
+  const labBookings = StorageService.getItem<any[]>('labmedix_portal_lab_bookings_v1', []);
+
+  const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const monthFullNames = [
+    'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December'
   ];
+  const currentYear = new Date().getFullYear();
+
+  // Dynamic annual heatmap calculated from real production records
+  const annualMonthlyData: MonthlyHeatmapData[] = React.useMemo(() => {
+    return monthNames.map((month, monthIndex) => {
+      const regs = patients.filter(p => {
+        if (!p.createdAt) return false;
+        const d = new Date(p.createdAt);
+        return d.getFullYear() === currentYear && d.getMonth() === monthIndex;
+      }).length;
+
+      const cardsCount = cards.filter(c => {
+        if (!c.issueDate) return false;
+        const d = new Date(c.issueDate);
+        return d.getFullYear() === currentYear && d.getMonth() === monthIndex;
+      }).length;
+
+      const rxs = encounters.filter(e => {
+        if (!e.date && !e.createdAt) return false;
+        const d = new Date(e.date || e.createdAt);
+        return d.getFullYear() === currentYear && d.getMonth() === monthIndex;
+      }).length;
+
+      const labs = labBookings.filter(b => {
+        if (!b.createdAt) return false;
+        const d = new Date(b.createdAt);
+        return d.getFullYear() === currentYear && d.getMonth() === monthIndex;
+      }).length;
+
+      const totalOps = regs + cardsCount + rxs + labs;
+      const intensityPct = Math.min(100, totalOps * 10);
+
+      return {
+        month,
+        monthFullName: `${monthFullNames[monthIndex]} ${currentYear}`,
+        monthIndex,
+        registrations: regs,
+        prescriptions: rxs,
+        labTests: labs,
+        cardIssuances: cardsCount,
+        intensityPct,
+        peakDay: totalOps > 0 ? `${month} (Live Ops)` : 'No records yet',
+        spikeReason: totalOps > 0 ? `${totalOps} verified operational events in ${month}` : 'No operational activity recorded'
+      };
+    });
+  }, [patients, cards, encounters, labBookings, currentYear]);
 
   // Aggregated totals
   const totalAnnualRegistrations = annualMonthlyData.reduce((acc, m) => acc + m.registrations, 0);

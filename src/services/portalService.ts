@@ -24,7 +24,7 @@ export interface LabTestResultParameter {
   observedValue: string;
   unit: string;
   referenceRange: string;
-  flag: 'normal' | 'low' | 'high';
+  flag: 'normal' | 'low' | 'high' | 'critical';
   critical?: boolean;
 }
 
@@ -62,6 +62,9 @@ export interface BloodTestBooking {
   pathologistNotes?: string;
   pathologistName?: string;
   verifiedBy?: string;
+  verifiedDoctorRegistrationNo?: string;
+  verifiedAt?: string;
+  clinicalNotes?: string;
   createdAt: string;
 }
 
@@ -161,6 +164,15 @@ export class PortalService {
     ApiSyncService.syncLabBookings(all).catch(() => {});
     AuditService.log('LAB_BOOKING_CREATED', 'clinical', `Live Blood Test Order #${newBooking.bookingNo} (${newBooking.testName}) registered for Card: ${newBooking.cardNo || 'N/A'} (${newBooking.patientName})`);
     return newBooking;
+  }
+
+  public static bookBloodTest(booking: Omit<BloodTestBooking, 'id' | 'bookingNo' | 'createdAt'>): BloodTestBooking {
+    return this.saveLabBooking(booking);
+  }
+
+  public static saveLabBookings(bookings: BloodTestBooking[]): void {
+    StorageService.setItem(this.LAB_BOOKINGS_KEY, bookings);
+    ApiSyncService.syncLabBookings(bookings).catch(() => {});
   }
 
   public static updateLabBookingStatus(bookingId: string, newStatus: BloodTestBooking['status'], additionalDetails?: Partial<BloodTestBooking>): BloodTestBooking | null {
@@ -394,140 +406,23 @@ export class PortalService {
     approvedBy: string = 'Super Administrator'
   ): Promise<{ success: boolean; application?: CardApplicationRequest; patient?: any; card?: any; error?: string }> {
     try {
-      // 0. Strict Idempotency Check: Prevent duplicate card minting or double ledger updates
-      const allApps = this.getCardApplications();
-      const existingApp = allApps.find(a => a.id === applicationId || a.trackingId === applicationId);
-      if (existingApp && (existingApp.status === 'approved' || existingApp.approvedCardNumber)) {
-        const cards = StorageService.getCards();
-        const existingCard = cards.find(c => c.cardNumber === existingApp.approvedCardNumber || c.patientId === existingApp.approvedPatientId);
-        const patients = StorageService.getPatients();
-        const existingPatient = existingApp.approvedPatientId ? patients.find(p => p.id === existingApp.approvedPatientId) : undefined;
-        return {
-          success: true,
-          application: existingApp,
-          patient: existingPatient,
-          card: existingCard
-        };
-      }
-
-      // 1. Try atomic Firestore transaction
-      const txResult = await ApiSyncService.approveApplicationTransaction(applicationId, approvedBy).catch((err: any) => ({
-        success: false,
-        error: err?.message || 'Transaction failed'
-      })) as any;
-
-      if (txResult && txResult.success && txResult.application) {
-        const all = this.getCardApplications();
-        const idx = all.findIndex(a => a.id === applicationId || a.trackingId === applicationId);
-        if (idx !== -1) {
-          all[idx] = txResult.application;
-          StorageService.setItem(this.CARD_APPLICATIONS_KEY, all);
-        } else {
-          all.unshift(txResult.application);
-          StorageService.setItem(this.CARD_APPLICATIONS_KEY, all);
-        }
-        ApiSyncService.syncCardApplications(all).catch(() => {});
-
-        if (txResult.patient) {
-          const patients = StorageService.getPatients();
-          const pIdx = patients.findIndex(p => p.id === txResult.patient.id);
-          if (pIdx !== -1) {
-            patients[pIdx] = txResult.patient;
-          } else {
-            patients.unshift(txResult.patient);
-          }
-          StorageService.savePatients(patients);
-        }
-        if (txResult.card) {
-          const cards = StorageService.getCards();
-          const cIdx = cards.findIndex(c => c.id === txResult.card.id);
-          if (cIdx !== -1) {
-            cards[cIdx] = txResult.card;
-          } else {
-            cards.unshift(txResult.card);
-          }
-          StorageService.saveCards(cards);
-        }
-
-        AuditService.log(
-          'CARD_APPLICATION_APPROVED',
-          'card',
-          `Atomic transaction approved card application for ${txResult.application.fullName}. Minted Card ${txResult.application.approvedCardNumber} [Patient ID: ${txResult.application.approvedPatientId}].`,
-          txResult.application.id
-        );
-
-        return { success: true, application: txResult.application, patient: txResult.patient, card: txResult.card };
-      }
-
-      if (txResult && txResult.error && txResult.error.toLowerCase().includes('already been approved')) {
-        return { success: false, error: txResult.error };
-      }
-
-      // 2. Try Express backend endpoint
-      try {
-        const response = await fetch('/api/admin/approve-card-application', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ applicationId, approvedBy })
-        });
-        const data = await response.json();
-
-        if (response.ok && data.success) {
-          const all = this.getCardApplications();
-          const idx = all.findIndex(a => a.id === applicationId || a.trackingId === applicationId);
-          if (idx !== -1 && data.application) {
-            all[idx] = data.application;
-            StorageService.setItem(this.CARD_APPLICATIONS_KEY, all);
-            ApiSyncService.syncCardApplications(all).catch(() => {});
-          }
-          if (data.patient) {
-            const patients = StorageService.getPatients();
-            const pIdx = patients.findIndex(p => p.id === data.patient.id);
-            if (pIdx !== -1) {
-              patients[pIdx] = data.patient;
-            } else {
-              patients.unshift(data.patient);
-            }
-            StorageService.savePatients(patients);
-          }
-          if (data.card) {
-            const cards = StorageService.getCards();
-            const cIdx = cards.findIndex(c => c.id === data.card.id);
-            if (cIdx !== -1) {
-              cards[cIdx] = data.card;
-            } else {
-              cards.unshift(data.card);
-            }
-            StorageService.saveCards(cards);
-          }
-          return { success: true, application: data.application, patient: data.patient, card: data.card };
-        }
-      } catch (err) {
-        // ignore network error, fall back to local approval
-      }
-
-      // 3. Guaranteed Local Fallback (Online/Offline)
-      const fallbackApps = this.getCardApplications();
-      const app = fallbackApps.find(a => a.id === applicationId || a.trackingId === applicationId);
+      const all = this.getCardApplications();
+      const app = all.find(a => a.id === applicationId || a.trackingId === applicationId);
       if (!app) {
         return { success: false, error: 'Application not found in storage.' };
       }
       if (app.status === 'approved') {
-        return { success: false, error: 'Application has already been approved and issued.' };
+        return { success: true, application: app, error: 'Application is already approved and ready for issuance.' };
       }
 
-      const patientId = app.patientId || `lmdx-p-${Math.floor(1000 + Math.random() * 9000)}`;
-      const cardId = `card_${Math.floor(1000 + Math.random() * 9000)}`;
-      const cardNumber = `LHC-2026-${Math.floor(100000 + Math.random() * 900000)}`;
       const now = new Date().toISOString();
-      const expiryDate = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+      const patientId = app.patientId || `lmdx-p-${Math.floor(1000 + Math.random() * 9000)}`;
 
       let patientRecord: any;
       const patients = StorageService.getPatients();
       const existingPatient = app.patientId ? patients.find(p => p.id === app.patientId) : null;
 
       if (existingPatient) {
-        existingPatient.healthCardId = cardId;
         existingPatient.membershipId = app.membershipId || existingPatient.membershipId || 'silver';
         existingPatient.updatedAt = now;
         patientRecord = existingPatient;
@@ -544,12 +439,11 @@ export class PortalService {
           mobile: app.mobile,
           whatsapp: app.whatsapp || app.mobile,
           email: app.email || `${app.mobile}@labmedix.org`,
-          bloodGroup: app.bloodGroup || 'O+',
+          bloodGroup: app.bloodGroup || 'Unknown',
           photoUrl: app.photoUrl || '/logo.jpg',
           address: app.address || { villageArea: '', postOffice: '', policeStation: '', district: '', state: '', pinCode: '', fullAddress: '' },
           emergencyContact: app.emergencyContact || { name: '', relation: '', phone: '' },
-          medicalInfo: app.medicalInfo || { chronicConditions: [], allergies: [], regularMedications: [] },
-          healthCardId: cardId,
+          medicalInfo: app.medicalInfo || { chronicConditions: '', allergies: '', importantNotes: '', bloodGroup: app.bloodGroup || 'Unknown' },
           membershipId: app.membershipId || 'silver',
           status: 'active' as const,
           isDeleted: false,
@@ -563,17 +457,87 @@ export class PortalService {
         ApiSyncService.saveDocument('patients', newPatient.id, newPatient).catch(() => {});
       }
 
+      app.status = 'approved';
+      app.approvedBy = approvedBy;
+      app.approvedAt = now;
+      app.approvedPatientId = patientRecord.id;
+      app.updatedAt = now;
+
+      if (!app.processingHistory) app.processingHistory = [];
+      app.processingHistory.unshift({
+        id: generateUuid(),
+        date: now,
+        status: 'approved',
+        title: 'Health Card Request Approved',
+        note: `Application reviewed and approved by ${approvedBy}. Ready for card issuance.`,
+        actor: approvedBy
+      });
+
+      StorageService.setItem(this.CARD_APPLICATIONS_KEY, all);
+      await ApiSyncService.saveDocument('cardApplications', app.id, app);
+
+      AuditService.log(
+        'CARD_APPLICATION_APPROVED',
+        'card',
+        `Super Admin ${approvedBy} approved Health Card Request #${app.applicationNo || app.trackingId} for ${app.fullName} [Patient ID: ${patientRecord.id}]. Ready for issuance.`,
+        app.id
+      );
+
+      return { success: true, application: app, patient: patientRecord };
+    } catch (e: any) {
+      console.error('Approve card application error:', e);
+      return { success: false, error: e?.message || 'Transaction error during card application approval.' };
+    }
+  }
+
+  /**
+   * Explicit, Authorized Health Card Issuance
+   * Mints unique Card Number, CVV, and NFC payload, transitions status to card_issued
+   */
+  public static async issueHealthCardForApplication(
+    applicationId: string,
+    issuedBy: string = 'Super Administrator',
+    customDesign?: any
+  ): Promise<{ success: boolean; application?: CardApplicationRequest; card?: any; patient?: any; error?: string }> {
+    try {
+      const all = this.getCardApplications();
+      const app = all.find(a => a.id === applicationId || a.trackingId === applicationId);
+      if (!app) {
+        return { success: false, error: 'Card request application not found.' };
+      }
+      if (app.status === 'card_issued' && app.approvedCardNumber) {
+        const cards = StorageService.getCards();
+        const existing = cards.find(c => c.cardNumber === app.approvedCardNumber);
+        return { success: true, application: app, card: existing };
+      }
+
+      const now = new Date().toISOString();
+      const expiryDate = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+      const cardId = `card_${Math.floor(100000 + Math.random() * 900000)}`;
+      const cardNumber = `LHC-2026-${Math.floor(100000 + Math.random() * 900000)}`;
+
+      const patients = StorageService.getPatients();
+      const patientId = app.approvedPatientId || app.patientId;
+      const patientRecord = patientId ? patients.find(p => p.id === patientId) : null;
+
+      if (patientRecord) {
+        patientRecord.healthCardId = cardId;
+        patientRecord.updatedAt = now;
+        StorageService.savePatients(patients);
+        ApiSyncService.saveDocument('patients', patientRecord.id, patientRecord).catch(() => {});
+      }
+
       const newCard = {
         id: cardId,
         cardNumber,
-        patientId: patientRecord.id,
+        patientId: patientRecord?.id || patientId || 'UNKNOWN',
         membershipId: app.membershipId || 'silver',
         issueDate: now.slice(0, 10),
         expiryDate,
         cvv: String(Math.floor(100 + Math.random() * 900)),
         verificationCode: Math.random().toString(36).substring(2, 8).toUpperCase(),
-        status: 'active' as any,
-        designConfig: {
+        status: 'active' as const,
+        designConfig: customDesign || {
           preset: 'emerald_health',
           material: 'gloss',
           primaryColor: '#059669',
@@ -586,62 +550,60 @@ export class PortalService {
           showBarcode: true,
           showSignatureStrip: true
         },
-        statusHistory: [{ id: generateUuid(), date: now, status: 'active', title: 'Card Minted & Issued', note: `Approved and issued by ${approvedBy}`, actor: approvedBy }],
+        statusHistory: [{ id: generateUuid(), cardId, date: now, previousStatus: 'active' as const, newStatus: 'active' as const, changedBy: issuedBy, reason: `Card issued by ${issuedBy}` }],
         renewedCount: 0,
         createdAt: now,
         updatedAt: now
       };
 
-      app.status = 'approved';
-      app.approvedBy = approvedBy;
-      app.approvedAt = now;
+      app.status = 'card_issued';
       app.approvedCardNumber = cardNumber;
-      app.approvedPatientId = patientRecord.id;
       app.updatedAt = now;
 
       if (!app.processingHistory) app.processingHistory = [];
       app.processingHistory.unshift({
         id: generateUuid(),
         date: now,
-        status: 'approved',
-        title: 'Health Card Approved & Issued',
-        note: `Application approved by ${approvedBy}. Minted Card Number: ${cardNumber}`,
-        actor: approvedBy
+        status: 'card_issued',
+        title: 'Official Health Card Minted & Issued',
+        note: `Health Card #${cardNumber} minted and activated by ${issuedBy}.`,
+        actor: issuedBy
       });
 
-      StorageService.setItem(this.CARD_APPLICATIONS_KEY, fallbackApps);
       const cards = StorageService.getCards();
       cards.unshift(newCard as any);
       StorageService.saveCards(cards);
+      StorageService.setItem(this.CARD_APPLICATIONS_KEY, all);
 
       // Multi-device Firestore atomic batch commit
       try {
         const batch = writeBatch(db);
         batch.set(doc(db, 'cardApplications', app.id), JSON.parse(JSON.stringify(app)), { merge: true });
         batch.set(doc(db, 'cards', newCard.id), JSON.parse(JSON.stringify(newCard)), { merge: true });
-        batch.set(doc(db, 'patients', patientRecord.id), JSON.parse(JSON.stringify(patientRecord)), { merge: true });
+        if (patientRecord) {
+          batch.set(doc(db, 'patients', patientRecord.id), JSON.parse(JSON.stringify(patientRecord)), { merge: true });
+        }
         await batch.commit();
       } catch (batchErr) {
         console.warn('[PortalService] Batch commit notice (falling back to queue):', batchErr);
         ApiSyncService.saveDocument('cardApplications', app.id, app).catch(() => {});
         ApiSyncService.saveDocument('cards', newCard.id, newCard).catch(() => {});
-        ApiSyncService.saveDocument('patients', patientRecord.id, patientRecord).catch(() => {});
+        if (patientRecord) {
+          ApiSyncService.saveDocument('patients', patientRecord.id, patientRecord).catch(() => {});
+        }
       }
-      ApiSyncService.syncCardApplications(fallbackApps).catch(() => {});
-      ApiSyncService.syncCards(cards).catch(() => {});
-      ApiSyncService.syncPatients(patients).catch(() => {});
 
       AuditService.log(
-        'CARD_APPLICATION_APPROVED',
+        'HEALTH_CARD_ISSUED',
         'card',
-        `Successfully approved card application for ${app.fullName}. Minted Card ${cardNumber} [Patient ID: ${patientRecord.id}].`,
-        app.id
+        `Official Health Card #${cardNumber} issued for ${app.fullName} [Patient: ${patientRecord?.id || 'N/A'}] by ${issuedBy}.`,
+        newCard.id
       );
 
-      return { success: true, application: app, patient: patientRecord, card: newCard };
+      return { success: true, application: app, card: newCard, patient: patientRecord };
     } catch (e: any) {
-      console.error('Approve card application error:', e);
-      return { success: false, error: e?.message || 'Transaction error during card application approval.' };
+      console.error('Issue card error:', e);
+      return { success: false, error: e?.message || 'Error during health card issuance.' };
     }
   }
 

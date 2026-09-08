@@ -108,6 +108,15 @@ export const ROLE_CONFIGS: Record<Role, RoleConfig> = {
       'patient_read', 'card_read', 'catalog_manage', 'test_view', 'lab_order_manage'
     ]
   },
+  pharmacist: {
+    role: 'pharmacist',
+    name: 'Clinical Pharmacist',
+    badgeColor: 'bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-950/50 dark:text-emerald-300 dark:border-emerald-800',
+    description: 'Specialist in medicine dispensing, pharmacy prescription orders, drug inventory, and patient medication verification.',
+    permissions: [
+      'patient_read', 'card_read', 'wallet_read', 'pharmacy_dispense', 'catalog_manage', 'bill_view', 'bill_create'
+    ]
+  },
   marketing: {
     role: 'marketing',
     name: 'Marketing Executive',
@@ -443,6 +452,7 @@ export const ROLE_DEFAULT_MODULES: Record<Role, SystemModuleKey[]> = {
   manager: ['dashboard', 'patients', 'cards', 'card_requests', 'families', 'appointments', 'doctors', 'laboratory', 'pharmacy', 'billing', 'transactions', 'memberships', 'wallet', 'reports', 'activity'],
   lab_staff: ['dashboard', 'patients', 'laboratory', 'test_master', 'cards', 'wallet'],
   phlebotomist: ['dashboard', 'patients', 'laboratory', 'test_master', 'cards'],
+  pharmacist: ['dashboard', 'patients', 'pharmacy', 'cards', 'billing', 'wallet'],
   marketing: ['dashboard', 'patients', 'cards', 'card_requests', 'reports'],
   card_operator: ['dashboard', 'patients', 'cards', 'card_requests', 'card_studio', 'print_sheet', 'card_dispatch'],
   read_only: ['dashboard', 'patients', 'cards', 'appointments', 'laboratory', 'pharmacy', 'billing', 'transactions', 'activity']

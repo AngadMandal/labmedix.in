@@ -16,7 +16,8 @@ import {
   QrCode,
   CheckCircle2,
   FileText,
-  TestTube
+  TestTube,
+  Clock
 } from 'lucide-react';
 
 export interface LabReportPrintModalProps {
@@ -49,19 +50,9 @@ export const LabReportPrintModal: React.FC<LabReportPrintModalProps> = ({
   const card = patient.healthCardId ? CardService.getById(patient.healthCardId) : StorageService.getCards().find(c => c.patientId === patient.id);
   const membership = card ? StorageService.getMemberships().find(m => m.id === card.membershipId) : StorageService.getMemberships()[0];
 
-  // Default test parameters if none entered yet
-  const defaultParameters: LabTestResultParameter[] = [
-    { parameterName: 'Hemoglobin (Hb)', observedValue: '14.2', unit: 'g/dL', referenceRange: '13.0 - 17.0', flag: 'normal' },
-    { parameterName: 'Total Leukocyte Count (TLC / WBC)', observedValue: '7,400', unit: '/cumm', referenceRange: '4,000 - 11,000', flag: 'normal' },
-    { parameterName: 'Neutrophils', observedValue: '62', unit: '%', referenceRange: '40 - 70', flag: 'normal' },
-    { parameterName: 'Lymphocytes', observedValue: '28', unit: '%', referenceRange: '20 - 45', flag: 'normal' },
-    { parameterName: 'Platelet Count', observedValue: '2.45', unit: 'Lakhs/cumm', referenceRange: '1.50 - 4.50', flag: 'normal' },
-    { parameterName: 'Erythrocyte Sedimentation Rate (ESR)', observedValue: '12', unit: 'mm/1st hr', referenceRange: '0 - 15', flag: 'normal' }
-  ];
-
-  const parameters: LabTestResultParameter[] = booking.testResults && booking.testResults.length > 0
-    ? booking.testResults
-    : defaultParameters;
+  const parameters: LabTestResultParameter[] = booking.testResults || [];
+  const hasResults = parameters.length > 0 && parameters.some(p => p.observedValue && p.observedValue.trim());
+  const isVerified = Boolean(booking.verifiedBy || booking.status === 'report_ready' || booking.pathologistName);
 
   const handlePrint = () => {
     window.print();
@@ -198,68 +189,93 @@ export const LabReportPrintModal: React.FC<LabReportPrintModalProps> = ({
             </div>
           </div>
 
+          {/* Preliminary Unverified Warning Banner if not verified */}
+          {!isVerified && (
+            <div className="mb-4 p-3 bg-amber-100/80 border border-amber-300 rounded-lg flex items-center justify-between text-xs text-amber-900 font-bold">
+              <span className="flex items-center gap-2">
+                <Clock className="w-4 h-4 text-amber-700" />
+                PRELIMINARY UNVERIFIED DRAFT — Awaiting Pathologist Final Verification & Digital Sign-off.
+              </span>
+              <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded bg-amber-200">Pending Authorization</span>
+            </div>
+          )}
+
           {/* Test Investigation Title Bar */}
           <div className="bg-indigo-900 text-white px-4 py-2 rounded-t-lg flex items-center justify-between">
             <div className="flex items-center gap-2">
               <TestTube className="w-4 h-4 text-cyan-300" />
               <span className="font-bold tracking-wide uppercase text-xs">{booking.testName}</span>
             </div>
-            <span className="text-[11px] text-indigo-200">Department: {booking.category}</span>
+            <span className="text-[11px] text-indigo-200">Department: {booking.category || 'Pathology'}</span>
           </div>
 
-          {/* Results Parameters Table */}
-          <div className="border-x border-b border-slate-200 rounded-b-lg overflow-hidden mb-5">
-            <table className="w-full text-left text-xs border-collapse">
-              <thead>
-                <tr className="bg-slate-100 text-slate-700 border-b border-slate-200 font-bold uppercase text-[11px]">
-                  <th className="py-2.5 px-3">Test Investigation / Analyte</th>
-                  <th className="py-2.5 px-3">Observed Result</th>
-                  <th className="py-2.5 px-3">Unit</th>
-                  <th className="py-2.5 px-3">Biological Reference Range</th>
-                  <th className="py-2.5 px-3 text-center">Status Flag</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {parameters.map((p, idx) => (
-                  <tr key={idx} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/60'}>
-                    <td className="py-2 px-3 font-semibold text-slate-900">
-                      {p.parameterName}
-                    </td>
-                    <td className="py-2 px-3 font-black text-sm">
-                      <span
-                        className={
-                          p.flag === 'high'
-                            ? 'text-rose-600 font-black'
-                            : p.flag === 'low'
-                            ? 'text-amber-600 font-black'
-                            : 'text-slate-900'
-                        }
-                      >
-                        {p.observedValue}
-                      </span>
-                    </td>
-                    <td className="py-2 px-3 text-slate-600 font-medium">{p.unit || '-'}</td>
-                    <td className="py-2 px-3 text-slate-700 font-mono text-[11px]">{p.referenceRange || '-'}</td>
-                    <td className="py-2 px-3 text-center">
-                      {p.flag === 'high' ? (
-                        <span className="inline-block px-2 py-0.5 bg-rose-100 text-rose-800 text-[10px] font-bold rounded border border-rose-300">
-                          HIGH ▲
-                        </span>
-                      ) : p.flag === 'low' ? (
-                        <span className="inline-block px-2 py-0.5 bg-amber-100 text-amber-800 text-[10px] font-bold rounded border border-amber-300">
-                          LOW ▼
-                        </span>
-                      ) : (
-                        <span className="inline-block px-2 py-0.5 bg-emerald-100 text-emerald-800 text-[10px] font-bold rounded border border-emerald-300">
-                          NORMAL ✓
-                        </span>
-                      )}
-                    </td>
+          {/* Results Parameters Table OR Pending State */}
+          {hasResults ? (
+            <div className="border-x border-b border-slate-200 rounded-b-lg overflow-hidden mb-5">
+              <table className="w-full text-left text-xs border-collapse">
+                <thead>
+                  <tr className="bg-slate-100 text-slate-700 border-b border-slate-200 font-bold uppercase text-[11px]">
+                    <th className="py-2.5 px-3">Test Investigation / Analyte</th>
+                    <th className="py-2.5 px-3">Observed Result</th>
+                    <th className="py-2.5 px-3">Unit</th>
+                    <th className="py-2.5 px-3">Biological Reference Range</th>
+                    <th className="py-2.5 px-3 text-center">Status Flag</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {parameters.filter(p => p.observedValue && p.observedValue.trim()).map((p, idx) => (
+                    <tr key={idx} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/60'}>
+                      <td className="py-2 px-3 font-semibold text-slate-900">
+                        {p.parameterName}
+                      </td>
+                      <td className="py-2 px-3 font-black text-sm">
+                        <span
+                          className={
+                            p.flag === 'critical' || p.flag === 'high'
+                              ? 'text-rose-600 font-black'
+                              : p.flag === 'low'
+                              ? 'text-blue-600 font-black'
+                              : 'text-slate-900'
+                          }
+                        >
+                          {p.observedValue}
+                        </span>
+                      </td>
+                      <td className="py-2 px-3 text-slate-600 font-medium">{p.unit || '-'}</td>
+                      <td className="py-2 px-3 text-slate-700 font-mono text-[11px]">{p.referenceRange || '-'}</td>
+                      <td className="py-2 px-3 text-center">
+                        {p.flag === 'critical' ? (
+                          <span className="inline-block px-2 py-0.5 bg-red-100 text-red-900 text-[10px] font-black rounded border border-red-400 animate-pulse">
+                            CRITICAL ⚠
+                          </span>
+                        ) : p.flag === 'high' ? (
+                          <span className="inline-block px-2 py-0.5 bg-rose-100 text-rose-800 text-[10px] font-bold rounded border border-rose-300">
+                            HIGH ▲
+                          </span>
+                        ) : p.flag === 'low' ? (
+                          <span className="inline-block px-2 py-0.5 bg-blue-100 text-blue-800 text-[10px] font-bold rounded border border-blue-300">
+                            LOW ▼
+                          </span>
+                        ) : (
+                          <span className="inline-block px-2 py-0.5 bg-emerald-100 text-emerald-800 text-[10px] font-bold rounded border border-emerald-300">
+                            NORMAL ✓
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="border-x border-b border-slate-200 rounded-b-lg p-8 text-center mb-5 bg-slate-50">
+              <Clock className="w-10 h-10 text-amber-500 mx-auto mb-2" />
+              <h4 className="text-sm font-bold text-slate-800">Analytical Findings Pending Entry</h4>
+              <p className="text-xs text-slate-500 mt-1 max-w-md mx-auto">
+                Specimen accessioned and in clinical processing. Observed parameter values have not yet been recorded by laboratory technologists.
+              </p>
+            </div>
+          )}
 
           {/* Pathologist Clinical Interpretation */}
           <div className="p-3 bg-amber-50/60 border border-amber-200 rounded-lg text-xs mb-6">
@@ -276,10 +292,10 @@ export const LabReportPrintModal: React.FC<LabReportPrintModalProps> = ({
           <div className="grid grid-cols-3 gap-4 pt-4 border-t-2 border-slate-300 items-end text-center">
             <div>
               <div className="h-10 flex items-center justify-center font-serif text-slate-400 italic text-xs">
-                [Digital Verified Seal]
+                {hasResults ? '[Technician Entry Recorded]' : '[Awaiting Analysis]'}
               </div>
-              <p className="font-bold text-slate-900 text-xs">B. Mondal, DMLT</p>
-              <p className="text-[10px] text-slate-500 font-medium">Senior Medical Lab Technologist</p>
+              <p className="font-bold text-slate-900 text-xs">Diagnostic Technologist</p>
+              <p className="text-[10px] text-slate-500 font-medium">Department of Laboratory Medicine</p>
             </div>
             <div>
               <div className="inline-flex items-center justify-center gap-1 px-3 py-1 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-full text-[10px] font-bold">
@@ -289,11 +305,23 @@ export const LabReportPrintModal: React.FC<LabReportPrintModalProps> = ({
               <p className="text-[9px] text-slate-400 mt-1">Ref No: {booking.bookingNo}</p>
             </div>
             <div>
-              <div className="h-10 flex items-center justify-center font-serif text-indigo-900 italic font-bold text-sm">
-                Dr. Kaushik Chatterjee, MD
-              </div>
-              <p className="font-bold text-slate-900 text-xs">{booking.pathologistName || 'Dr. Kaushik Chatterjee, MD (Pathology)'}</p>
-              <p className="text-[10px] text-slate-500 font-medium">Head & Senior Consultant Pathologist (WBMC-44102)</p>
+              {isVerified ? (
+                <>
+                  <div className="h-10 flex items-center justify-center font-serif text-indigo-900 italic font-bold text-sm">
+                    {booking.pathologistName || 'Dr. Subhashish Roy, MD'}
+                  </div>
+                  <p className="font-bold text-slate-900 text-xs">{booking.pathologistName || 'Dr. Subhashish Roy, MD (Pathology)'}</p>
+                  <p className="text-[10px] text-slate-500 font-medium">Senior Consultant Pathologist (WBMC-44102)</p>
+                </>
+              ) : (
+                <>
+                  <div className="h-10 flex items-center justify-center text-amber-600 italic text-xs font-bold">
+                    [Awaiting Verification Signature]
+                  </div>
+                  <p className="font-bold text-slate-500 text-xs">Duty Pathologist</p>
+                  <p className="text-[10px] text-slate-400 font-medium">Pending Final Sign-Off</p>
+                </>
+              )}
             </div>
           </div>
 
