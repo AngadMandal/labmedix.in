@@ -93,7 +93,7 @@ export const CreateLabOrderModal: React.FC<CreateLabOrderModalProps> = ({
 
     setIsSubmitting(true);
     try {
-      // 1. Create order in LaboratoryService (generates PatientBill, financial ledger, and order record)
+      // 1. Create order in unified LaboratoryService (generates PatientBill, SpecimenRecord, financial ledger, and order record)
       const labOrder = LaboratoryService.createOrder({
         patientId: selectedPatient.id,
         testId: selectedTest.id,
@@ -109,39 +109,8 @@ export const CreateLabOrderModal: React.FC<CreateLabOrderModalProps> = ({
         currentUser: currentUser as any
       });
 
-      // 2. Also register in PortalService for cross-portal visibility
-      const booking = PortalService.bookBloodTest({
-        patientId: selectedPatient.id,
-        patientName: selectedPatient.fullName,
-        patientPhone: selectedPatient.mobile,
-        cardNo: patientCard?.cardNumber,
-        cardTier: patientCard?.membershipId,
-        testName: selectedTest.name,
-        category: selectedTest.category || 'Diagnostics',
-        collectionType: 'lab_visit',
-        scheduledDate: new Date().toISOString().split('T')[0],
-        scheduledTime: 'Immediate (Walk-in)',
-        grossPrice: mrp,
-        discountPercentage: discountPct,
-        discountAmount,
-        netPrice: netPayable,
-        paymentStatus: 'paid_counter',
-        status: 'confirmed',
-        fastingRequired: !!selectedTest.fastingRequired,
-        prescribedByDoctorName: prescribedByDoctor.trim() || 'Walk-in Consultation',
-        clinicalNotes: clinicalNotes.trim() || undefined
-      });
-
-      // Synchronize bookingNo with the sequential lab order number
-      booking.bookingNo = labOrder.orderNumber;
-      booking.id = labOrder.id;
-      const bookings = PortalService.getLabBookings();
-      const idx = bookings.findIndex(b => b.id === booking.id);
-      if (idx >= 0) bookings[idx] = booking;
-      PortalService.saveLabBookings(bookings);
-
       showToast('success', 'Lab Order Booked! 🧪', `Requisition ${labOrder.orderNumber} created with bill recorded.`);
-      onOrderCreated(booking);
+      onOrderCreated(labOrder as any);
       onClose();
     } catch (err: any) {
       showToast('error', 'Order Error', err.message || 'Could not create lab order.');

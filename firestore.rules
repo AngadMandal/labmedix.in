@@ -124,6 +124,18 @@ service cloud.firestore {
       allow read, write: if true;
     }
 
+    match /laboratory_orders/{orderId} {
+      allow read, write: if true;
+    }
+
+    match /specimens/{specimenId} {
+      allow read, write: if true;
+    }
+
+    match /diagnosticReports/{reportId} {
+      allow read, write: if true;
+    }
+
     match /medicineOrders/{orderId} {
       allow read, write: if true;
     }

@@ -807,25 +807,40 @@ export interface OrderedLabTest {
 }
 
 export type LabOrderStatus =
+  | 'ordered'
   | 'booked'
   | 'order_created'
+  | 'billing_pending'
+  | 'ready_for_collection'
+  | 'collection_pending'
   | 'sample_collection_pending'
   | 'phlebotomy_assigned'
+  | 'phlebotomist_assigned'
+  | 'collected'
   | 'sample_collected'
+  | 'accessioned'
+  | 'received'
   | 'sample_received_in_lab'
   | 'in_lab'
   | 'processing'
+  | 'result_pending'
   | 'results_entered'
+  | 'verification_pending'
   | 'results_verified'
   | 'verified'
+  | 'finalized'
   | 'report_ready'
   | 'delivered'
+  | 'report_delivered'
   | 'cancelled'
+  | 'rejected'
+  | 'recollection_required'
   | 'recollection_needed';
 
 export type LabResultStatus =
   | 'pending_entry'
   | 'draft_entered'
+  | 'submitted_for_verification'
   | 'verified'
   | 'final'
   | 'amended';
@@ -845,10 +860,109 @@ export interface LabParameterResult {
   notes?: string;
 }
 
+export type SpecimenStatus =
+  | 'awaiting_collection'
+  | 'collected'
+  | 'accessioned'
+  | 'received'
+  | 'in_analysis'
+  | 'rejected'
+  | 'recollection_required';
+
+export type SpecimenRejectionReason =
+  | 'Incorrect container / tube type'
+  | 'Insufficient specimen volume (QNS)'
+  | 'Tube leakage / Damaged container'
+  | 'Gross Hemolysis'
+  | 'Clotted whole blood'
+  | 'Mislabeled / Label unreadable'
+  | 'Unidentified specimen'
+  | 'Incorrect specimen / sample type'
+  | 'Delayed / degraded sample transit'
+  | 'Temperature abuse / Cold-chain failure'
+  | 'Other clinical reason';
+
+export interface SpecimenRecord {
+  id: string; // e.g. SPEC-2026-00101
+  accessionNumber: string; // e.g. ACC-2026-00042
+  barcode: string;
+  labOrderId: string;
+  orderNumber: string;
+  patientId: string;
+  patientName: string;
+  patientPhone?: string;
+  patientAge?: number;
+  patientGender?: string;
+  testId?: string;
+  testName: string;
+  department: string;
+  sampleType: string; // Blood, Urine, Serum, Sputum, etc.
+  tubeType: string; // EDTA, Plain, SST, Fluoride, Citrate, Sterile Cup
+  capColor?: string;
+  priority: 'routine' | 'urgent' | 'stat';
+  status: SpecimenStatus;
+  
+  // Phlebotomy / Collection
+  collectedAt?: string;
+  collectedBy?: string;
+  collectorId?: string;
+  phlebotomistVehicle?: string;
+  coldChainTemperature?: string;
+  
+  // Accessioning & Reception
+  accessionedAt?: string;
+  accessionedBy?: string;
+  receivedAt?: string;
+  receivedBy?: string;
+  receivingStaffId?: string;
+  
+  // Rejection & Recollection
+  rejectionReason?: SpecimenRejectionReason | string;
+  rejectionNotes?: string;
+  rejectedAt?: string;
+  rejectedBy?: string;
+  recollectionRequired?: boolean;
+  recollectionRequestedAt?: string;
+  recollectionRequestedBy?: string;
+  recollectionOriginalSpecimenId?: string;
+  replacementSpecimenId?: string;
+  
+  // Label & Audit
+  labelPrintCount?: number;
+  lastLabelPrintedAt?: string;
+  lastReprintReason?: string;
+  
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type PrinterLabelFormat =
+  | 'tube_50x25'   // 50mm x 25mm (Standard Vacutainer)
+  | 'tube_50x30'   // 50mm x 30mm (Standard Lab Tube)
+  | 'bag_75x50'    // 75mm x 50mm (Large Container / Transport Bag)
+  | 'pediatric_38x19'; // 38mm x 19mm (Pediatric / Cryovial)
+
+export interface LaboratorySettings {
+  id?: string;
+  defaultLabelFormat: PrinterLabelFormat;
+  autoAccessionPrefix: string; // default "ACC"
+  autoReportPrefix: string;    // default "LMDX-RPT"
+  autoBarcodePrefix: string;   // default "SMP"
+  criticalAlertEnabled: boolean;
+  criticalAlertSound: boolean;
+  defaultTatHours: number;
+  allowTechnicianDraftSave: boolean;
+  requireReprintReason: boolean;
+  updatedAt?: string;
+  updatedBy?: string;
+}
+
 export interface LabOrderRecord {
   id: string; // e.g. LAB-ORD-2026-000101
   orderNumber: string;
   bookingNo?: string;
+  accessionNumber?: string;
+  specimenId?: string;
   patientId: string;
   patientName: string;
   patientPhone?: string;
@@ -877,13 +991,15 @@ export interface LabOrderRecord {
   encounterNo?: string;
   status: LabOrderStatus;
   resultStatus?: LabResultStatus;
-  paymentStatus?: 'paid' | 'pending' | 'partially_paid' | 'waived';
+  paymentStatus?: 'paid' | 'pending' | 'partially_paid' | 'waived' | 'paid_counter';
   grossAmount?: number;
+  grossPrice?: number;
   mrp?: number;
   discountPercentage?: number;
   discountAmount?: number;
   netAmount?: number;
   netPayable?: number;
+  netPrice?: number;
   paidAmount?: number;
   dueAmount?: number;
   isPaid?: boolean;
@@ -891,6 +1007,19 @@ export interface LabOrderRecord {
   billId?: string;
   billNumber?: string;
   transactionId?: string;
+  collectionType?: 'lab_visit' | 'home_collection' | 'inpatient';
+  scheduledDate?: string;
+  scheduledTime?: string;
+  fastingRequired?: boolean;
+  
+  // Logistics & Home Collection Tracking
+  assignedPhlebotomist?: string;
+  phlebotomistVehicle?: string;
+  logisticsStage?: string;
+  collectionEtaTime?: string;
+  collectionEtaMinutes?: number;
+  coldChainTemperature?: string;
+  boxSealBarcode?: string;
   
   // Staff tracking
   createdByStaffId?: string;
@@ -900,31 +1029,54 @@ export interface LabOrderRecord {
   collectedAt?: string;
   sampleCollectedAt?: string;
   sampleCollectedBy?: string;
+  accessionedAt?: string;
+  accessionedBy?: string;
   receivedInLabAt?: string;
   sampleReceivedAt?: string;
   sampleReceivedBy?: string;
   receivedByTechnician?: string;
   
+  // Rejection & Recollection Tracking
+  rejectionReason?: SpecimenRejectionReason | string;
+  rejectionNotes?: string;
+  rejectedAt?: string;
+  recollectionRequired?: boolean;
+  recollectionNotes?: string;
+  previousSpecimenBarcodes?: string[];
+  
   // Results & Verification
   parameters?: LabParameterResult[];
   results?: LabParameterResult[];
+  testResults?: LabParameterResult[];
   technicianRemarks?: string;
   technicianNotes?: string;
   clinicalNotes?: string;
   resultsEnteredAt?: string;
   resultsEnteredBy?: string;
+  resultsDraftSavedAt?: string;
+  hasCriticalResult?: boolean;
+  criticalResultNotifiedAt?: string;
+  criticalResultNotes?: string;
   
   verifiedAt?: string;
   verifiedBy?: string;
   verifiedDoctorName?: string;
   verifiedDoctorRegistrationNo?: string;
   verifiedByDoctorName?: string;
+  pathologistName?: string;
   pathologistNotes?: string;
   verifyingDoctorRegNo?: string;
   verifyingDoctorDesignation?: string;
   isLocked?: boolean;
   lockedAt?: string;
   reportUrl?: string;
+  reportNumber?: string;
+  reportReadyAt?: string;
+  
+  // TAT Monitoring
+  tatHours?: number;
+  tatTargetTime?: string;
+  isTatDelayed?: boolean;
   
   // Amendment tracking if report corrected
   amendmentHistory?: Array<{

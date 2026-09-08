@@ -103,16 +103,18 @@ export const LabResultEntryModal: React.FC<LabResultEntryModalProps> = ({
     setParameters(prev => prev.filter((_, i) => i !== index));
   };
 
-  const handleSave = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (parameters.length === 0) {
-      showToast('error', 'Parameters Required', 'Please provide at least one test parameter.');
+  const handleSave = async (e?: React.FormEvent, isDraft: boolean = false) => {
+    if (e) e.preventDefault();
+    if (!order) return;
+
+    if (!parameters.length) {
+      showToast('error', 'Missing Parameters', 'Please add at least one test parameter.');
       return;
     }
 
     const unentered = parameters.filter(p => !p.observedValue.trim());
-    if (unentered.length === parameters.length) {
-      showToast('error', 'Values Required', 'Please enter observed values for the test parameters.');
+    if (!isDraft && unentered.length === parameters.length) {
+      showToast('error', 'Values Required', 'Please enter observed values for the test parameters before submitting.');
       return;
     }
 
@@ -120,31 +122,44 @@ export const LabResultEntryModal: React.FC<LabResultEntryModalProps> = ({
     try {
       const staffName = currentUser?.fullName || 'Senior Lab Technologist';
 
-      // 1. Update PortalService
       const fullNotes = technicianNotes.trim()
         ? `Method: ${analyzerMethod} | Notes: ${technicianNotes.trim()}`
         : `Method: ${analyzerMethod}`;
 
+      // Save via LaboratoryService
+      LaboratoryService.saveResults(
+        order.id,
+        parameters.map((p, idx) => ({
+          id: (p as any).id || `prm_${idx}`,
+          parameterName: p.parameterName,
+          observedValue: p.observedValue,
+          unit: p.unit,
+          referenceRange: p.referenceRange,
+          flag: p.flag || LaboratoryService.evaluateFlag(p.observedValue, p.referenceRange)
+        })),
+        staffName,
+        fullNotes,
+        isDraft
+      );
+
+      // Keep PortalService synced
       PortalService.updateTestResults(order.id, parameters, fullNotes);
 
-      // 2. Update LaboratoryService if order exists there
-      try {
-        LaboratoryService.saveResults(
-          order.id,
-          parameters.map((p, idx) => ({
-            id: `prm_${idx}`,
-            parameterName: p.parameterName,
-            observedValue: p.observedValue,
-            unit: p.unit,
-            referenceRange: p.referenceRange,
-            flag: p.flag
-          })),
-          staffName,
-          technicianNotes
+      const hasCrit = parameters.some(p => p.flag === 'critical' || LaboratoryService.isCriticalValue(p.parameterName, p.observedValue));
+      if (hasCrit) {
+        showToast(
+          'warning',
+          'Critical Result Detected! 🚨',
+          'One or more parameters exceed life-critical panic thresholds. Documented clinical notification required.'
         );
-      } catch {}
+      } else {
+        showToast(
+          'success',
+          isDraft ? 'Draft Saved' : 'Results Submitted for Verification',
+          `${parameters.length} analytical parameters recorded for ${order.patientName}.`
+        );
+      }
 
-      showToast('success', 'Analytical Results Saved', `Entered ${parameters.length} parameters for ${order.patientName}.`);
       onResultsSaved();
       onClose();
     } catch (err: any) {
@@ -380,19 +395,33 @@ export const LabResultEntryModal: React.FC<LabResultEntryModalProps> = ({
         </div>
 
         {/* Footer Actions */}
-        <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-800">
+        <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-slate-800">
           <Button type="button" variant="outline" onClick={onClose} disabled={isSaving}>
             Cancel
           </Button>
-          <Button
-            type="submit"
-            variant="primary"
-            className="bg-gradient-to-r from-teal-600 to-emerald-600 text-white font-bold shadow-lg"
-            isLoading={isSaving}
-            leftIcon={<CheckCircle2 className="w-4 h-4" />}
-          >
-            Save Analytical Results
-          </Button>
+
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => handleSave(undefined, true)}
+              disabled={isSaving}
+              className="border-slate-700 text-slate-300 hover:text-white"
+            >
+              <Clock className="w-4 h-4 mr-1.5 text-amber-400" />
+              Save as Draft
+            </Button>
+
+            <Button
+              type="submit"
+              variant="primary"
+              className="bg-gradient-to-r from-teal-600 to-emerald-600 text-white font-bold shadow-lg"
+              isLoading={isSaving}
+              leftIcon={<CheckCircle2 className="w-4 h-4" />}
+            >
+              Submit for Verification
+            </Button>
+          </div>
         </div>
       </form>
     </Modal>
