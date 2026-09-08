@@ -68,6 +68,27 @@ export interface BloodTestBooking {
   verifiedAt?: string;
   clinicalNotes?: string;
   billId?: string;
+  // Enhanced Phlebotomy Fleet Dispatch & Cold-Chain Logistics
+  phlebotomistId?: string;
+  phlebotomistPhone?: string;
+  phlebotomistVehicle?: string;
+  phlebotomistBagId?: string;
+  boxSealBarcode?: string;
+  coldChainTemperature?: string;
+  coldChainVerified?: boolean;
+  icePackVerified?: boolean;
+  distanceKm?: number;
+  collectionEtaMinutes?: number;
+  collectionEtaTime?: string;
+  labTransitEtaMinutes?: number;
+  labTransitEtaTime?: string;
+  expectedReportEta?: string;
+  logisticsStage?: 'not_assigned' | 'collector_dispatched' | 'at_location' | 'sample_secured' | 'in_transit_lab' | 'delivered_accession';
+  dispatchTimestamp?: string;
+  sampleSecuredTimestamp?: string;
+  labDeliveredTimestamp?: string;
+  dispatchNotes?: string;
+  updatedAt?: string;
   createdAt: string;
 }
 
@@ -230,6 +251,79 @@ export class PortalService {
 
     StorageService.setItem(this.LAB_BOOKINGS_KEY, all);
     ApiSyncService.syncLabBookings(all).catch(() => {});
+    return all[index];
+  }
+
+  public static updateBookingLogistics(
+    bookingId: string,
+    logistics: {
+      status?: BloodTestBooking['status'];
+      phlebotomistId?: string;
+      assignedPhlebotomist?: string;
+      phlebotomistPhone?: string;
+      phlebotomistVehicle?: string;
+      phlebotomistBagId?: string;
+      boxSealBarcode?: string;
+      sampleBarcode?: string;
+      sampleTubeType?: string;
+      coldChainTemperature?: string;
+      coldChainVerified?: boolean;
+      icePackVerified?: boolean;
+      distanceKm?: number;
+      collectionEtaMinutes?: number;
+      collectionEtaTime?: string;
+      labTransitEtaMinutes?: number;
+      labTransitEtaTime?: string;
+      expectedReportEta?: string;
+      logisticsStage?: BloodTestBooking['logisticsStage'];
+      dispatchTimestamp?: string;
+      sampleSecuredTimestamp?: string;
+      labDeliveredTimestamp?: string;
+      dispatchNotes?: string;
+    }
+  ): BloodTestBooking | null {
+    const all = this.getLabBookings();
+    const index = all.findIndex(b => b.id === bookingId);
+    if (index === -1) return null;
+
+    const current = all[index];
+    let nextStatus = logistics.status || current.status;
+    if (!logistics.status && logistics.logisticsStage) {
+      if (logistics.logisticsStage === 'collector_dispatched' || logistics.logisticsStage === 'at_location') {
+        nextStatus = 'phlebotomist_assigned';
+      } else if (logistics.logisticsStage === 'sample_secured' || logistics.logisticsStage === 'in_transit_lab') {
+        nextStatus = 'sample_collected';
+      } else if (logistics.logisticsStage === 'delivered_accession') {
+        nextStatus = 'processing';
+      }
+    }
+
+    all[index] = {
+      ...current,
+      ...logistics,
+      status: nextStatus,
+      updatedAt: new Date().toISOString()
+    };
+
+    StorageService.setItem(this.LAB_BOOKINGS_KEY, all);
+    ApiSyncService.syncLabBookings(all).catch(() => {});
+
+    try {
+      AuditService.log(
+        'UPDATE_LOGISTICS',
+        'laboratory',
+        `Phlebotomy Logistics updated for ${current.bookingNo}: Stage ${logistics.logisticsStage || 'assigned'}, Collector ${logistics.assignedPhlebotomist || 'N/A'}, Vehicle: ${logistics.phlebotomistVehicle || 'N/A'}, Temp: ${logistics.coldChainTemperature || 'N/A'}, ETA: ${logistics.collectionEtaTime || 'N/A'}`,
+        current.bookingNo,
+        {
+          bookingNo: current.bookingNo,
+          patientName: current.patientName,
+          ...logistics
+        }
+      );
+    } catch {
+      // Safe fallback
+    }
+
     return all[index];
   }
 

@@ -71,6 +71,7 @@ import {
   Truck,
   CheckCircle2,
   AlertCircle,
+  Phone,
   PhoneCall,
   Search,
   Sparkles,
@@ -2301,10 +2302,63 @@ export const PatientPortalPage: React.FC = () => {
                           <span>Scheduled Time:</span>
                           <span>{formatDate(lab.scheduledDate)} • {lab.scheduledTime}</span>
                         </div>
-                        {lab.assignedPhlebotomist && (
-                          <div className="flex justify-between text-teal-300 border-t border-slate-800 pt-1">
-                            <span>Phlebotomist:</span>
-                            <span>{lab.assignedPhlebotomist}</span>
+                        {/* Live Phlebotomy Fleet Dispatch & ETA Tracker */}
+                        {(lab.assignedPhlebotomist || lab.collectionEtaTime || lab.coldChainTemperature) && (
+                          <div className="p-2.5 rounded-xl bg-teal-950/40 border border-teal-500/30 text-xs space-y-1.5 font-mono pt-1.5 mt-1.5">
+                            <div className="flex justify-between items-center text-teal-300 font-bold">
+                              <span className="flex items-center gap-1">
+                                <Truck className="w-3.5 h-3.5 text-teal-400" />
+                                <span>Phlebotomy Dispatch:</span>
+                              </span>
+                              <span className="px-2 py-0.5 rounded-full text-[9.5px] font-black uppercase bg-teal-500/20 text-teal-200 border border-teal-400/30">
+                                {lab.logisticsStage ? lab.logisticsStage.replace(/_/g, ' ') : 'DISPATCHED'}
+                              </span>
+                            </div>
+
+                            <div className="flex justify-between text-slate-200">
+                              <span>Collector:</span>
+                              <strong className="text-white">{lab.assignedPhlebotomist}</strong>
+                            </div>
+
+                            {lab.phlebotomistVehicle && (
+                              <div className="flex justify-between text-slate-300 text-[11px]">
+                                <span>Vehicle:</span>
+                                <span className="text-amber-300">{lab.phlebotomistVehicle}</span>
+                              </div>
+                            )}
+
+                            {lab.collectionEtaTime && (
+                              <div className="flex justify-between text-cyan-300 font-bold text-[11px]">
+                                <span>Arrival ETA:</span>
+                                <span>~{lab.collectionEtaMinutes || 20} mins ({lab.collectionEtaTime})</span>
+                              </div>
+                            )}
+
+                            {lab.coldChainTemperature && (
+                              <div className="flex justify-between text-purple-300 text-[11px]">
+                                <span>Cold-Chain Temp:</span>
+                                <span>{lab.coldChainTemperature} (Safe 2°C - 8°C)</span>
+                              </div>
+                            )}
+
+                            {lab.boxSealBarcode && (
+                              <div className="flex justify-between text-slate-400 text-[10px] pt-1 border-t border-teal-900/40">
+                                <span>Biohazard Seal:</span>
+                                <span className="font-mono text-purple-300 font-bold">{lab.boxSealBarcode}</span>
+                              </div>
+                            )}
+
+                            {lab.phlebotomistPhone && (
+                              <div className="pt-1 border-t border-teal-900/40 flex justify-end">
+                                <a
+                                  href={`tel:${lab.phlebotomistPhone}`}
+                                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-teal-600/30 hover:bg-teal-600 text-teal-200 hover:text-white text-[10px] font-bold transition"
+                                >
+                                  <Phone className="w-2.5 h-2.5" />
+                                  <span>Call Collector ({lab.phlebotomistPhone})</span>
+                                </a>
+                              </div>
+                            )}
                           </div>
                         )}
                         {lab.fastingRequired && (

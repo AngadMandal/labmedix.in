@@ -10,6 +10,7 @@ import { Patient, HealthCard } from '../../types';
 import { formatCurrency, formatDate, formatDateTime } from '../../utils/formatters';
 import { generateSampleBarcode } from '../../utils/idGenerator';
 import { PhlebotomySampleLabelModal } from '../../components/patients/PhlebotomySampleLabelModal';
+import { PhlebotomySampleDispatchModal, PHLEBOTOMIST_PRESETS } from '../../components/patients/PhlebotomySampleDispatchModal';
 import { LabReportPrintModal } from '../../components/emr/LabReportPrintModal';
 import { LabResultEntryModal } from '../../components/laboratory/LabResultEntryModal';
 import { LabVerificationModal } from '../../components/laboratory/LabVerificationModal';
@@ -51,7 +52,12 @@ import {
   Trash2,
   Building,
   Check,
-  Share2
+  Share2,
+  Truck,
+  Navigation,
+  MapPin,
+  Phone,
+  Box
 } from 'lucide-react';
 
 export const LaboratoryPage: React.FC = () => {
@@ -89,6 +95,7 @@ export const LaboratoryPage: React.FC = () => {
   const [selectedOrderForReport, setSelectedOrderForReport] = useState<BloodTestBooking | null>(null);
   const [selectedOrderForResultEntry, setSelectedOrderForResultEntry] = useState<BloodTestBooking | null>(null);
   const [selectedOrderForVerification, setSelectedOrderForVerification] = useState<BloodTestBooking | null>(null);
+  const [selectedOrderForDispatch, setSelectedOrderForDispatch] = useState<BloodTestBooking | null>(null);
   const [isNewOrderModalOpen, setIsNewOrderModalOpen] = useState(false);
 
   // Accessioning quick-entry state
@@ -506,6 +513,27 @@ export const LaboratoryPage: React.FC = () => {
                                 <span className="text-teal-400 font-mono">Card: {order.cardNo}</span>
                               )}
                             </div>
+                            {/* Phlebotomy Logistics & Live ETA status badge */}
+                            {(order.collectionType === 'home_collection' || order.assignedPhlebotomist || order.logisticsStage) && (
+                              <div className="mt-1 flex flex-wrap items-center gap-1 font-mono text-[9px]">
+                                <span className="px-1.5 py-0.5 rounded bg-amber-950/80 text-amber-300 border border-amber-500/30 flex items-center gap-1">
+                                  <Truck className="w-2.5 h-2.5 text-amber-400" />
+                                  <span>{order.assignedPhlebotomist || (order.collectionType === 'home_collection' ? 'Home Sample' : 'Dispatched')}</span>
+                                </span>
+                                {order.collectionEtaTime && (
+                                  <span className="px-1.5 py-0.5 rounded bg-cyan-950/80 text-cyan-300 border border-cyan-500/30 flex items-center gap-1">
+                                    <Clock className="w-2.5 h-2.5 text-cyan-400" />
+                                    <span>ETA {order.collectionEtaTime}</span>
+                                  </span>
+                                )}
+                                {order.coldChainTemperature && (
+                                  <span className="px-1.5 py-0.5 rounded bg-purple-950/80 text-purple-300 border border-purple-500/30 flex items-center gap-1">
+                                    <ThermometerSnowflake className="w-2.5 h-2.5 text-purple-400" />
+                                    <span>{order.coldChainTemperature}</span>
+                                  </span>
+                                )}
+                              </div>
+                            )}
                           </td>
 
                           <td className="px-4 py-3">
@@ -543,6 +571,18 @@ export const LaboratoryPage: React.FC = () => {
 
                           <td className="px-4 py-3 text-right">
                             <div className="flex items-center justify-end gap-1.5">
+                              {/* Phlebotomy Fleet Dispatch & ETA Button */}
+                              {order.status !== 'report_ready' && (
+                                <button
+                                  onClick={() => setSelectedOrderForDispatch(order)}
+                                  className="px-2 py-1 rounded-lg bg-teal-950/80 hover:bg-teal-900 border border-teal-500/40 text-teal-300 hover:text-white font-bold text-[10px] transition shadow-sm flex items-center gap-1"
+                                  title="Phlebotomy Fleet Dispatch, Real-Time ETA & Cold Chain Monitoring"
+                                >
+                                  <Truck className="w-3 h-3 text-teal-400" />
+                                  <span>Dispatch & ETA</span>
+                                </button>
+                              )}
+
                               {/* Print Barcode Label */}
                               <button
                                 onClick={() => setSelectedOrderForBarcode(order)}
@@ -740,6 +780,193 @@ export const LaboratoryPage: React.FC = () => {
                   </button>
                 </div>
               ))}
+            </div>
+          </div>
+
+          {/* Phlebotomy Fleet & Cold-Chain Logistics Hub Section */}
+          <div className="lg:col-span-3 space-y-4 pt-4 border-t border-slate-800">
+            <div className="p-4 rounded-3xl bg-gradient-to-r from-teal-950/60 via-slate-900 to-purple-950/40 border border-teal-500/30 flex flex-col md:flex-row items-start md:items-center justify-between gap-3 shadow-lg">
+              <div className="space-y-0.5">
+                <div className="flex items-center gap-2">
+                  <Truck className="w-5 h-5 text-teal-400" />
+                  <h3 className="text-sm font-black text-white uppercase tracking-wider">
+                    Phlebotomy Fleet & Cold-Chain Logistics Operations
+                  </h3>
+                </div>
+                <p className="text-xs text-slate-300">
+                  Real-time field collector fleet status, cold-chain compliance (2°C - 8°C), and specimen transit ETAs.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <span className="px-3 py-1 rounded-xl text-xs font-mono font-bold bg-emerald-950 text-emerald-300 border border-emerald-500/40 flex items-center gap-1.5 shadow-sm">
+                  <ThermometerSnowflake className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>WHO/NABL 2°C - 8°C Monitored (100% Compliant)</span>
+                </span>
+              </div>
+            </div>
+
+            {/* Field Collector Roster Grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+              {PHLEBOTOMIST_PRESETS.map((phleb) => (
+                <div
+                  key={phleb.id}
+                  className="p-3.5 rounded-2xl bg-slate-900/90 border border-slate-800 hover:border-teal-500/40 transition space-y-2 text-xs shadow-md"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-mono font-bold uppercase px-2 py-0.5 rounded-full bg-teal-500/20 text-teal-300 border border-teal-500/30">
+                      {phleb.bagId}
+                    </span>
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                      phleb.status === 'Active on Road'
+                        ? 'bg-amber-950 text-amber-300 border border-amber-500/30 animate-pulse'
+                        : phleb.status === 'In Transit to Lab'
+                        ? 'bg-purple-950 text-purple-300 border border-purple-500/30'
+                        : 'bg-emerald-950 text-emerald-300 border border-emerald-500/30'
+                    }`}>
+                      {phleb.status}
+                    </span>
+                  </div>
+
+                  <div>
+                    <strong className="text-sm font-bold text-white block">{phleb.name}</strong>
+                    <span className="text-[11px] text-slate-400">{phleb.badge}</span>
+                  </div>
+
+                  <div className="p-2 rounded-xl bg-slate-950 border border-slate-800 text-[10.5px] space-y-1 font-mono">
+                    <div className="flex justify-between text-slate-300">
+                      <span>Vehicle:</span>
+                      <span className="text-amber-300 font-bold">{phleb.vehicle.split(' (')[0]}</span>
+                    </div>
+                    <div className="flex justify-between text-slate-300">
+                      <span>Phone:</span>
+                      <a href={`tel:${phleb.phone}`} className="text-teal-400 hover:underline">
+                        {phleb.phone}
+                      </a>
+                    </div>
+                    <div className="flex justify-between text-slate-400 pt-0.5 border-t border-slate-800">
+                      <span>Completed Today:</span>
+                      <span className="text-emerald-400 font-bold">{phleb.completedToday} samples</span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Active In-Transit & Doorstep Specimens Table */}
+            <div className="p-5 rounded-3xl bg-slate-900 border border-slate-800 space-y-3 shadow-xl">
+              <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                <div className="flex items-center gap-2">
+                  <Box className="w-4 h-4 text-cyan-400" />
+                  <h4 className="text-sm font-bold text-white uppercase tracking-wider">
+                    Active In-Transit & Doorstep Sample Dispatch Queue
+                  </h4>
+                </div>
+                <span className="text-xs text-slate-400 font-mono">
+                  {labOrders.filter(o => o.collectionType === 'home_collection' || o.logisticsStage || o.assignedPhlebotomist).length} Orders Monitored
+                </span>
+              </div>
+
+              {labOrders.filter(o => o.collectionType === 'home_collection' || o.logisticsStage || o.assignedPhlebotomist).length === 0 ? (
+                <div className="p-8 text-center text-slate-400 text-xs">
+                  No doorstep sample dispatch orders currently active. Book a home collection or dispatch a pending order.
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs text-slate-300">
+                    <thead className="bg-slate-950/60 text-slate-400 uppercase tracking-wider font-mono text-[10px] border-b border-slate-800">
+                      <tr>
+                        <th className="px-3 py-2.5">Order / Date</th>
+                        <th className="px-3 py-2.5">Patient Details</th>
+                        <th className="px-3 py-2.5">Investigation</th>
+                        <th className="px-3 py-2.5">Assigned Collector</th>
+                        <th className="px-3 py-2.5">Box Seal & Temp</th>
+                        <th className="px-3 py-2.5">Live ETA</th>
+                        <th className="px-3 py-2.5">Stage</th>
+                        <th className="px-3 py-2.5 text-right">Quick Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-800">
+                      {labOrders
+                        .filter(o => o.collectionType === 'home_collection' || o.logisticsStage || o.assignedPhlebotomist)
+                        .slice(0, 10)
+                        .map((order) => (
+                          <tr key={order.id} className="hover:bg-slate-800/40 transition">
+                            <td className="px-3 py-2.5 font-mono">
+                              <div className="font-bold text-white">{order.bookingNo}</div>
+                              <div className="text-[10px] text-slate-400">{formatDate(order.createdAt)}</div>
+                            </td>
+                            <td className="px-3 py-2.5">
+                              <strong className="text-white block">{order.patientName}</strong>
+                              <span className="text-[10px] text-slate-400">{order.patientPhone || 'N/A'}</span>
+                            </td>
+                            <td className="px-3 py-2.5">
+                              <div className="font-bold text-white">{order.testName}</div>
+                              <div className="text-[10px] text-slate-400">{order.category}</div>
+                            </td>
+                            <td className="px-3 py-2.5 text-slate-300">
+                              <div className="font-bold text-teal-300 flex items-center gap-1">
+                                <Truck className="w-3 h-3 text-teal-400" />
+                                <span>{order.assignedPhlebotomist || 'Collector Assigned'}</span>
+                              </div>
+                              <div className="text-[10px] text-slate-400 font-mono">
+                                {order.phlebotomistVehicle ? order.phlebotomistVehicle.split(' (')[0] : 'Hero Splendor'}
+                              </div>
+                            </td>
+                            <td className="px-3 py-2.5 font-mono">
+                              <div className="text-purple-300 font-bold text-[11px]">
+                                {order.boxSealBarcode || 'BOX-CC-4921'}
+                              </div>
+                              <div className="text-[10px] text-emerald-400 font-bold flex items-center gap-1">
+                                <ThermometerSnowflake className="w-2.5 h-2.5 text-emerald-400" />
+                                <span>{order.coldChainTemperature || '3.8°C'} (Compliant)</span>
+                              </div>
+                            </td>
+                            <td className="px-3 py-2.5 font-mono">
+                              <div className="text-cyan-300 font-black">
+                                {order.collectionEtaTime || '08:30 AM'}
+                              </div>
+                              <div className="text-[10px] text-slate-400">
+                                ~{order.collectionEtaMinutes || 20}m transit
+                              </div>
+                            </td>
+                            <td className="px-3 py-2.5">
+                              <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase font-mono bg-teal-950 text-teal-300 border border-teal-500/30">
+                                {order.logisticsStage ? order.logisticsStage.replace(/_/g, ' ') : order.status.replace(/_/g, ' ')}
+                              </span>
+                            </td>
+                            <td className="px-3 py-2.5 text-right">
+                              <div className="flex items-center justify-end gap-1.5">
+                                <button
+                                  onClick={() => setSelectedOrderForDispatch(order)}
+                                  className="px-2 py-1 rounded-lg bg-teal-950 hover:bg-teal-900 border border-teal-500/40 text-teal-300 hover:text-white font-bold text-[10px] transition"
+                                  title="Update Phlebotomy Logistics ETA"
+                                >
+                                  Adjust ETA
+                                </button>
+                                {order.status === 'sample_collected' && (
+                                  <button
+                                    onClick={() => handleReceiveInLab(order)}
+                                    className="px-2 py-1 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-[10px] transition shadow-sm"
+                                  >
+                                    Receive Lab
+                                  </button>
+                                )}
+                                <button
+                                  onClick={() => setSelectedOrderForBarcode(order)}
+                                  className="p-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition"
+                                  title="Print Barcode Label"
+                                >
+                                  <Tag className="w-3 h-3" />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -1247,6 +1474,19 @@ export const LaboratoryPage: React.FC = () => {
           isOpen={!!selectedOrderForReport}
           onClose={() => setSelectedOrderForReport(null)}
           booking={selectedOrderForReport}
+        />
+      )}
+
+      {/* Phlebotomy Sample Dispatch & Logistics ETA Modal */}
+      {selectedOrderForDispatch && (
+        <PhlebotomySampleDispatchModal
+          isOpen={!!selectedOrderForDispatch}
+          onClose={() => setSelectedOrderForDispatch(null)}
+          booking={selectedOrderForDispatch}
+          onStatusUpdated={() => {
+            setLabOrders(PortalService.getLabBookings());
+          }}
+          onOpenLabelPrinter={(b) => setSelectedOrderForBarcode(b)}
         />
       )}
 
