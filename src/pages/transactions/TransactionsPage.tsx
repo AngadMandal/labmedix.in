@@ -29,13 +29,13 @@ import {
 } from 'lucide-react';
 
 export const TransactionsPage: React.FC = () => {
-  const { currentUser } = useAuth();
+  const { currentUser, can } = useAuth();
   const { showToast } = useToast();
 
   const isSuperAdmin = currentUser?.role === 'super_admin';
   const isAdmin = currentUser?.role === 'admin' || isSuperAdmin;
   const isManager = currentUser?.role === 'manager';
-  const canViewAll = isSuperAdmin || isAdmin || isManager;
+  const canViewAll = isSuperAdmin || isAdmin || isManager || can('transactions_view_all') || can('finance_view') || can('financial_analytics_view');
 
   // State
   const [allTransactions, setAllTransactions] = useState<CentralTransaction[]>(() => TransactionService.getAll());

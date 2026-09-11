@@ -6,6 +6,7 @@ import { ApiSyncService } from '../services/apiSyncService';
 import { AuditService } from '../services/auditService';
 import { MultiDeviceSyncService } from '../services/multiDeviceSyncService';
 import { checkUserPermission, checkUserModuleAccess, SystemModuleKey } from '../constants/roles';
+import { WorkflowPermissionService } from '../services/workflowPermissionService';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { doc, onSnapshot, getDoc } from 'firebase/firestore';
 import { auth, db } from '../services/firebaseService';
@@ -42,6 +43,8 @@ interface AuthContextType {
   lockScreen: () => void;
   unlockScreen: (pin: string) => boolean;
   can: (permission: Permission) => boolean;
+  canAction: (permission: Permission, context?: any) => { allowed: boolean; reason?: string; ruleViolated?: string };
+  isRecordAccessible: (record: any, level?: 'own' | 'department' | 'assigned' | 'organization' | 'restricted') => boolean;
   hasModuleAccess: (moduleKey: SystemModuleKey) => boolean;
 }
 
@@ -411,7 +414,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const can = (permission: Permission): boolean => {
-    return checkUserPermission(currentUser, permission);
+    return WorkflowPermissionService.can(currentUser, permission);
+  };
+
+  const canAction = (permission: Permission, context?: any) => {
+    return WorkflowPermissionService.canPerformAction(currentUser, permission, context);
+  };
+
+  const isRecordAccessible = (record: any, level: 'own' | 'department' | 'assigned' | 'organization' | 'restricted' = 'own') => {
+    return WorkflowPermissionService.isRecordAccessible(currentUser, record, level);
   };
 
   const hasModuleAccess = (moduleKey: SystemModuleKey): boolean => {
@@ -433,6 +444,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         lockScreen,
         unlockScreen,
         can,
+        canAction,
+        isRecordAccessible,
         hasModuleAccess,
       }}
     >

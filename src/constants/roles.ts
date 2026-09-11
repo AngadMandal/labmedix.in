@@ -22,17 +22,20 @@ export const ROLE_CONFIGS: Record<Role, RoleConfig> = {
     badgeColor: 'bg-blue-100 text-blue-800 border-blue-300 dark:bg-blue-950/50 dark:text-blue-300 dark:border-blue-800',
     description: 'Full operational control over patients, cards, memberships, wallets, reports, EMR scheduling, and staff users.',
     permissions: [
-      'patient_create', 'patient_read', 'patient_update', 'patient_delete', 'patient_print', 'patient_export',
+      'patient_create', 'patient_read', 'patient_update', 'patient_delete', 'patient_print', 'patient_export', 'patient_search', 'patient_slip_print', 'clinical_view',
       'card_create', 'card_read', 'card_update', 'card_print', 'card_export', 'card_status_change', 'card_renew', 'card_replace', 'card_delete', 'card_issue',
-      'card_request_create', 'card_request_edit', 'card_request_submit', 'card_request_view', 'card_request_view_own', 'card_request_view_all', 'card_request_approve', 'card_request_reject', 'card_cancel', 'card_bill_print',
+      'card_request_create', 'card_request_edit', 'card_request_submit', 'card_request_view', 'card_request_view_own', 'card_request_view_all', 'card_request_approve', 'card_request_reject', 'card_request_return', 'card_cancel', 'card_bill_print', 'card_enrollment_open', 'card_plan_configure', 'card_pricing_configure', 'card_benefit_configure',
       'wallet_read', 'wallet_credit', 'wallet_debit', 'wallet_adjust',
-      'membership_manage', 'family_manage', 'backup_manage', 'settings_manage', 'audit_view',
+      'membership_manage', 'family_manage', 'family_member_add', 'family_view', 'family_limit_configure', 'backup_manage', 'settings_manage', 'audit_view', 'audit_export',
       'reports_view', 'catalog_manage', 'package_manage',
-      'ngo_manage', 'ngo_view', 'camp_manage', 'grant_manage', 'users_manage',
+      'ngo_manage', 'ngo_view', 'camp_manage', 'grant_manage', 'users_manage', 'staff_create', 'user_create', 'role_assign', 'permission_assign', 'user_status_toggle', 'staff_department_assign', 'user_activity_review',
       'doctor_view', 'doctor_manage', 'test_view',
-      'bill_create', 'bill_view', 'bill_view_own', 'bill_view_all', 'bill_cancel', 'bill_print', 'bill_view_due', 'payment_collect',
-      'card_transactions_view', 'card_transactions_view_own', 'card_transactions_view_all', 'transactions_manage',
-      'appointment_manage', 'appointment_view', 'lab_order_manage', 'pharmacy_dispense', 'permissions_manage'
+      'bill_create', 'bill_view', 'bill_view_own', 'bill_view_all', 'bill_cancel', 'bill_print', 'bill_view_due', 'payment_collect', 'pricing_configure', 'refund_approve', 'finance_view', 'financial_analytics_view',
+      'card_transactions_view', 'card_transactions_view_own', 'card_transactions_view_all', 'transactions_view_own', 'transactions_view_all', 'transactions_manage',
+      'appointment_manage', 'appointment_view', 'appointment_create', 'appointment_reschedule', 'appointment_cancel', 'appointment_checkin',
+      'lab_order_create', 'lab_order_view', 'lab_order_manage', 'specimen_collect', 'specimen_receive', 'specimen_process', 'result_enter', 'result_draft_save', 'result_submit_verification', 'result_verify', 'report_finalize', 'report_amend', 'barcode_print', 'report_download', 'report_share',
+      'pharmacy_dispense', 'prescription_view', 'medicine_dispense', 'pharmacy_sale_create', 'pharmacy_stock_manage', 'pharmacy_bill_print',
+      'permissions_manage'
     ]
   },
   doctor: {
@@ -41,9 +44,12 @@ export const ROLE_CONFIGS: Record<Role, RoleConfig> = {
     badgeColor: 'bg-teal-100 text-teal-800 border-teal-300 dark:bg-teal-950/50 dark:text-teal-300 dark:border-teal-800',
     description: 'Exclusive clinical authority to diagnose, prescribe medications, modify dosages, order investigations, and sign official medical prescriptions.',
     permissions: [
-      'patient_read', 'patient_update', 'card_read', 'card_request_create', 'card_request_submit', 'card_request_view', 'card_request_view_own', 'card_bill_print', 'wallet_read',
+      'patient_read', 'clinical_view', 'patient_search',
+      'card_read', 'card_request_create', 'card_request_submit', 'card_request_view_own', 'card_bill_print', 'wallet_read',
       'emr_read', 'emr_create', 'emr_edit', 'emr_prescribe', 'doctor_view',
-      'appointment_view', 'appointment_manage', 'lab_order_manage', 'pharmacy_dispense'
+      'appointment_view', 'consultation_open', 'consultation_complete', 'prescription_add', 'investigation_order', 'followup_add',
+      'lab_order_create', 'lab_order_view', 'result_verify', 'report_finalize', 'report_download',
+      'prescription_view', 'bill_view_own'
     ]
   },
   manager: {
@@ -52,30 +58,30 @@ export const ROLE_CONFIGS: Record<Role, RoleConfig> = {
     badgeColor: 'bg-indigo-100 text-indigo-800 border-indigo-300 dark:bg-indigo-950/50 dark:text-indigo-300 dark:border-indigo-800',
     description: 'Oversees daily patient operations, branch revenue, approvals, and staff audit reports.',
     permissions: [
-      'patient_create', 'patient_read', 'patient_update', 'patient_print', 'patient_export',
+      'patient_create', 'patient_read', 'patient_update', 'patient_print', 'patient_export', 'patient_search', 'patient_slip_print',
       'card_create', 'card_read', 'card_update', 'card_print', 'card_export', 'card_status_change', 'card_renew', 'card_replace', 'card_issue',
-      'card_request_create', 'card_request_edit', 'card_request_submit', 'card_request_view', 'card_request_view_own', 'card_request_view_all', 'card_request_approve', 'card_request_reject', 'card_bill_print',
+      'card_request_create', 'card_request_edit', 'card_request_submit', 'card_request_view', 'card_request_view_own', 'card_request_view_all', 'card_request_approve', 'card_request_reject', 'card_request_return', 'card_bill_print',
       'wallet_read', 'wallet_credit', 'wallet_debit',
-      'membership_manage', 'family_manage', 'audit_view', 'reports_view', 'catalog_manage', 'package_manage',
-      'doctor_view', 'test_view', 'bill_create', 'bill_view', 'bill_view_own', 'bill_view_all', 'bill_print', 'bill_view_due', 'payment_collect',
-      'card_transactions_view', 'card_transactions_view_own', 'card_transactions_view_all', 'transactions_manage',
-      'appointment_view', 'appointment_manage', 'lab_order_manage', 'pharmacy_dispense'
+      'membership_manage', 'family_manage', 'family_member_add', 'family_view', 'audit_view', 'reports_view', 'catalog_manage', 'package_manage',
+      'doctor_view', 'test_view', 'bill_create', 'bill_view', 'bill_view_own', 'bill_view_all', 'bill_print', 'bill_view_due', 'payment_collect', 'finance_view',
+      'card_transactions_view', 'card_transactions_view_own', 'card_transactions_view_all', 'transactions_view_own', 'transactions_view_all', 'transactions_manage',
+      'appointment_view', 'appointment_manage', 'lab_order_create', 'lab_order_view', 'lab_order_manage', 'pharmacy_dispense'
     ]
   },
   reception: {
     role: 'reception',
     name: 'Front Desk Reception',
     badgeColor: 'bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-950/50 dark:text-emerald-300 dark:border-emerald-800',
-    description: 'Fast-track walk-in registrations, quick searches, card requests, and wallet deposits.',
+    description: 'Fast-track walk-in registrations, quick searches, appointment booking, card intake, and billing.',
     permissions: [
-      'patient_create', 'patient_read', 'patient_update', 'patient_print',
-      'card_create', 'card_read', 'card_print', 'card_export',
-      'card_request_create', 'card_request_submit', 'card_request_view', 'card_request_view_own', 'card_bill_print',
+      'patient_create', 'patient_read', 'patient_update', 'patient_search', 'patient_slip_print', 'patient_print',
+      'card_read', 'card_enrollment_open', 'card_request_create', 'card_request_submit', 'card_request_view_own', 'card_bill_print',
+      'family_member_add', 'family_view',
+      'appointment_view', 'appointment_create', 'appointment_reschedule', 'appointment_cancel', 'appointment_checkin', 'appointment_manage',
+      'lab_order_create', 'lab_order_view', 'report_download',
+      'bill_create', 'bill_view_own', 'bill_print', 'payment_collect',
       'wallet_read', 'wallet_credit',
-      'family_manage',
-      'bill_create', 'bill_view', 'bill_view_own', 'bill_print', 'payment_collect',
-      'card_transactions_view_own',
-      'appointment_view', 'appointment_manage'
+      'card_transactions_view_own', 'transactions_view_own'
     ]
   },
   cashier: {
@@ -84,19 +90,20 @@ export const ROLE_CONFIGS: Record<Role, RoleConfig> = {
     badgeColor: 'bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-950/50 dark:text-amber-300 dark:border-amber-800',
     description: 'Manages OPD billing, cash desk POS deductions, wallet top-ups, cash desk vouchers, and daily revenue reconciliation.',
     permissions: [
-      'patient_read', 'patient_print', 'card_read', 'card_request_view', 'card_request_view_own',
-      'wallet_read', 'wallet_credit', 'wallet_debit', 'voucher_redeem', 'reports_view',
-      'bill_create', 'bill_view', 'bill_view_own', 'bill_cancel', 'bill_print', 'bill_view_due', 'payment_collect',
-      'card_transactions_view_own', 'transactions_manage'
+      'patient_read', 'patient_search', 'patient_print', 'card_read',
+      'wallet_read', 'wallet_credit', 'wallet_debit', 'voucher_redeem',
+      'bill_create', 'bill_view_own', 'bill_print', 'payment_collect',
+      'card_transactions_view_own', 'transactions_view_own'
     ]
   },
   lab_staff: {
     role: 'lab_staff',
     name: 'Laboratory Technician',
     badgeColor: 'bg-teal-100 text-teal-800 border-teal-300 dark:bg-teal-950/50 dark:text-teal-300 dark:border-teal-800',
-    description: 'Verifies patient card membership for laboratory diagnostic testing discounts.',
+    description: 'Processes diagnostic specimens, accessions samples, enters test results, and submits for verification.',
     permissions: [
-      'patient_read', 'card_read', 'wallet_read', 'wallet_debit', 'catalog_manage', 'test_view', 'lab_order_manage'
+      'patient_read', 'patient_search', 'card_read', 'wallet_read', 'wallet_debit', 'catalog_manage', 'test_view',
+      'lab_order_view', 'specimen_receive', 'specimen_process', 'result_enter', 'result_draft_save', 'result_submit_verification'
     ]
   },
   phlebotomist: {
@@ -105,7 +112,8 @@ export const ROLE_CONFIGS: Record<Role, RoleConfig> = {
     badgeColor: 'bg-rose-100 text-rose-800 border-rose-300 dark:bg-rose-950/50 dark:text-rose-300 dark:border-rose-800',
     description: 'Specialist in blood and clinical specimen collection, barcode labeling, sample accessioning, and test routing.',
     permissions: [
-      'patient_read', 'card_read', 'catalog_manage', 'test_view', 'lab_order_manage'
+      'patient_read', 'patient_search', 'card_read', 'test_view',
+      'lab_order_view', 'specimen_collect', 'barcode_print'
     ]
   },
   pharmacist: {
@@ -114,7 +122,9 @@ export const ROLE_CONFIGS: Record<Role, RoleConfig> = {
     badgeColor: 'bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-950/50 dark:text-emerald-300 dark:border-emerald-800',
     description: 'Specialist in medicine dispensing, pharmacy prescription orders, drug inventory, and patient medication verification.',
     permissions: [
-      'patient_read', 'card_read', 'wallet_read', 'pharmacy_dispense', 'catalog_manage', 'bill_view', 'bill_create'
+      'patient_read', 'card_read', 'wallet_read',
+      'prescription_view', 'medicine_dispense', 'pharmacy_dispense', 'pharmacy_sale_create', 'pharmacy_stock_manage', 'pharmacy_bill_print',
+      'bill_create', 'bill_view_own'
     ]
   },
   marketing: {
@@ -466,6 +476,22 @@ export function hasPermission(userRole: Role, permission: Permission): boolean {
   if (config.permissions.includes(permission)) return true;
 
   // Granular compatibility aliases
+  if (permission === 'patient_search' && (config.permissions.includes('patient_read') || config.permissions.includes('patient_create'))) return true;
+  if (permission === 'patient_slip_print' && (config.permissions.includes('patient_print') || config.permissions.includes('patient_create'))) return true;
+  if (permission === 'card_enrollment_open' && (config.permissions.includes('card_request_create') || config.permissions.includes('card_create'))) return true;
+  if (permission === 'appointment_create' && config.permissions.includes('appointment_manage')) return true;
+  if (permission === 'appointment_checkin' && config.permissions.includes('appointment_manage')) return true;
+  if (permission === 'lab_order_create' && (config.permissions.includes('lab_order_manage') || config.permissions.includes('lab_order_create'))) return true;
+  if (permission === 'lab_order_view' && (config.permissions.includes('lab_order_manage') || config.permissions.includes('test_view'))) return true;
+  if (permission === 'specimen_collect' && config.permissions.includes('lab_order_manage')) return true;
+  if (permission === 'barcode_print' && (config.permissions.includes('lab_order_manage') || config.permissions.includes('specimen_collect'))) return true;
+  if (permission === 'result_enter' && config.permissions.includes('lab_order_manage')) return true;
+  if (permission === 'result_draft_save' && config.permissions.includes('lab_order_manage')) return true;
+  if (permission === 'result_submit_verification' && config.permissions.includes('lab_order_manage')) return true;
+  if (permission === 'medicine_dispense' && config.permissions.includes('pharmacy_dispense')) return true;
+  if (permission === 'prescription_view' && (config.permissions.includes('pharmacy_dispense') || config.permissions.includes('emr_read'))) return true;
+  if (permission === 'transactions_view_own' && (config.permissions.includes('card_transactions_view_own') || config.permissions.includes('bill_view_own'))) return true;
+  if (permission === 'transactions_view_all' && config.permissions.includes('card_transactions_view_all')) return true;
   if (permission === 'card_request_view' && (config.permissions.includes('card_request_view_own') || config.permissions.includes('card_request_view_all'))) return true;
   if (permission === 'card_request_view_own' && (config.permissions.includes('card_request_view') || config.permissions.includes('card_request_view_all') || config.permissions.includes('card_request_create'))) return true;
   if (permission === 'card_request_submit' && config.permissions.includes('card_request_create')) return true;
@@ -486,6 +512,22 @@ export function checkUserPermission(user: { role: Role; customPermissions?: Perm
     if (user.customPermissions.includes(permission)) return true;
 
     // Granular compatibility aliases for custom permissions
+    if (permission === 'patient_search' && (user.customPermissions.includes('patient_read') || user.customPermissions.includes('patient_create'))) return true;
+    if (permission === 'patient_slip_print' && (user.customPermissions.includes('patient_print') || user.customPermissions.includes('patient_create'))) return true;
+    if (permission === 'card_enrollment_open' && (user.customPermissions.includes('card_request_create') || user.customPermissions.includes('card_create'))) return true;
+    if (permission === 'appointment_create' && user.customPermissions.includes('appointment_manage')) return true;
+    if (permission === 'appointment_checkin' && user.customPermissions.includes('appointment_manage')) return true;
+    if (permission === 'lab_order_create' && (user.customPermissions.includes('lab_order_manage') || user.customPermissions.includes('lab_order_create'))) return true;
+    if (permission === 'lab_order_view' && (user.customPermissions.includes('lab_order_manage') || user.customPermissions.includes('test_view'))) return true;
+    if (permission === 'specimen_collect' && user.customPermissions.includes('lab_order_manage')) return true;
+    if (permission === 'barcode_print' && (user.customPermissions.includes('lab_order_manage') || user.customPermissions.includes('specimen_collect'))) return true;
+    if (permission === 'result_enter' && user.customPermissions.includes('lab_order_manage')) return true;
+    if (permission === 'result_draft_save' && user.customPermissions.includes('lab_order_manage')) return true;
+    if (permission === 'result_submit_verification' && user.customPermissions.includes('lab_order_manage')) return true;
+    if (permission === 'medicine_dispense' && user.customPermissions.includes('pharmacy_dispense')) return true;
+    if (permission === 'prescription_view' && (user.customPermissions.includes('pharmacy_dispense') || user.customPermissions.includes('emr_read'))) return true;
+    if (permission === 'transactions_view_own' && (user.customPermissions.includes('card_transactions_view_own') || user.customPermissions.includes('bill_view_own'))) return true;
+    if (permission === 'transactions_view_all' && user.customPermissions.includes('card_transactions_view_all')) return true;
     if (permission === 'card_request_view' && (user.customPermissions.includes('card_request_view_own') || user.customPermissions.includes('card_request_view_all') || user.customPermissions.includes('card_request_create'))) return true;
     if (permission === 'card_request_view_own' && (user.customPermissions.includes('card_request_view') || user.customPermissions.includes('card_request_view_all') || user.customPermissions.includes('card_request_create'))) return true;
     if (permission === 'card_request_submit' && user.customPermissions.includes('card_request_create')) return true;

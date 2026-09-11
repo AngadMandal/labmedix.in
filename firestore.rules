@@ -37,8 +37,13 @@ service cloud.firestore {
     }
 
     // ── HEALTH CARD APPLICATIONS & STAFF REQUESTS ────────────────
+    // Self-approval prevented: Submitter cannot approve their own application unless Super Admin
     match /cardApplications/{applicationId} {
-      allow read, create, update: if true;
+      allow read, create: if true;
+      allow update: if isSuperAdmin() || (
+        // Submitter cannot approve own request
+        !(request.resource.data.status == 'approved' && resource.data.submittedByStaffId == request.auth.uid)
+      );
       allow delete: if isSuperAdmin();
     }
 
@@ -132,8 +137,13 @@ service cloud.firestore {
       allow read, write: if true;
     }
 
+    // Protected diagnostic reports: Locked reports cannot be altered without formal amendment
     match /diagnosticReports/{reportId} {
-      allow read, write: if true;
+      allow read, create: if true;
+      allow update: if isSuperAdmin() || (
+        !resource.data.isLocked || (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['amendmentHistory', 'updatedAt']))
+      );
+      allow delete: if isSuperAdmin();
     }
 
     match /medicineOrders/{orderId} {
@@ -265,13 +275,16 @@ service cloud.firestore {
     }
 
     // ── SECURITY & AUDIT TRAIL ───────────────────────────────────
+    // Audit logs are append-only. Modification is strictly disallowed.
     match /audit_logs/{logId} {
-      allow read, create, update: if true;
+      allow read, create: if true;
+      allow update: if false;
       allow delete: if isSuperAdmin();
     }
 
     match /auditLogs/{logId} {
-      allow read, create, update: if true;
+      allow read, create: if true;
+      allow update: if false;
       allow delete: if isSuperAdmin();
     }
   }

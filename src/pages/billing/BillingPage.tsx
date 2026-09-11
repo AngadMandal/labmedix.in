@@ -4,6 +4,8 @@ import { useToast } from '../../context/ToastContext';
 import { BillService } from '../../services/billService';
 import { StorageService } from '../../services/storage';
 import { ApiSyncService } from '../../services/apiSyncService';
+import { WorkflowPermissionService } from '../../services/workflowPermissionService';
+import { AuditService } from '../../services/auditService';
 import { PatientBill, Patient, HealthCard, CompanyProfile } from '../../types';
 import { formatCurrency, formatDate, formatDateTime } from '../../utils/formatters';
 import { Modal } from '../../components/common/Modal';
@@ -27,7 +29,9 @@ import {
   Building,
   QrCode,
   ShieldCheck,
-  Sparkles
+  Sparkles,
+  Lock,
+  ShieldAlert
 } from 'lucide-react';
 
 export const BillingPage: React.FC = () => {
@@ -134,6 +138,35 @@ export const BillingPage: React.FC = () => {
     return cards.find(c => c.patientId === selectedPatientId && c.status === 'active');
   }, [selectedPatientId, cards]);
 
+  // Discount Override Permission Check
+  const canOverrideDiscount = useMemo(() => {
+    return WorkflowPermissionService.canOverrideDiscount(currentUser);
+  }, [currentUser]);
+
+  // Automatic Card Benefit Discount (Patient -> Active Health Card -> Plan -> Benefit)
+  const cardDiscountPercent = useMemo(() => {
+    if (!patientCard || patientCard.status !== 'active') return 0;
+    const tier = (patientCard.tier || '').toLowerCase();
+    if (tier.includes('platinum')) return 25;
+    if (tier.includes('gold') || tier.includes('vip')) return 20;
+    if (tier.includes('shield') || tier.includes('family')) return 15;
+    return 10; // default active cardholder discount
+  }, [patientCard]);
+
+  const autoCardDiscount = useMemo(() => {
+    if (cardDiscountPercent <= 0) return 0;
+    return Math.round((modalSubtotal * cardDiscountPercent) / 100);
+  }, [modalSubtotal, cardDiscountPercent]);
+
+  // Automatically apply verified card benefit discount when patient or subtotal changes
+  useEffect(() => {
+    if (autoCardDiscount > 0) {
+      setDiscountAmount(autoCardDiscount);
+    } else if (!patientCard) {
+      setDiscountAmount(0);
+    }
+  }, [autoCardDiscount, patientCard]);
+
   // Search filtered patients for modal picker
   const filteredPatientsForPicker = useMemo(() => {
     if (!patientSearchTerm.trim()) return patients.slice(0, 15);
@@ -205,6 +238,24 @@ export const BillingPage: React.FC = () => {
       StorageService.saveBill(newBill);
       BillService.recordBillTransaction(newBill, currentUser);
 
+      // Audit Logging
+      if (discountAmount > 0 && discountAmount !== autoCardDiscount && canOverrideDiscount) {
+        AuditService.logWorkflowAction(currentUser, 'discount_override', 'billing', billNumber, {
+          patientId: selectedPatient.id,
+          patientName: selectedPatient.fullName,
+          autoCardDiscount,
+          appliedDiscount: Number(discountAmount),
+          reason: notes || 'Authorized manual discount override'
+        });
+      }
+      AuditService.logWorkflowAction(currentUser, 'create', 'billing', billNumber, {
+        patientName: selectedPatient.fullName,
+        netPayable: modalNetPayable,
+        paymentMethod,
+        discountAmount: Number(discountAmount || 0),
+        hasCard: !!patientCard
+      });
+
       setBills(StorageService.getBills());
       setIsNewBillModalOpen(false);
       setPrintBill(newBill);
@@ -221,9 +272,20 @@ export const BillingPage: React.FC = () => {
     }
   };
 
+  // Bill visibility based on permission (View all clinic bills vs own cash desk receipts)
+  const canViewAllBills = currentUser?.role === 'super_admin' || currentUser?.role === 'admin' || can('bill_view_all') || can('finance_view');
+
+  const permittedBills = useMemo(() => {
+    if (canViewAllBills) return bills;
+    return bills.filter(b =>
+      b.authorizedStaff?.id === currentUser?.id ||
+      b.authorizedStaff?.name?.toLowerCase() === currentUser?.fullName?.toLowerCase()
+    );
+  }, [bills, canViewAllBills, currentUser]);
+
   // Filtered Bills
   const filteredBills = useMemo(() => {
-    return bills.filter((b) => {
+    return permittedBills.filter((b) => {
       if (statusFilter !== 'all' && b.paymentStatus !== statusFilter) return false;
       if (categoryFilter !== 'all' && b.billCategory !== categoryFilter) return false;
 
@@ -240,22 +302,22 @@ export const BillingPage: React.FC = () => {
       }
       return true;
     });
-  }, [bills, statusFilter, categoryFilter, searchQuery]);
+  }, [permittedBills, statusFilter, categoryFilter, searchQuery]);
 
-  // Metrics
+  // Metrics (grounded in permitted transactions)
   const metrics = useMemo(() => {
-    const total = bills.length;
-    const paid = bills.filter(b => b.paymentStatus === 'paid').length;
-    const pending = bills.filter(b => b.paymentStatus === 'pending').length;
-    const totalRevenue = bills
+    const total = permittedBills.length;
+    const paid = permittedBills.filter(b => b.paymentStatus === 'paid').length;
+    const pending = permittedBills.filter(b => b.paymentStatus === 'pending').length;
+    const totalRevenue = permittedBills
       .filter(b => b.paymentStatus === 'paid')
       .reduce((sum, b) => sum + Number(b.paidAmount || b.netPayable || 0), 0);
-    const totalDue = bills
+    const totalDue = permittedBills
       .filter(b => b.paymentStatus === 'pending')
       .reduce((sum, b) => sum + Math.max(0, Number(b.netPayable || 0) - Number(b.paidAmount || 0)), 0);
 
     return { total, paid, pending, totalRevenue, totalDue };
-  }, [bills]);
+  }, [permittedBills]);
 
   return (
     <div className="space-y-6 pb-12">
@@ -639,14 +701,38 @@ export const BillingPage: React.FC = () => {
             {/* Discount & Totals */}
             <div className="grid grid-cols-2 gap-3 pt-2 border-t border-slate-800">
               <div className="space-y-1">
-                <label className="block text-slate-300 font-bold">Discount (₹)</label>
-                <input
-                  type="number"
-                  min="0"
-                  value={discountAmount}
-                  onChange={(e) => setDiscountAmount(Number(e.target.value))}
-                  className="w-full p-2 rounded-xl bg-slate-800 border border-slate-700 text-white"
-                />
+                <div className="flex items-center justify-between">
+                  <label className="block text-slate-300 font-bold">Discount (₹)</label>
+                  {patientCard && (
+                    <span className="text-[10px] font-bold text-teal-300 bg-teal-950/60 px-2 py-0.5 rounded border border-teal-500/30">
+                      🛡️ Card {cardDiscountPercent}% (₹{autoCardDiscount})
+                    </span>
+                  )}
+                </div>
+                <div className="relative">
+                  <input
+                    type="number"
+                    min="0"
+                    value={discountAmount}
+                    disabled={!canOverrideDiscount && autoCardDiscount > 0}
+                    onChange={(e) => {
+                      if (!canOverrideDiscount) {
+                        showToast('error', 'Override Prohibited', 'Manual discount adjustments require discount_override permission or Super Admin.');
+                        return;
+                      }
+                      setDiscountAmount(Number(e.target.value));
+                    }}
+                    className={`w-full p-2 rounded-xl bg-slate-800 border border-slate-700 text-white ${
+                      !canOverrideDiscount && autoCardDiscount > 0 ? 'opacity-70 cursor-not-allowed' : 'focus:border-amber-500'
+                    }`}
+                  />
+                  {!canOverrideDiscount && (
+                    <div className="mt-1 flex items-center gap-1 text-[10px] text-slate-400">
+                      <Lock className="w-3 h-3 text-amber-400 shrink-0" />
+                      <span>Policy locked. Manual override requires supervisor role.</span>
+                    </div>
+                  )}
+                </div>
               </div>
 
               <div className="p-3 rounded-2xl bg-amber-950/40 border border-amber-500/30 flex flex-col justify-center text-right">

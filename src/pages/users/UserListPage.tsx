@@ -143,7 +143,79 @@ const PERMISSION_LABELS: Record<Permission, { label: string; category: string }>
   appointment_view: { label: 'View Appointments & OPD Queue', category: 'Clinical EMR' },
   lab_order_manage: { label: 'Process Lab Investigations & Samples', category: 'Clinical Admin' },
   pharmacy_dispense: { label: 'Dispense Prescription Medications', category: 'Clinical Admin' },
-  permissions_manage: { label: 'Super Admin RBAC Matrix & Role Governance', category: 'System Core' }
+  permissions_manage: { label: 'Super Admin RBAC Matrix & Role Governance', category: 'System Core' },
+
+  // Granular Patient Operations
+  patient_search: { label: 'Search Patient Directory', category: 'Patient Care' },
+  patient_slip_print: { label: 'Print Patient Registration Slip', category: 'Patient Care' },
+  clinical_view: { label: 'View Patient Clinical EMR History', category: 'Patient Care' },
+
+  // Granular Health Card Operations
+  card_enrollment_open: { label: 'Open Card Enrollment Window', category: 'Card Studio' },
+  card_request_return: { label: 'Return Card Request for Correction', category: 'Card Studio' },
+  card_plan_configure: { label: 'Configure Health Card Plans', category: 'Card Studio' },
+  card_pricing_configure: { label: 'Configure Card Pricing Rules', category: 'Card Studio' },
+  card_benefit_configure: { label: 'Configure Card Benefit Discounts', category: 'Card Studio' },
+
+  // Family Shield Granular
+  family_member_add: { label: 'Add Family Members to Card', category: 'Family Shield' },
+  family_view: { label: 'View Family Shield Relationships', category: 'Family Shield' },
+  family_limit_configure: { label: 'Configure Family Member Limits', category: 'Family Shield' },
+
+  // Appointments Granular
+  appointment_create: { label: 'Schedule Doctor Appointment', category: 'Appointments' },
+  appointment_reschedule: { label: 'Reschedule Appointment', category: 'Appointments' },
+  appointment_cancel: { label: 'Cancel Doctor Appointment', category: 'Appointments' },
+  appointment_checkin: { label: 'Patient Queue Check-in', category: 'Appointments' },
+  consultation_open: { label: 'Open EMR Doctor Consultation', category: 'Appointments' },
+  consultation_complete: { label: 'Mark Consultation Complete', category: 'Appointments' },
+  prescription_add: { label: 'Prescribe Medications & Dosages', category: 'Appointments' },
+  investigation_order: { label: 'Order Diagnostic Lab Investigations', category: 'Appointments' },
+  followup_add: { label: 'Schedule Follow-up Consultation', category: 'Appointments' },
+
+  // Laboratory & Diagnostic Granular
+  lab_order_create: { label: 'Create Laboratory Test Order', category: 'Laboratory' },
+  lab_order_view: { label: 'View Diagnostic Test Orders', category: 'Laboratory' },
+  specimen_collect: { label: 'Phlebotomy Sample Collection', category: 'Laboratory' },
+  specimen_receive: { label: 'Receive Specimen at Lab Desk', category: 'Laboratory' },
+  specimen_process: { label: 'Process Analyzer Specimens', category: 'Laboratory' },
+  result_enter: { label: 'Enter Diagnostic Test Results', category: 'Laboratory' },
+  result_draft_save: { label: 'Save Draft Laboratory Results', category: 'Laboratory' },
+  result_submit_verification: { label: 'Submit Results for Verification', category: 'Laboratory' },
+  result_verify: { label: 'Review & Verify Lab Results', category: 'Laboratory' },
+  report_finalize: { label: 'Approve & Finalize Lab Report', category: 'Laboratory' },
+  report_amend: { label: 'Authorize Report Amendment', category: 'Laboratory' },
+  barcode_print: { label: 'Print Phlebotomy Specimen Barcodes', category: 'Laboratory' },
+  report_download: { label: 'Download Verified Lab Reports', category: 'Laboratory' },
+  report_share: { label: 'Share Diagnostic Report (WhatsApp/Email)', category: 'Laboratory' },
+
+  // Billing & Finance Granular
+  discount_override: { label: 'Manual Discount Override Authorization', category: 'Financial' },
+  finance_view: { label: 'View Cashier Shift & Register Ledger', category: 'Financial' },
+  financial_analytics_view: { label: 'View Financial Analytics & Reports', category: 'Financial' },
+  pricing_configure: { label: 'Configure Base Test & Service Pricing', category: 'Financial' },
+  refund_approve: { label: 'Approve Cashier Refunds', category: 'Financial' },
+
+  // Pharmacy Granular
+  prescription_view: { label: 'View EMR Doctor Prescriptions', category: 'Pharmacy' },
+  medicine_dispense: { label: 'Dispense Medicines at Pharmacy', category: 'Pharmacy' },
+  pharmacy_sale_create: { label: 'Create Pharmacy Cash Desk Sale', category: 'Pharmacy' },
+  pharmacy_stock_manage: { label: 'Manage Pharmacy Medication Inventory', category: 'Pharmacy' },
+  pharmacy_bill_print: { label: 'Print Pharmacy Dispensing Invoice', category: 'Pharmacy' },
+
+  // Ledger & Transactions Granular
+  transactions_view_own: { label: 'View Own Generated Transactions', category: 'Financial' },
+  transactions_view_all: { label: 'View Clinic-Wide Financial Transactions', category: 'Financial' },
+
+  // Governance & User Administration
+  staff_create: { label: 'Create Hospital Staff Account', category: 'System Core' },
+  user_create: { label: 'Create System User', category: 'System Core' },
+  role_assign: { label: 'Assign Clinical Roles', category: 'System Core' },
+  permission_assign: { label: 'Assign Granular Workflow Permissions', category: 'System Core' },
+  user_status_toggle: { label: 'Activate / Suspend Staff Accounts', category: 'System Core' },
+  staff_department_assign: { label: 'Assign Hospital Department', category: 'System Core' },
+  user_activity_review: { label: 'Review Staff Workflow Audit Activity', category: 'Compliance' },
+  audit_export: { label: 'Export Cryptographic Audit Logs', category: 'Compliance' }
 };
 
 // Preset high-res clinical avatar gallery

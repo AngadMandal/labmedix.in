@@ -18,6 +18,7 @@ import { ApiSyncService } from './apiSyncService';
 import { AuditService } from './auditService';
 import { BillService } from './billService';
 import { DoctorMasterService } from './doctorMasterService';
+import { CardBenefitService } from './cardBenefitService';
 import { generateUuid, generateLabOrderId, generateSampleBarcode } from '../utils/idGenerator';
 
 export const LAB_ORDERS_KEY = 'labmedix_portal_lab_bookings_v1';
@@ -369,14 +370,14 @@ export class LaboratoryService {
     const memberships = StorageService.getMemberships();
     const membership = card ? memberships.find(m => m.id === card.membershipId) : undefined;
 
-    let discountPct = 0;
-    if (membership) {
-      discountPct = membership.labDiscount ?? (membership.id.includes('gold') ? 25 : membership.id.includes('plat') ? 35 : 15);
-    } else if (card) {
-      discountPct = 25;
-    }
-    const discountAmount = Math.round((input.mrp * discountPct) / 100);
-    const netPayable = Math.max(0, input.mrp - discountAmount);
+    const chargeCalc = CardBenefitService.calculateServiceCharge({
+      patientId: patient.id,
+      serviceCategory: 'lab',
+      grossAmount: input.mrp
+    });
+    const discountPct = chargeCalc.discountPct;
+    const discountAmount = chargeCalc.discountAmount;
+    const netPayable = chargeCalc.netPayable;
 
     const now = new Date().toISOString();
     const orderNumber = this.generateOrderNumber();
@@ -418,9 +419,9 @@ export class LaboratoryService {
       patientName: patient.fullName,
       patientMobile: patient.mobile,
       patientAddress: patient.address?.fullAddress || '',
-      healthCardId: card?.id,
-      healthCardNumber: card?.cardNumber,
-      membershipName: membership?.name,
+      healthCardId: chargeCalc.hasActiveCard ? card?.id : undefined,
+      healthCardNumber: chargeCalc.hasActiveCard ? card?.cardNumber : undefined,
+      membershipName: chargeCalc.hasActiveCard ? (chargeCalc.planName || membership?.name) : 'Standard Hospital Rack',
       isCardIssued: false,
       familyMemberCount: 1,
       includedMembers: 1,

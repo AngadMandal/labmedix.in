@@ -20,7 +20,9 @@ import { PatientRealMoneyTopUpModal } from '../../components/portal/PatientRealM
 import { DirectLabAndPackageBookingModal } from '../../components/portal/DirectLabAndPackageBookingModal';
 import { DirectMedicineOrderModal } from '../../components/portal/DirectMedicineOrderModal';
 import { CardDispatchService } from '../../services/cardDispatchService';
-import { Patient, PatientAppointment, CardApplicationRequest, HealthCard, Membership, Wallet, CardDispatchRecord } from '../../types';
+import { CardBenefitService, PatientBenefitStatus } from '../../services/cardBenefitService';
+import { Card3DPhysicalShowcase } from '../../components/card/Card3DPhysicalShowcase';
+import { Patient, PatientAppointment, CardApplicationRequest, HealthCard, Membership, Wallet, CardDispatchRecord, PatientBill } from '../../types';
 import { DEFAULT_MEMBERSHIPS } from '../../constants/memberships';
 import { formatDate, formatDateTime, formatCurrency } from '../../utils/formatters';
 
@@ -84,14 +86,15 @@ import {
   Zap,
   Filter,
   UserCheck,
-  QrCode
+  QrCode,
+  Rotate3d
 } from 'lucide-react';
 import { useToast } from '../../context/ToastContext';
 import { triggerCelebrationFireworks } from '../../utils/confetti';
 
 export const PatientListPage: React.FC = () => {
   // Navigation & View Mode: Default to primary Patient Directory Table
-  const [activeMainView, setActiveMainView] = useState<'directory_table' | 'directory_grid' | 'requests_command' | 'card_applications'>('directory_table');
+  const [activeMainView, setActiveMainView] = useState<'directory_table' | 'directory_grid' | 'requests_command' | 'card_applications' | 'hub_3d'>('directory_table');
   const [showDeleted, setShowDeleted] = useState(false);
   const [quickViewPatient, setQuickViewPatient] = useState<Patient | null>(null);
 
@@ -103,7 +106,9 @@ export const PatientListPage: React.FC = () => {
   // Master Patient Directory Filters
   const [directoryBloodGroupFilter, setDirectoryBloodGroupFilter] = useState<string>('all');
   const [directoryTierFilter, setDirectoryTierFilter] = useState<string>('all');
+  const [cardStatusFilter, setCardStatusFilter] = useState<'all' | 'active' | 'no_card' | 'pending' | 'expired_suspended'>('all');
   const [directorySearchQuery, setDirectorySearchQuery] = useState('');
+  const [selected3DPatientId, setSelected3DPatientId] = useState<string>('');
 
   // Modals for Printing Bill, Barcode Label, Sample Dispatch, Card Review, Wallet, Lab Booking, Medicine
   const [activeReceiptToPrint, setActiveReceiptToPrint] = useState<PatientReceiptData | null>(null);
@@ -128,6 +133,8 @@ export const PatientListPage: React.FC = () => {
   const company = StorageService.getCompanyProfile();
   const [wallets, setWallets] = useState<Wallet[]>(() => StorageService.getWallets());
   const [cardDispatches, setCardDispatches] = useState<CardDispatchRecord[]>(() => CardDispatchService.getAll());
+  const [bills, setBills] = useState<PatientBill[]>(() => StorageService.getBills());
+  const [diagnosticReports, setDiagnosticReports] = useState<any[]>(() => StorageService.getItem('labmedix_diagnostic_reports_v1', []));
   const [onlyPendingPrint, setOnlyPendingPrint] = useState(false);
 
   // Live Cardholder Portal Requests & Applications
@@ -205,6 +212,12 @@ export const PatientListPage: React.FC = () => {
     const unsubCardApps = ApiSyncService.subscribeToCollection<CardApplicationRequest>('cardApplications', (items) => {
       if (Array.isArray(items)) setCardApplications(items);
     });
+    const unsubBills = ApiSyncService.subscribeToCollection<PatientBill>('bills', (items) => {
+      if (Array.isArray(items)) setBills(items);
+    });
+    const unsubReports = ApiSyncService.subscribeToCollection<any>('diagnosticReports', (items) => {
+      if (Array.isArray(items)) setDiagnosticReports(items);
+    });
 
     const handleSync = () => {
       setPatients(StorageService.getPatients());
@@ -212,6 +225,8 @@ export const PatientListPage: React.FC = () => {
       setMemberships(StorageService.getMemberships());
       setWallets(StorageService.getWallets());
       setCardDispatches(CardDispatchService.getAll());
+      setBills(StorageService.getBills());
+      setDiagnosticReports(StorageService.getItem('labmedix_diagnostic_reports_v1', []));
       setLabBookings(PortalService.getLabBookings());
       setPharmacyOrders(PortalService.getPharmacyOrders());
       setAppointments(EMRService.getAllAppointments());
@@ -225,6 +240,8 @@ export const PatientListPage: React.FC = () => {
       unsubMemberships();
       unsubWallets();
       unsubDispatches();
+      unsubBills();
+      unsubReports();
       unsubLab();
       unsubPharmacy();
       unsubAppointments();
@@ -632,7 +649,7 @@ export const PatientListPage: React.FC = () => {
     });
   }, [unifiedRequests, serviceTypeFilter, serviceStatusFilter, searchQuery]);
 
-  // Filtered Master Patients List
+  // Filtered Master Patients List with Multi-Entity Search & Card Status Filter
   const filteredPatients = useMemo(() => {
     return patients.filter(p => {
       if (showDeleted ? !p.isDeleted : p.isDeleted) return false;
@@ -646,6 +663,15 @@ export const PatientListPage: React.FC = () => {
         if (card?.membershipId !== directoryTierFilter) return false;
       }
 
+      // Card Status Filter (All, Active, No Card, Pending, Expired/Suspended)
+      if (cardStatusFilter !== 'all') {
+        const benefitStatus = CardBenefitService.getPatientCardBenefitStatus(p.id);
+        if (cardStatusFilter === 'active' && !benefitStatus.hasActiveCard) return false;
+        if (cardStatusFilter === 'no_card' && (benefitStatus.hasActiveCard || benefitStatus.effectiveStatus === 'pending_approval')) return false;
+        if (cardStatusFilter === 'pending' && benefitStatus.effectiveStatus !== 'pending_approval') return false;
+        if (cardStatusFilter === 'expired_suspended' && benefitStatus.effectiveStatus !== 'expired' && benefitStatus.effectiveStatus !== 'suspended') return false;
+      }
+
       if (onlyPendingPrint) {
         const card = cards.find(c => c.id === p.healthCardId || c.patientId === p.id);
         if (!card) return false;
@@ -654,21 +680,65 @@ export const PatientListPage: React.FC = () => {
         if (printStatus !== 'pending_print') return false;
       }
 
+      // Multi-Entity Hospital Search (Patient ID, Name, Mobile, Card No, Request ID, Appointment, Lab Order, Report No, Bill No)
       if (directorySearchQuery.trim()) {
-        const q = directorySearchQuery.toLowerCase();
+        const q = directorySearchQuery.toLowerCase().trim();
         const card = cards.find(c => c.id === p.healthCardId || c.patientId === p.id);
-        return (
+
+        const matchPatient =
           p.fullName.toLowerCase().includes(q) ||
           p.id.toLowerCase().includes(q) ||
           p.mobile.includes(q) ||
-          p.bloodGroup.toLowerCase().includes(q) ||
-          (card?.cardNumber && card.cardNumber.toLowerCase().includes(q))
+          p.bloodGroup.toLowerCase().includes(q);
+        if (matchPatient) return true;
+
+        if (card?.cardNumber && card.cardNumber.toLowerCase().includes(q)) return true;
+
+        const matchApp = cardApplications.some(a =>
+          (a.patientId === p.id || a.mobile === p.mobile) &&
+          ((a.applicationNo && a.applicationNo.toLowerCase().includes(q)) ||
+           (a.trackingId && a.trackingId.toLowerCase().includes(q)) ||
+           (a.id && a.id.toLowerCase().includes(q)))
         );
+        if (matchApp) return true;
+
+        const matchAppt = appointments.some(appt =>
+          appt.patientId === p.id &&
+          ((appt.id && appt.id.toLowerCase().includes(q)) ||
+           (appt.appointmentNo && appt.appointmentNo.toLowerCase().includes(q)))
+        );
+        if (matchAppt) return true;
+
+        const matchLab = labBookings.some(lab =>
+          lab.patientId === p.id &&
+          ((lab.id && lab.id.toLowerCase().includes(q)) ||
+           (lab.bookingNo && lab.bookingNo.toLowerCase().includes(q)) ||
+           ((lab as any).specimenId && (lab as any).specimenId.toLowerCase().includes(q)) ||
+           (lab.sampleBarcode && lab.sampleBarcode.toLowerCase().includes(q)))
+        );
+        if (matchLab) return true;
+
+        const matchReport = diagnosticReports.some(rpt =>
+          rpt.patientId === p.id &&
+          ((rpt.reportNumber && rpt.reportNumber.toLowerCase().includes(q)) ||
+           (rpt.id && rpt.id.toLowerCase().includes(q)))
+        );
+        if (matchReport) return true;
+
+        const matchBill = bills.some(b =>
+          b.patientId === p.id &&
+          ((b.billNumber && b.billNumber.toLowerCase().includes(q)) ||
+           (b.transactionId && b.transactionId.toLowerCase().includes(q)) ||
+           (b.id && b.id.toLowerCase().includes(q)))
+        );
+        if (matchBill) return true;
+
+        return false;
       }
 
       return true;
     });
-  }, [patients, showDeleted, directoryBloodGroupFilter, directoryTierFilter, directorySearchQuery, cards, cardDispatches, onlyPendingPrint]);
+  }, [patients, showDeleted, directoryBloodGroupFilter, directoryTierFilter, cardStatusFilter, directorySearchQuery, cards, cardDispatches, cardApplications, appointments, labBookings, diagnosticReports, bills, onlyPendingPrint]);
 
   // Directory Columns for Table View
   const directoryColumns: Column<Patient>[] = [
@@ -718,43 +788,101 @@ export const PatientListPage: React.FC = () => {
       )
     },
     {
-      header: 'Health Card & Print Status',
+      header: 'Health Card & Status',
       accessor: (p) => {
-        const card = cards.find(c => c.id === p.healthCardId || c.patientId === p.id);
-        const mem = getMem(card?.membershipId, memberships);
+        const benefitStatus = CardBenefitService.getPatientCardBenefitStatus(p.id);
+        const card = benefitStatus.card;
+        const mem = benefitStatus.membership || getMem(card?.membershipId, memberships);
         const wallet = wallets.find(w => w.patientId === p.id);
-        if (!card) return <span className="text-xs text-slate-400">No Active Card</span>;
 
-        const dispatch = cardDispatches.find(d => d.patientId === p.id || d.cardId === card.id);
+        if (!benefitStatus.hasActiveCard) {
+          if (benefitStatus.effectiveStatus === 'pending_approval') {
+            return (
+              <div className="text-xs space-y-1">
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase font-mono bg-amber-100 text-amber-800 dark:bg-amber-950/80 dark:text-amber-300 border border-amber-300 dark:border-amber-700">
+                  <Clock className="w-3 h-3" /> Card Requested (Pending Approval)
+                </span>
+                <span className="text-[10px] text-slate-400 block">Standard Hospital Pricing Applies</span>
+              </div>
+            );
+          }
+          if (benefitStatus.effectiveStatus === 'expired') {
+            return (
+              <div className="text-xs space-y-1">
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase font-mono bg-rose-100 text-rose-800 dark:bg-rose-950/80 dark:text-rose-300 border border-rose-300 dark:border-rose-700">
+                  <AlertTriangle className="w-3 h-3" /> Card Expired (Standard Pricing)
+                </span>
+                <span className="text-[10px] text-slate-400 block font-mono">{card?.cardNumber}</span>
+              </div>
+            );
+          }
+          if (benefitStatus.effectiveStatus === 'suspended') {
+            return (
+              <div className="text-xs space-y-1">
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase font-mono bg-orange-100 text-orange-800 dark:bg-orange-950/80 dark:text-orange-300 border border-orange-300 dark:border-orange-700">
+                  Card Suspended (Standard Pricing)
+                </span>
+                <span className="text-[10px] text-slate-400 block font-mono">{card?.cardNumber}</span>
+              </div>
+            );
+          }
+          // Non-Card Patient
+          return (
+            <div className="text-xs space-y-1.5">
+              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase font-mono bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border border-slate-300 dark:border-slate-700">
+                Non-Card Patient (Standard Pricing)
+              </span>
+              <div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPreselectedPatientId(p.id);
+                    setIsCreateRequestModalOpen(true);
+                  }}
+                  className="text-[10px] font-bold text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1"
+                >
+                  <Plus className="w-3 h-3" /> Enroll in Health Card
+                </button>
+              </div>
+            </div>
+          );
+        }
+
+        const dispatch = cardDispatches.find(d => d.patientId === p.id || d.cardId === card?.id);
         const printStatus = dispatch?.printStatus || 'printed';
         const isPending = printStatus === 'pending_print';
 
         return (
           <div className="text-xs space-y-1">
             <div className="flex items-center justify-between gap-2">
-              <span className="font-mono font-bold text-teal-600 dark:text-teal-400">{card.cardNumber}</span>
-              <button
-                type="button"
-                onClick={() => handleTogglePrintStatus(p, card)}
-                title={isPending ? 'Click to mark card as Printed' : 'Card Printed. Click to toggle status.'}
-                className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase font-mono tracking-wider transition-all shadow-sm flex items-center gap-1 ${
-                  isPending
-                    ? 'bg-amber-100 text-amber-800 border border-amber-300 dark:bg-amber-950/80 dark:text-amber-300 dark:border-amber-600 animate-pulse'
-                    : 'bg-emerald-100 text-emerald-800 border border-emerald-300 dark:bg-emerald-950/80 dark:text-emerald-300 dark:border-emerald-600'
-                }`}
-              >
-                {isPending ? '🖨️ Pending Print' : '✅ Card Printed'}
-              </button>
+              <span className="font-mono font-bold text-teal-600 dark:text-teal-400">{card?.cardNumber}</span>
+              {card && (
+                <button
+                  type="button"
+                  onClick={() => handleTogglePrintStatus(p, card)}
+                  title={isPending ? 'Click to mark card as Printed' : 'Card Printed. Click to toggle status.'}
+                  className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase font-mono tracking-wider transition-all shadow-sm flex items-center gap-1 ${
+                    isPending
+                      ? 'bg-amber-100 text-amber-800 border border-amber-300 dark:bg-amber-950/80 dark:text-amber-300 dark:border-amber-600 animate-pulse'
+                      : 'bg-emerald-100 text-emerald-800 border border-emerald-300 dark:bg-emerald-950/80 dark:text-emerald-300 dark:border-emerald-600'
+                  }`}
+                >
+                  {isPending ? '🖨️ Pending Print' : '✅ Card Printed'}
+                </button>
+              )}
             </div>
             <div className="flex items-center gap-1.5 mt-0.5">
               <span
                 className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase font-mono inline-block"
                 style={{ backgroundColor: (mem.color || '#0D9488') + '20', color: mem.color || '#0D9488' }}
               >
-                {mem.name || 'Standard Gold'}
+                {benefitStatus.isFamilyCovered ? `Family Shield (${mem.name})` : mem.name}
               </span>
               <span className="text-[10px] font-mono text-emerald-600 font-bold">
                 ₹{wallet?.balance || 0}
+              </span>
+              <span className="text-[10px] text-slate-400">
+                • {benefitStatus.discounts.labDiscount}% Lab
               </span>
             </div>
           </div>
@@ -1016,6 +1144,19 @@ export const PatientListPage: React.FC = () => {
               >
                 <CreditCard className="w-3.5 h-3.5" />
                 <span>Online Card Applications ({stats.pendingApps})</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setActiveMainView('hub_3d')}
+                className={`px-3 py-1.5 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all ${
+                  activeMainView === 'hub_3d'
+                    ? 'bg-gradient-to-r from-teal-500 via-emerald-500 to-teal-600 text-slate-950 shadow-md font-black'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                <Rotate3d className="w-3.5 h-3.5" />
+                <span>3D Operations Hub</span>
               </button>
 
               <button
@@ -1729,6 +1870,19 @@ export const PatientListPage: React.FC = () => {
                 ))}
               </select>
 
+              {/* Card Status Filter */}
+              <select
+                value={cardStatusFilter}
+                onChange={(e) => setCardStatusFilter(e.target.value as any)}
+                className="px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-xs font-bold text-white focus:outline-none focus:border-teal-500"
+              >
+                <option value="all">All Card Statuses</option>
+                <option value="active">Active Cardholders</option>
+                <option value="no_card">Non-Card Patients</option>
+                <option value="pending">Card Requested (Pending)</option>
+                <option value="expired_suspended">Expired / Suspended</option>
+              </select>
+
               <button
                 onClick={() => setShowDeleted(!showDeleted)}
                 className={`text-xs font-semibold px-3 py-1.5 rounded-xl border transition-colors ${
@@ -1758,11 +1912,11 @@ export const PatientListPage: React.FC = () => {
               </button>
             </div>
 
-            <div className="relative w-full md:w-72">
+            <div className="relative w-full md:w-80">
               <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
               <input
                 type="text"
-                placeholder="Search Name, Phone, ID, Card..."
+                placeholder="Search ID, Name, Phone, Card, Request ID, Appt, Lab, Bill..."
                 value={directorySearchQuery}
                 onChange={(e) => setDirectorySearchQuery(e.target.value)}
                 className="w-full pl-8 pr-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-teal-500"
@@ -1797,6 +1951,7 @@ export const PatientListPage: React.FC = () => {
               const mem = getMem(card?.membershipId, memberships);
               const patientReqs = unifiedRequests.filter(r => r.patientId === p.id);
               const wallet = wallets.find(w => w.patientId === p.id);
+              const benefit = CardBenefitService.getPatientCardBenefitStatus(p.id, cards, memberships);
 
               return (
                 <div
@@ -1828,51 +1983,88 @@ export const PatientListPage: React.FC = () => {
                       </div>
                     </div>
 
-                    <div className="p-3 bg-slate-50 dark:bg-slate-800/50 rounded-2xl text-xs space-y-1.5 my-3">
+                    <div className="p-3 bg-slate-50 dark:bg-slate-800/50 rounded-2xl text-xs space-y-2 my-3">
                       <div className="flex justify-between">
                         <span className="text-slate-400">Mobile:</span>
                         <strong className="text-slate-800 dark:text-slate-200">{p.mobile}</strong>
                       </div>
+
                       <div className="flex justify-between items-center">
-                        <span className="text-slate-400">Card No & Print:</span>
-                        <div className="flex items-center gap-1.5">
-                          <strong className="font-mono text-teal-600 dark:text-teal-400">{card?.cardNumber || 'N/A'}</strong>
-                          {card && (() => {
-                            const dispatch = cardDispatches.find(d => d.patientId === p.id || d.cardId === card.id);
-                            const printStatus = dispatch?.printStatus || 'printed';
-                            const isPending = printStatus === 'pending_print';
-                            return (
-                              <button
-                                type="button"
-                                onClick={() => handleTogglePrintStatus(p, card)}
-                                title={isPending ? 'Click to mark card as Printed' : 'Card Printed. Click to toggle status.'}
-                                className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase font-mono tracking-wider transition-all ${
-                                  isPending
-                                    ? 'bg-amber-100 text-amber-800 border border-amber-300 dark:bg-amber-950/80 dark:text-amber-300 dark:border-amber-600 animate-pulse'
-                                    : 'bg-emerald-100 text-emerald-800 border border-emerald-300 dark:bg-emerald-950/80 dark:text-emerald-300 dark:border-emerald-600'
-                                }`}
-                              >
-                                {isPending ? '🖨️ Pending' : '✅ Printed'}
-                              </button>
-                            );
-                          })()}
-                        </div>
+                        <span className="text-slate-400">Card & Benefits:</span>
+                        {benefit.hasActiveCard ? (
+                          <div className="flex items-center gap-1.5">
+                            <strong className="font-mono text-teal-600 dark:text-teal-400 font-bold">{benefit.cardNumber}</strong>
+                            {card && (() => {
+                              const dispatch = cardDispatches.find(d => d.patientId === p.id || d.cardId === card.id);
+                              const printStatus = dispatch?.printStatus || 'printed';
+                              const isPending = printStatus === 'pending_print';
+                              return (
+                                <button
+                                  type="button"
+                                  onClick={() => handleTogglePrintStatus(p, card)}
+                                  title={isPending ? 'Click to mark card as Printed' : 'Card Printed. Click to toggle status.'}
+                                  className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase font-mono tracking-wider transition-all ${
+                                    isPending
+                                      ? 'bg-amber-100 text-amber-800 border border-amber-300 dark:bg-amber-950/80 dark:text-amber-300 dark:border-amber-600 animate-pulse'
+                                      : 'bg-emerald-100 text-emerald-800 border border-emerald-300 dark:bg-emerald-950/80 dark:text-emerald-300 dark:border-emerald-600'
+                                  }`}
+                                >
+                                  {isPending ? '🖨️ Pending' : '✅ Printed'}
+                                </button>
+                              );
+                            })()}
+                          </div>
+                        ) : (
+                          <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${
+                            benefit.effectiveStatus === 'pending_approval' || benefit.effectiveStatus === 'card_requested'
+                              ? 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
+                              : benefit.effectiveStatus === 'expired'
+                              ? 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300'
+                              : 'bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-300'
+                          }`}>
+                            {benefit.badgeLabel}
+                          </span>
+                        )}
                       </div>
-                      <div className="flex justify-between">
-                        <span className="text-slate-400">Card Tier:</span>
-                        <span
-                          className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase font-mono"
-                          style={{ backgroundColor: (mem.color || '#0D9488') + '20', color: mem.color || '#0D9488' }}
-                        >
-                          {mem.name || 'Standard Gold'}
-                        </span>
+
+                      <div className="flex justify-between items-center">
+                        <span className="text-slate-400">Pricing Tier:</span>
+                        {benefit.hasActiveCard ? (
+                          <span
+                            className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase font-mono"
+                            style={{ backgroundColor: (mem.color || '#0D9488') + '20', color: mem.color || '#0D9488' }}
+                          >
+                            {benefit.planName || mem.name || 'Standard Gold'}
+                          </span>
+                        ) : (
+                          <span className="text-[10px] font-semibold text-slate-500">
+                            Standard Rack (0% Discount)
+                          </span>
+                        )}
                       </div>
-                      <div className="flex justify-between border-t border-slate-200 dark:border-slate-700 pt-1">
-                        <span className="text-slate-400">Wallet Float:</span>
+
+                      <div className="flex justify-between border-t border-slate-200 dark:border-slate-700 pt-1.5">
+                        <span className="text-slate-400">Wallet Balance:</span>
                         <strong className="font-mono text-emerald-600 dark:text-emerald-400 font-black">
                           {formatCurrency(wallet?.balance || 0)}
                         </strong>
                       </div>
+
+                      {!benefit.hasActiveCard && (
+                        <div className="pt-1">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setPreselectedPatientId(p.id);
+                              setIsCreateRequestModalOpen(true);
+                            }}
+                            className="w-full py-1.5 px-2 bg-gradient-to-r from-teal-500/10 to-emerald-500/10 hover:from-teal-500/20 hover:to-emerald-500/20 border border-teal-500/30 rounded-xl text-teal-700 dark:text-teal-300 font-bold text-[11px] flex items-center justify-center gap-1.5 transition-all"
+                          >
+                            <Sparkles className="w-3.5 h-3.5 text-teal-600" />
+                            + Enroll in Health Card
+                          </button>
+                        </div>
+                      )}
                     </div>
 
                     {/* Active Live Requests on Card */}
@@ -1915,16 +2107,32 @@ export const PatientListPage: React.FC = () => {
                         Lab Test
                       </Button>
 
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="text-[10px] p-1 h-7 text-purple-600"
-                        title="Print Card Slip"
-                        onClick={() => handlePrintPatientCardSlip(p)}
-                      >
-                        <Printer className="w-3 h-3 mr-1" />
-                        Slip
-                      </Button>
+                      {card ? (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="text-[10px] p-1 h-7 text-purple-600"
+                          title="Open 3D Operations Hub"
+                          onClick={() => {
+                            setSelected3DPatientId(p.id);
+                            setActiveMainView('hub_3d');
+                          }}
+                        >
+                          <Rotate3d className="w-3 h-3 mr-1" />
+                          3D Card
+                        </Button>
+                      ) : (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="text-[10px] p-1 h-7 text-purple-600"
+                          title="Print Patient Slip"
+                          onClick={() => handlePrintPatientCardSlip(p)}
+                        >
+                          <Printer className="w-3 h-3 mr-1" />
+                          Slip
+                        </Button>
+                      )}
                     </div>
 
                     <div className="flex items-center justify-between">
@@ -1942,6 +2150,320 @@ export const PatientListPage: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* 6B. 3D LIVE CARDHOLDER OPERATIONS HUB */}
+      {activeMainView === 'hub_3d' && (() => {
+        const activePatient = patients.find(p => p.id === selected3DPatientId) ||
+          patients.find(pt => cards.some(c => c.id === pt.healthCardId || c.patientId === pt.id)) ||
+          patients[0];
+        const card3D = activePatient ? cards.find(c => c.id === activePatient.healthCardId || c.patientId === activePatient.id) : null;
+        const mem3D = getMem(card3D?.membershipId, memberships);
+        const wallet3D = activePatient ? wallets.find(w => w.patientId === activePatient.id) : null;
+        const benefit3D = activePatient ? CardBenefitService.getPatientCardBenefitStatus(activePatient.id, cards, memberships) : null;
+        const activeRequests3D = activePatient ? unifiedRequests.filter(r => r.patientId === activePatient.id) : [];
+        const cardholders = patients.filter(p => cards.some(c => c.id === p.healthCardId || c.patientId === p.id));
+        const nonCardCount = patients.filter(p => !cards.some(c => c.id === p.healthCardId || c.patientId === p.id)).length;
+        const pendingPrintCount = cardDispatches.filter(d => d.printStatus === 'pending_print').length;
+
+        return (
+          <div className="space-y-6">
+            {/* HUB BANNER & STATS */}
+            <div className="bg-gradient-to-r from-slate-900 via-teal-950 to-slate-900 text-white p-6 rounded-3xl border border-teal-800/40 shadow-xl relative overflow-hidden">
+              <div className="absolute top-0 right-0 -mt-8 -mr-8 w-64 h-64 bg-teal-500/10 rounded-full blur-3xl pointer-events-none" />
+              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 relative z-10">
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-teal-500/20 text-teal-300 border border-teal-400/30 flex items-center gap-1.5">
+                      <Rotate3d className="w-3.5 h-3.5" />
+                      CR80 Physics Engine
+                    </span>
+                    <span className="text-xs text-slate-400">Real-Time Interactive Physical Simulator</span>
+                  </div>
+                  <h2 className="text-2xl font-black tracking-tight text-white flex items-center gap-2">
+                    Live Cardholder 3D Operations Hub
+                  </h2>
+                  <p className="text-xs text-slate-300 mt-1">
+                    Direct physical card inspection, multi-material holographic simulation, barcode verification, and instant clinical actions.
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-3">
+                  <div className="bg-slate-800/80 backdrop-blur-md px-3 py-2 rounded-2xl border border-slate-700 text-center">
+                    <span className="text-[10px] uppercase font-bold text-slate-400 block">Total Patients</span>
+                    <span className="text-lg font-black text-white">{patients.length}</span>
+                  </div>
+                  <div className="bg-teal-900/60 backdrop-blur-md px-3 py-2 rounded-2xl border border-teal-600/40 text-center">
+                    <span className="text-[10px] uppercase font-bold text-teal-300 block">Active Cards</span>
+                    <span className="text-lg font-black text-teal-200">{cardholders.length}</span>
+                  </div>
+                  <div className="bg-slate-800/80 backdrop-blur-md px-3 py-2 rounded-2xl border border-slate-700 text-center">
+                    <span className="text-[10px] uppercase font-bold text-slate-400 block">Non-Card (Rack)</span>
+                    <span className="text-lg font-black text-slate-200">{nonCardCount}</span>
+                  </div>
+                  <div className="bg-amber-900/60 backdrop-blur-md px-3 py-2 rounded-2xl border border-amber-600/40 text-center">
+                    <span className="text-[10px] uppercase font-bold text-amber-300 block">Pending Print</span>
+                    <span className="text-lg font-black text-amber-200">{pendingPrintCount}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* MAIN 3D WORKSPACE GRID */}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+              {/* LEFT COLUMN: PATIENT SELECTOR & QUEUE */}
+              <div className="lg:col-span-4 bg-white dark:bg-slate-900 p-5 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col h-[740px]">
+                <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+                  <h3 className="text-xs font-black uppercase text-slate-900 dark:text-white flex items-center gap-1.5">
+                    <Users className="w-4 h-4 text-teal-600" />
+                    Select Patient / Cardholder
+                  </h3>
+                  <span className="text-[11px] font-mono text-slate-400">{filteredPatients.length} shown</span>
+                </div>
+
+                <div className="relative my-3">
+                  <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
+                  <input
+                    type="text"
+                    placeholder="Search name, phone, card #..."
+                    value={directorySearchQuery}
+                    onChange={(e) => setDirectorySearchQuery(e.target.value)}
+                    className="w-full pl-9 pr-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500 text-slate-800 dark:text-slate-100"
+                  />
+                </div>
+
+                <div className="flex-1 overflow-y-auto space-y-2 pr-1 custom-scrollbar">
+                  {filteredPatients.map((pt) => {
+                    const ptCard = cards.find(c => c.id === pt.healthCardId || c.patientId === pt.id);
+                    const ptBenefit = CardBenefitService.getPatientCardBenefitStatus(pt.id, cards, memberships);
+                    const isSelected = activePatient?.id === pt.id;
+
+                    return (
+                      <div
+                        key={pt.id}
+                        onClick={() => setSelected3DPatientId(pt.id)}
+                        className={`p-3 rounded-2xl cursor-pointer transition-all border ${
+                          isSelected
+                            ? 'bg-teal-50/80 dark:bg-teal-950/40 border-teal-500 shadow-sm'
+                            : 'bg-slate-50/60 dark:bg-slate-800/40 border-slate-200/70 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700'
+                        }`}
+                      >
+                        <div className="flex items-center gap-3">
+                          <img
+                            src={pt.photoUrl || '/logo.jpg'}
+                            alt=""
+                            className="w-10 h-10 rounded-xl object-cover border border-slate-200 dark:border-slate-700"
+                          />
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center justify-between">
+                              <h4 className="text-xs font-bold text-slate-900 dark:text-white truncate">
+                                {pt.fullName}
+                              </h4>
+                              {ptBenefit.hasActiveCard ? (
+                                <span className="px-1.5 py-0.5 rounded text-[9px] font-mono font-bold bg-teal-100 text-teal-800 dark:bg-teal-950 dark:text-teal-300">
+                                  CARD ACTIVE
+                                </span>
+                              ) : (
+                                <span className="px-1.5 py-0.5 rounded text-[9px] font-mono font-bold bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-300">
+                                  RACK
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex items-center justify-between text-[11px] text-slate-500 mt-0.5">
+                              <span className="font-mono">{pt.mobile}</span>
+                              <span className="font-mono font-bold text-teal-600 dark:text-teal-400">
+                                {ptCard?.cardNumber || 'No Card'}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* RIGHT COLUMN: 3D CARD SHOWCASE OR NON-CARD PATIENT PANEL */}
+              <div className="lg:col-span-8 bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm min-h-[740px] flex flex-col justify-between">
+                {activePatient ? (
+                  <div className="space-y-6">
+                    {/* Patient Header Details */}
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100 dark:border-slate-800">
+                      <div className="flex items-center gap-4">
+                        <img
+                          src={activePatient.photoUrl || '/logo.jpg'}
+                          alt=""
+                          className="w-16 h-16 rounded-2xl object-cover border-2 border-teal-500/40 shadow-sm"
+                        />
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <h3 className="text-xl font-black text-slate-900 dark:text-white uppercase">
+                              {activePatient.fullName}
+                            </h3>
+                            <Badge variant="danger" size="sm">
+                              {activePatient.bloodGroup}
+                            </Badge>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500 mt-1 font-mono">
+                            <span>ID: {activePatient.id}</span>
+                            <span>•</span>
+                            <span>{activePatient.mobile}</span>
+                            <span>•</span>
+                            <span>{activePatient.age} Y / {activePatient.gender.toUpperCase()}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => navigate(`/patients/${activePatient.id}`)}
+                        >
+                          <UserCheck className="w-4 h-4 mr-1.5 text-teal-600" />
+                          Full 360° Profile
+                        </Button>
+                      </div>
+                    </div>
+
+                    {/* Card Status / 3D Viewer Presentation */}
+                    {card3D ? (
+                      <div className="space-y-6">
+                        {/* 3D Showcase Component */}
+                        <div className="bg-gradient-to-b from-slate-50 to-slate-100 dark:from-slate-950 dark:to-slate-900 p-6 rounded-3xl border border-slate-200/80 dark:border-slate-800 shadow-inner flex flex-col items-center">
+                          <Card3DPhysicalShowcase
+                            patient={activePatient}
+                            card={card3D}
+                            membership={mem3D}
+                            company={company}
+                            className="w-full max-w-xl"
+                          />
+                        </div>
+
+                        {/* Card Benefits & Quick Diagnostic Info */}
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                          <div className="p-3 bg-teal-50 dark:bg-teal-950/40 rounded-2xl border border-teal-200 dark:border-teal-800 text-center">
+                            <span className="text-[10px] uppercase font-bold text-teal-600 dark:text-teal-400 block">OPD Discount</span>
+                            <span className="text-lg font-black text-teal-900 dark:text-teal-200">{mem3D.opdDiscount || 0}%</span>
+                          </div>
+                          <div className="p-3 bg-blue-50 dark:bg-blue-950/40 rounded-2xl border border-blue-200 dark:border-blue-800 text-center">
+                            <span className="text-[10px] uppercase font-bold text-blue-600 dark:text-blue-400 block">Lab Discount</span>
+                            <span className="text-lg font-black text-blue-900 dark:text-blue-200">{mem3D.labDiscount || 0}%</span>
+                          </div>
+                          <div className="p-3 bg-purple-50 dark:bg-purple-950/40 rounded-2xl border border-purple-200 dark:border-purple-800 text-center">
+                            <span className="text-[10px] uppercase font-bold text-purple-600 dark:text-purple-400 block">Pharmacy Disc.</span>
+                            <span className="text-lg font-black text-purple-900 dark:text-purple-200">{mem3D.pharmacyDiscount || 0}%</span>
+                          </div>
+                          <div className="p-3 bg-emerald-50 dark:bg-emerald-950/40 rounded-2xl border border-emerald-200 dark:border-emerald-800 text-center">
+                            <span className="text-[10px] uppercase font-bold text-emerald-600 dark:text-emerald-400 block">Wallet Float</span>
+                            <span className="text-lg font-black text-emerald-900 dark:text-emerald-200 font-mono">
+                              {formatCurrency(wallet3D?.balance || 0)}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Fast Service Launchers */}
+                        <div className="p-4 bg-slate-50 dark:bg-slate-800/40 rounded-2xl border border-slate-200 dark:border-slate-700 flex flex-wrap items-center justify-between gap-3">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wide">
+                              Fast Clinical Operations:
+                            </span>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="text-blue-600 border-blue-300 dark:border-blue-700 hover:bg-blue-50"
+                              onClick={() => setActivePatientForLabBooking(activePatient)}
+                            >
+                              <TestTube className="w-3.5 h-3.5 mr-1" />
+                              Book Lab Order
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="text-purple-600 border-purple-300 dark:border-purple-700 hover:bg-purple-50"
+                              onClick={() => setActivePatientForMedicineOrder(activePatient)}
+                            >
+                              <Pill className="w-3.5 h-3.5 mr-1" />
+                              Pharmacy Order
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="text-emerald-600 border-emerald-300 dark:border-emerald-700 hover:bg-emerald-50"
+                              onClick={() => setActivePatientForTopUp(activePatient)}
+                            >
+                              <WalletIcon className="w-3.5 h-3.5 mr-1" />
+                              Top Up Wallet
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="text-slate-700 dark:text-slate-200"
+                              onClick={() => handlePrintPatientCardSlip(activePatient)}
+                            >
+                              <Printer className="w-3.5 h-3.5 mr-1" />
+                              Print Card Slip
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      /* Non-Card Patient Hero Presentation */
+                      <div className="p-8 rounded-3xl bg-gradient-to-br from-slate-50 to-teal-50/30 dark:from-slate-800/50 dark:to-slate-800 border-2 border-dashed border-teal-500/30 text-center space-y-4">
+                        <div className="w-16 h-16 mx-auto rounded-2xl bg-teal-100 dark:bg-teal-950 flex items-center justify-center text-teal-600">
+                          <Sparkles className="w-8 h-8" />
+                        </div>
+                        <div className="max-w-md mx-auto space-y-1">
+                          <h4 className="text-lg font-black text-slate-900 dark:text-white">
+                            Non-Card Registered Patient
+                          </h4>
+                          <p className="text-xs text-slate-500 dark:text-slate-400">
+                            This patient is active in the hospital system under Direct Patient Registration.
+                            Standard Hospital Rack Pricing is actively applied across Doctor Appointments, Diagnostic Lab, and Pharmacy.
+                          </p>
+                        </div>
+
+                        <div className="pt-2 flex flex-wrap items-center justify-center gap-3">
+                          <Button
+                            variant="primary"
+                            onClick={() => {
+                              setPreselectedPatientId(activePatient.id);
+                              setIsCreateRequestModalOpen(true);
+                            }}
+                          >
+                            <Sparkles className="w-4 h-4 mr-2" />
+                            Enroll Patient in Health Card
+                          </Button>
+                          <Button
+                            variant="outline"
+                            onClick={() => setActivePatientForLabBooking(activePatient)}
+                          >
+                            <TestTube className="w-4 h-4 mr-2 text-blue-600" />
+                            Book Lab Test (Rack Price)
+                          </Button>
+                          <Button
+                            variant="outline"
+                            onClick={() => setActivePatientForMedicineOrder(activePatient)}
+                          >
+                            <Pill className="w-4 h-4 mr-2 text-purple-600" />
+                            Pharmacy Order (Rack Price)
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="text-center py-20 text-slate-400">
+                    <Users className="w-12 h-12 mx-auto mb-3 opacity-40" />
+                    <p className="text-sm font-bold">No patient selected</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* 7. PATIENT QUICK-VIEW MODAL */}
       {quickViewPatient && (

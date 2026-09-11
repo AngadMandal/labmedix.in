@@ -82,7 +82,70 @@ export type Permission =
   | 'appointment_view'
   | 'lab_order_manage'
   | 'pharmacy_dispense'
-  | 'permissions_manage';
+  | 'permissions_manage'
+  // Granular Patient Workflow
+  | 'patient_search'
+  | 'patient_slip_print'
+  | 'clinical_view'
+  // Granular Card Operations
+  | 'card_enrollment_open'
+  | 'card_request_return'
+  | 'card_plan_configure'
+  | 'card_pricing_configure'
+  | 'card_benefit_configure'
+  // Family Health Shield
+  | 'family_member_add'
+  | 'family_view'
+  | 'family_limit_configure'
+  // Appointments & OPD Consultation
+  | 'appointment_create'
+  | 'appointment_reschedule'
+  | 'appointment_cancel'
+  | 'appointment_checkin'
+  | 'consultation_open'
+  | 'consultation_complete'
+  | 'prescription_add'
+  | 'investigation_order'
+  | 'followup_add'
+  // Diagnostics Laboratory
+  | 'lab_order_create'
+  | 'lab_order_view'
+  | 'specimen_collect'
+  | 'specimen_receive'
+  | 'specimen_process'
+  | 'result_enter'
+  | 'result_draft_save'
+  | 'result_submit_verification'
+  | 'result_verify'
+  | 'report_finalize'
+  | 'report_amend'
+  | 'barcode_print'
+  | 'report_download'
+  | 'report_share'
+  // Billing & Finance
+  | 'discount_override'
+  | 'finance_view'
+  | 'financial_analytics_view'
+  | 'pricing_configure'
+  | 'refund_approve'
+  // Pharmacy
+  | 'prescription_view'
+  | 'medicine_dispense'
+  | 'pharmacy_sale_create'
+  | 'pharmacy_stock_manage'
+  | 'pharmacy_bill_print'
+  // Transactions
+  | 'transactions_view_own'
+  | 'transactions_view_all'
+  // User Governance & Audit
+  | 'staff_create'
+  | 'user_create'
+  | 'role_assign'
+  | 'permission_assign'
+  | 'user_status_toggle'
+  | 'staff_department_assign'
+  | 'user_activity_review'
+  | 'audit_export';
 
 export interface User {
   id: string;
@@ -264,6 +327,7 @@ export interface HealthCard {
   cardNumber: string; // e.g. LHC-2026-000001
   patientId: string;
   membershipId: string;
+  tier?: string; // e.g. standard, gold, platinum, family_shield
   issueDate: string;
   expiryDate: string;
   status: CardStatus;

@@ -34,51 +34,78 @@ interface PermissionCategoryGroup {
 
 const PERMISSION_GROUPS: PermissionCategoryGroup[] = [
   {
-    category: 'Patient Care & Demographics',
-    description: 'Patient directory registration, profiles, editing and export',
+    category: 'Patient Care & Registration',
+    description: 'Patient directory registration, profiles, editing, slips, clinical history',
     permissions: [
       { key: 'patient_create', label: 'Create Patients', description: 'Register walk-in and online patients' },
       { key: 'patient_read', label: 'View Patients', description: 'Inspect patient medical records and directory' },
+      { key: 'patient_search', label: 'Search Patients', description: 'Search directory by mobile, ID, name, or Aadhaar' },
       { key: 'patient_update', label: 'Edit Patients', description: 'Update demographics and contact details' },
       { key: 'patient_delete', label: 'Delete Patients', description: 'Permanently remove patient files' },
+      { key: 'patient_slip_print', label: 'Print Patient Slip', description: 'Print registration intake slip & barcode' },
       { key: 'patient_print', label: 'Print Records', description: 'Print patient profiles, slips and barcodes' },
-      { key: 'patient_export', label: 'Export Database', description: 'Export patient records to Excel / CSV' }
+      { key: 'patient_export', label: 'Export Database', description: 'Export patient records to Excel / CSV' },
+      { key: 'clinical_view', label: 'View Clinical EMR History', description: 'Inspect patient past diagnoses and consultations' }
     ]
   },
   {
     category: 'Health Cards & CR80 Studio',
-    description: 'Smart card issuance, renewals, replacements and printing',
+    description: 'Smart card issuance, renewals, replacements, pricing and printing',
     permissions: [
       { key: 'card_read', label: 'Scan & Read Cards', description: 'Scan QR / NFC to verify cardholder status' },
       { key: 'card_create', label: 'Create Health Cards', description: 'Enroll patients into smart health cards' },
+      { key: 'card_enrollment_open', label: 'Open Enrollment', description: 'Initiate card enrollment workflow' },
       { key: 'card_issue', label: 'Direct Card Issuance', description: 'Mint and activate cards without prior approval' },
       { key: 'card_status_change', label: 'Suspend / Block Cards', description: 'Change card status (active, suspended, blocked)' },
       { key: 'card_renew', label: 'Renew Cards', description: 'Extend validity of expired membership cards' },
       { key: 'card_replace', label: 'Replace Lost Cards', description: 'Re-issue replacement cards with new numbers' },
       { key: 'card_print', label: 'Print Dual-Side PVC', description: 'Direct thermal printing and canvas export' },
       { key: 'card_export', label: 'Export Card Graphics', description: 'Download CR80 PNG and batch print sheets' },
-      { key: 'card_delete', label: 'Revoke Cards', description: 'Permanently revoke and delete card records' }
+      { key: 'card_delete', label: 'Revoke Cards', description: 'Permanently revoke and delete card records' },
+      { key: 'card_plan_configure', label: 'Configure Plans', description: 'Define membership tiers and benefits' },
+      { key: 'card_pricing_configure', label: 'Configure Pricing', description: 'Set standard base membership prices' },
+      { key: 'card_benefit_configure', label: 'Configure Benefits', description: 'Define discount percentages across OPD/Lab/Pharmacy' }
     ]
   },
   {
     category: 'Card Requests Workflow',
-    description: 'Dedicated staff card intake, sequential request IDs and approval',
+    description: 'Dedicated staff card intake, sequential request IDs, self-approval prevention',
     permissions: [
       { key: 'card_request_create', label: 'Create Card Requests', description: 'Staff can submit card applications for approval' },
       { key: 'card_request_submit', label: 'Submit Requests', description: 'Transmit card requests to Super Admin queue' },
       { key: 'card_request_view_own', label: 'View Own Submissions', description: 'View requests submitted by current user' },
       { key: 'card_request_view_all', label: 'View All Requests', description: 'Inspect all staff card requests clinic-wide' },
       { key: 'card_request_approve', label: 'Approve Applications', description: 'Authorize card applications and issue cards' },
-      { key: 'card_request_reject', label: 'Reject / Return Requests', description: 'Reject or request additional applicant info' },
+      { key: 'card_request_reject', label: 'Reject Applications', description: 'Reject invalid applicant submissions' },
+      { key: 'card_request_return', label: 'Return for Correction', description: 'Send application back to staff with instructions' },
       { key: 'card_bill_print', label: 'Print Bill & Slips', description: 'Print patient card request receipt & slip' }
     ]
   },
   {
-    category: 'Clinical EMR, OPD & Doctors',
-    description: 'Physician prescriptions, appointments, SOAP notes and consultation fees',
+    category: 'Family Health Shield',
+    description: 'Add family members to primary card, limits, and relationship governance',
+    permissions: [
+      { key: 'family_member_add', label: 'Add Family Members', description: 'Link dependents to primary health card' },
+      { key: 'family_view', label: 'View Family Shield', description: 'Inspect linked family members and coverage' },
+      { key: 'family_limit_configure', label: 'Configure Family Limits', description: 'Set max included family members & add-on charges' },
+      { key: 'family_manage', label: 'Manage Family Shield', description: 'Full administrative governance over family groups' }
+    ]
+  },
+  {
+    category: 'Appointments & Doctor EMR',
+    description: 'OPD scheduling, doctor consultation, SOAP notes, prescriptions and referrals',
     permissions: [
       { key: 'appointment_view', label: 'View Appointments', description: 'View OPD consultation calendar and queue' },
-      { key: 'appointment_manage', label: 'Manage Appointments', description: 'Schedule, reschedule and cancel appointments' },
+      { key: 'appointment_create', label: 'Schedule Appointments', description: 'Book doctor consultation appointments' },
+      { key: 'appointment_reschedule', label: 'Reschedule Appointments', description: 'Change appointment date, time or physician' },
+      { key: 'appointment_cancel', label: 'Cancel Appointments', description: 'Cancel scheduled OPD consultations' },
+      { key: 'appointment_checkin', label: 'Patient Queue Check-in', description: 'Mark patient arrived and generate queue token' },
+      { key: 'appointment_manage', label: 'Manage Appointments', description: 'Full management of doctor schedules and OPD queue' },
+      { key: 'consultation_open', label: 'Open Consultation', description: 'Launch EMR doctor consultation workspace' },
+      { key: 'consultation_complete', label: 'Complete Consultation', description: 'Finalize clinical encounter and sign encounter summary' },
+      { key: 'prescription_add', label: 'Prescribe Medications', description: 'Write prescription medications, dosages and directions' },
+      { key: 'investigation_order', label: 'Order Diagnostic Tests', description: 'Order laboratory investigations from consultation' },
+      { key: 'followup_add', label: 'Schedule Follow-up', description: 'Schedule patient follow-up review visit' },
       { key: 'emr_read', label: 'View Clinical EMR', description: 'Inspect patient prescriptions and diagnoses' },
       { key: 'emr_create', label: 'Create Consultations', description: 'Open clinical encounter and queue tokens' },
       { key: 'emr_edit', label: 'Edit Clinical Notes', description: 'Modify SOAP clinical observations' },
@@ -88,37 +115,76 @@ const PERMISSION_GROUPS: PermissionCategoryGroup[] = [
     ]
   },
   {
-    category: 'Diagnostics Laboratory & Pharmacy',
-    description: 'Pathology catalog, sample accessioning, lab orders and medicine dispensing',
+    category: 'Laboratory & Diagnostic Lifecycle',
+    description: 'Phlebotomy collection, accessioning, result entry, verification, and locked reports',
     permissions: [
+      { key: 'lab_order_create', label: 'Create Lab Orders', description: 'Order diagnostic tests and generate requisition' },
+      { key: 'lab_order_view', label: 'View Lab Orders', description: 'Inspect diagnostic orders and specimen statuses' },
+      { key: 'specimen_collect', label: 'Phlebotomy Sample Collection', description: 'Collect blood/urine specimens and print tube barcodes' },
+      { key: 'specimen_receive', label: 'Receive Specimen in Lab', description: 'Accession and accept specimen at central diagnostic desk' },
+      { key: 'specimen_process', label: 'Process Specimen', description: 'Run analyzer calibration and process samples' },
+      { key: 'result_enter', label: 'Enter Analytical Results', description: 'Enter observed parameter findings from analyzer' },
+      { key: 'result_draft_save', label: 'Save Result Drafts', description: 'Save interim findings without submitting' },
+      { key: 'result_submit_verification', label: 'Submit for Verification', description: 'Transmit findings to doctor / pathologist for sign-off' },
+      { key: 'result_verify', label: 'Review & Verify Results', description: 'Authorized doctor / verifier review of analytical values' },
+      { key: 'report_finalize', label: 'Approve & Finalize Report', description: 'Sign, seal and lock official diagnostic report' },
+      { key: 'report_amend', label: 'Authorize Report Amendment', description: 'Initiate formal report correction with audit trail' },
+      { key: 'barcode_print', label: 'Print Specimen Barcodes', description: 'Generate barcode tube labels for phlebotomy' },
+      { key: 'report_download', label: 'Download Verified Reports', description: 'Print and download official A4 diagnostic reports' },
+      { key: 'report_share', label: 'Share Reports', description: 'Send official report link via WhatsApp / Email' },
       { key: 'test_view', label: 'View Diagnostic Catalog', description: 'Inspect tests, parameters and turnaround times' },
       { key: 'catalog_manage', label: 'Manage Diagnostic Catalog', description: 'Update test directory, rates and health packages' },
-      { key: 'lab_order_manage', label: 'Process Lab Investigations', description: 'Accession samples, barcode tubes and enter results' },
-      { key: 'pharmacy_dispense', label: 'Dispense Medicines', description: 'Fulfill doctor prescriptions and pack medicines' }
+      { key: 'lab_order_manage', label: 'Manage Lab Operations', description: 'Full administrative control over diagnostic operations' }
     ]
   },
   {
-    category: 'Billing, POS & Financial Ledger',
-    description: 'Hospital invoices, cash drawer collections, settlements and wallet',
+    category: 'Pharmacy Operations',
+    description: 'Doctor prescription fulfillment, medicine dispensing, stock and billing',
+    permissions: [
+      { key: 'prescription_view', label: 'View Prescriptions', description: 'Inspect doctor EMR prescriptions for dispensing' },
+      { key: 'medicine_dispense', label: 'Dispense Medications', description: 'Dispense medicines as prescribed by doctor' },
+      { key: 'pharmacy_sale_create', label: 'Create Pharmacy Sale', description: 'Process counter medicine sales' },
+      { key: 'pharmacy_stock_manage', label: 'Manage Pharmacy Stock', description: 'Update inventory, batch numbers and expiry dates' },
+      { key: 'pharmacy_bill_print', label: 'Print Pharmacy Invoices', description: 'Print itemized medication receipt' },
+      { key: 'pharmacy_dispense', label: 'Dispense Pharmacy Items', description: 'Full dispensing workflow access' }
+    ]
+  },
+  {
+    category: 'Billing, Financial Ledger & Discounts',
+    description: 'Hospital invoices, cash drawer collections, settlements, and discount override security',
     permissions: [
       { key: 'bill_create', label: 'Create Hospital Invoices', description: 'Generate OPD, Lab, Pharmacy and Card bills' },
-      { key: 'bill_view_own', label: 'View Own Generated Bills', description: 'View invoices created by authenticated user' },
+      { key: 'bill_view_own', label: 'View Own Generated Bills', description: 'View invoices created by authenticated cashier' },
       { key: 'bill_view_all', label: 'View All Clinic Invoices', description: 'Inspect all clinic-wide billing records' },
       { key: 'bill_print', label: 'Print Invoices & Receipts', description: 'Print patient tax invoices with QR seals' },
-      { key: 'bill_cancel', label: 'Cancel Bills & Refunds', description: 'Void bills and process refund disbursements' },
+      { key: 'bill_cancel', label: 'Cancel Bills & Void', description: 'Void bills and process refund disbursements' },
+      { key: 'discount_override', label: 'Manual Discount Override', description: 'Special authority to override automatic card discounts' },
       { key: 'payment_collect', label: 'Collect Payments', description: 'Accept cash, UPI and card payments at counter' },
-      { key: 'card_transactions_view_own', label: 'View Own Collections', description: 'Audit own cash drawer receipts' },
-      { key: 'card_transactions_view_all', label: 'View All Clinic Revenue', description: 'Full financial audit of all transactions' },
+      { key: 'refund_approve', label: 'Approve Cashier Refunds', description: 'Authorize financial reimbursement to patient' },
+      { key: 'pricing_configure', label: 'Configure Base Pricing', description: 'Set standard hospital service and procedure prices' },
+      { key: 'finance_view', label: 'View Cashier Register Ledger', description: 'Audit daily cash desk drawer settlements' },
+      { key: 'financial_analytics_view', label: 'View Financial Analytics', description: 'Inspect clinic revenue metrics and P&L' },
+      { key: 'transactions_view_own', label: 'View Own Collections', description: 'Audit own cash drawer receipts' },
+      { key: 'transactions_view_all', label: 'View All Clinic Revenue', description: 'Full financial audit of all transactions' },
       { key: 'wallet_read', label: 'View Wallet Balances', description: 'Check patient health wallet deposits' },
       { key: 'wallet_credit', label: 'Top-Up Wallet Funds', description: 'Recharge patient prepaid balance' },
-      { key: 'wallet_debit', label: 'Deduct Wallet Balance', description: 'Cashless POS deductions for services' }
+      { key: 'wallet_debit', label: 'Deduct Wallet Balance', description: 'Cashless POS deductions for services' },
+      { key: 'transactions_manage', label: 'Manage Financial Ledgers', description: 'Settlements, reconciliation and audits' }
     ]
   },
   {
-    category: 'Governance, Security & System',
-    description: 'Role-based access, audit trails, database backups and integrations',
+    category: 'Governance, Security & System Administration',
+    description: 'Role-based access, audit trails, staff account lifecycle and cloud backups',
     permissions: [
       { key: 'users_manage', label: 'Manage Staff Users', description: 'Create staff accounts and assign roles' },
+      { key: 'staff_create', label: 'Create Staff Accounts', description: 'Provision new employee profiles' },
+      { key: 'user_create', label: 'Create System Users', description: 'Provision authentication credentials' },
+      { key: 'role_assign', label: 'Assign Clinical Roles', description: 'Assign roles to staff profiles' },
+      { key: 'permission_assign', label: 'Assign Granular Permissions', description: 'Grant or revoke individual workflow actions' },
+      { key: 'user_status_toggle', label: 'Activate / Suspend Staff', description: 'Immediately lock or unlock staff access' },
+      { key: 'staff_department_assign', label: 'Assign Department', description: 'Set staff clinical department' },
+      { key: 'user_activity_review', label: 'Review Staff Activity', description: 'Inspect detailed staff action logs' },
+      { key: 'audit_export', label: 'Export Audit Logs', description: 'Download cryptographic compliance audit trails' },
       { key: 'permissions_manage', label: 'Manage RBAC Matrix', description: 'Configure granular permission policies' },
       { key: 'membership_manage', label: 'Manage Card Tiers', description: 'Configure Silver, Gold, Platinum benefits' },
       { key: 'family_manage', label: 'Manage Family Shield', description: 'Configure family groups and member limits' },

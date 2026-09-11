@@ -248,4 +248,60 @@ export class AuditService {
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
   }
+
+  /**
+   * Log sensitive workflow actions with standard structured attributes:
+   * User ID -> Staff ID -> Role -> Action -> Record ID -> Timestamp
+   */
+  public static logWorkflowAction(
+    userOrParams: any,
+    action?: string,
+    module?: string,
+    recordId?: string,
+    details?: any
+  ): void {
+    if (userOrParams && typeof userOrParams === 'object' && userOrParams.userId && !action) {
+      const { userId, staffId, role, action: act, module: mod, recordId: recId, details: det, previousState, newState } = userOrParams;
+      const desc = `[${act}] Staff: ${staffId || 'N/A'} (UID: ${userId}, Role: ${role}) on Record ${recId}: ${det}`;
+      this.log(
+        act,
+        mod,
+        desc,
+        recId,
+        {
+          userId,
+          staffId,
+          role,
+          previousState,
+          newState,
+          auditStandard: 'NABH_ISO_2026'
+        }
+      );
+      return;
+    }
+
+    const user = userOrParams;
+    const userId = user?.id || user?.uid || 'system_staff';
+    const staffId = user?.staffId || user?.id || 'central';
+    const role = user?.role || 'staff';
+    const act = action || 'WORKFLOW_ACTION';
+    const mod: AuditModule = (module as any) || 'system';
+    const recId = recordId || 'N/A';
+    const detStr = typeof details === 'string' ? details : JSON.stringify(details || {});
+    const desc = `[${act}] Staff: ${staffId} (UID: ${userId}, Role: ${role}) on ${mod} [${recId}]: ${detStr}`;
+
+    this.log(
+      act,
+      mod,
+      desc,
+      recId,
+      {
+        userId,
+        staffId,
+        role,
+        metadata: typeof details === 'object' ? details : { details },
+        auditStandard: 'NABH_ISO_2026'
+      }
+    );
+  }
 }

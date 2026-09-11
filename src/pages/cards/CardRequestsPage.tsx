@@ -11,6 +11,8 @@ import { formatCurrency, formatDate, formatDateTime } from '../../utils/formatte
 import { CreateCardRequestModal } from '../../components/card/CreateCardRequestModal';
 import { CardApplicationReviewModal } from '../../components/card/CardApplicationReviewModal';
 import { StaffCardRequestBillSlipModal } from '../../components/card/StaffCardRequestBillSlipModal';
+import { WorkflowPermissionService } from '../../services/workflowPermissionService';
+import { AuditService } from '../../services/auditService';
 import {
   CreditCard,
   Plus,
@@ -153,12 +155,21 @@ export const CardRequestsPage: React.FC = () => {
     return { total, pending, approved, issued, revenue };
   }, [applications, scopeFilter, currentUser]);
 
-  // Step 1: Super Admin Approval (Verifies documents & payment, marks ready for issuance)
+  // Step 1: Super Admin / Authorized Reviewer Approval (Verifies documents & payment, marks ready for issuance)
   const handleApproveRequest = async (app: CardApplicationRequest) => {
-    if (!isAdmin && !isManager) return;
+    if (!WorkflowPermissionService.canApproveCardRequest(currentUser, app)) {
+      showToast('error', 'Self-Approval Prohibited', 'Staff cannot approve their own submitted card requests. An independent reviewer or Super Admin must approve.');
+      return;
+    }
     try {
       const res = await PortalService.approveCardApplication(app.id, currentUser?.fullName || 'Super Administrator');
       if (res.success) {
+        AuditService.logWorkflowAction(currentUser, 'approve', 'card_request', app.id, {
+          applicationNo: app.applicationNo || app.trackingId,
+          patientName: app.fullName,
+          plan: app.membershipName || app.membershipId,
+          fee: app.totalPaidAmount || app.membershipPrice
+        });
         showToast('success', 'Card Request Approved! ✅', `Application #${app.applicationNo || app.trackingId} verified. Ready for physical card issuance.`);
         setApplications(PortalService.getCardApplications());
       } else {
@@ -171,10 +182,19 @@ export const CardRequestsPage: React.FC = () => {
 
   // Step 2: Explicit Physical Card Issuance (Mints card number, CVV, and activates)
   const handleIssuePhysicalCard = async (app: CardApplicationRequest) => {
-    if (!isAdmin && !isManager) return;
+    if (!WorkflowPermissionService.canApproveCardRequest(currentUser, app)) {
+      showToast('error', 'Self-Issuance Prohibited', 'Staff cannot issue cards for their own requests.');
+      return;
+    }
     try {
       const res = await PortalService.issueHealthCardForApplication(app.id, currentUser?.fullName || 'Super Administrator');
       if (res.success && res.card) {
+        AuditService.logWorkflowAction(currentUser, 'issue', 'health_card', res.card.id, {
+          cardNumber: res.card.cardNumber,
+          applicationId: app.id,
+          patientName: res.patient?.fullName || app.fullName,
+          tier: res.card.tier
+        });
         showToast('success', 'Health Card Minted & Issued! 🚀', `Card #${res.card.cardNumber} activated.`);
         setApplications(PortalService.getCardApplications());
       } else {
@@ -505,24 +525,46 @@ export const CardRequestsPage: React.FC = () => {
                           </button>
 
                           {/* Separate Step 1 (Approve) & Step 2 (Issue Card) */}
-                          {(isAdmin || isManager) && (app.status === 'pending_review' || app.status === 'pending_approval' || app.status === 'under_review' || app.status === 'submitted') && (
-                            <button
-                              onClick={() => handleApproveRequest(app)}
-                              className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[10px] transition shadow-sm"
-                              title="Verify payment and approve application"
-                            >
-                              Approve
-                            </button>
+                          {(app.status === 'pending_review' || app.status === 'pending_approval' || app.status === 'under_review' || app.status === 'submitted') && (
+                            WorkflowPermissionService.canApproveCardRequest(currentUser, app) ? (
+                              <button
+                                onClick={() => handleApproveRequest(app)}
+                                className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[10px] transition shadow-sm"
+                                title="Verify payment and approve application"
+                              >
+                                Approve
+                              </button>
+                            ) : (
+                              (isAdmin || isManager) && (
+                                <span
+                                  className="px-2 py-0.5 rounded text-[9px] font-bold text-amber-400 bg-amber-950/40 border border-amber-500/30 cursor-not-allowed"
+                                  title="Self-approval prohibited: Requests submitted by you must be approved by another authorized reviewer."
+                                >
+                                  Own Request
+                                </span>
+                              )
+                            )
                           )}
 
-                          {(isAdmin || isManager) && app.status === 'approved' && !app.approvedCardNumber && (
-                            <button
-                              onClick={() => handleIssuePhysicalCard(app)}
-                              className="px-2.5 py-1 rounded-lg bg-purple-600 hover:bg-purple-500 text-white font-bold text-[10px] transition shadow-sm"
-                              title="Mint and activate official Health Card"
-                            >
-                              Issue Card
-                            </button>
+                          {app.status === 'approved' && !app.approvedCardNumber && (
+                            WorkflowPermissionService.canApproveCardRequest(currentUser, app) ? (
+                              <button
+                                onClick={() => handleIssuePhysicalCard(app)}
+                                className="px-2.5 py-1 rounded-lg bg-purple-600 hover:bg-purple-500 text-white font-bold text-[10px] transition shadow-sm"
+                                title="Mint and activate official Health Card"
+                              >
+                                Issue Card
+                              </button>
+                            ) : (
+                              (isAdmin || isManager) && (
+                                <span
+                                  className="px-2 py-0.5 rounded text-[9px] font-bold text-amber-400 bg-amber-950/40 border border-amber-500/30 cursor-not-allowed"
+                                  title="Self-issuance prohibited: Requests submitted by you must be issued by another authorized reviewer."
+                                >
+                                  Own Request
+                                </span>
+                              )
+                            )
                           )}
 
                           {(app.approvedCardNumber || app.status === 'card_issued' || app.status === 'issued') && (

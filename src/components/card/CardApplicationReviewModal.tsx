@@ -12,6 +12,8 @@ import { CardRequestSlipModal } from '../portal/CardRequestSlipModal';
 import { StaffCardRequestBillSlipModal } from './StaffCardRequestBillSlipModal';
 import { StaffCardRequestService } from '../../services/staffCardRequestService';
 import { checkUserPermission } from '../../constants/roles';
+import { WorkflowPermissionService } from '../../services/workflowPermissionService';
+import { AuditService } from '../../services/auditService';
 import {
   CheckCircle2,
   XCircle,
@@ -69,7 +71,20 @@ export const CardApplicationReviewModal: React.FC<CardApplicationReviewModalProp
   const company = StorageService.getCompanyProfile();
   const currentUser = StorageService.getCurrentUser();
   const isSuperAdmin = currentUser?.role === 'super_admin';
-  const canApprove = isSuperAdmin || checkUserPermission(currentUser, 'card_request_approve');
+
+  const isOwnSubmission = useMemo(() => {
+    if (!currentUser || !application) return false;
+    return (
+      application.submittedByStaffId === currentUser.id ||
+      application.submittedByStaffId === (currentUser as any).uid ||
+      application.submittedByStaffName?.toLowerCase() === currentUser.fullName?.toLowerCase()
+    );
+  }, [currentUser, application]);
+
+  const canApprove = useMemo(() => {
+    return WorkflowPermissionService.canApproveCardRequest(currentUser, application);
+  }, [currentUser, application]);
+
   const canReject = isSuperAdmin || checkUserPermission(currentUser, 'card_request_reject');
   const canDelete = isSuperAdmin || checkUserPermission(currentUser, 'card_delete');
 
@@ -170,7 +185,7 @@ export const CardApplicationReviewModal: React.FC<CardApplicationReviewModalProp
 
   const handleApprove = async () => {
     if (!canApprove) {
-      showToast('error', 'Permission Denied', 'You do not have permission to approve card requests.');
+      showToast('error', 'Self-Approval Prohibited', 'Staff cannot approve their own submitted card requests. An independent reviewer or Super Admin must approve.');
       return;
     }
     setIsProcessing(true);
@@ -181,6 +196,13 @@ export const CardApplicationReviewModal: React.FC<CardApplicationReviewModalProp
     setIsProcessing(false);
 
     if (res.success) {
+      AuditService.logWorkflowAction(currentUser, 'approve', 'card_request', application.id, {
+        applicationNo: application.applicationNo || application.trackingId,
+        patientName: application.fullName,
+        plan: application.membershipName || application.membershipId,
+        fee: application.totalPaidAmount || application.membershipPrice
+      });
+
       showToast(
         'success',
         'Application Approved! ✅',
@@ -195,7 +217,7 @@ export const CardApplicationReviewModal: React.FC<CardApplicationReviewModalProp
 
   const handleIssueCard = async () => {
     if (!canApprove) {
-      showToast('error', 'Permission Denied', 'You do not have permission to issue health cards.');
+      showToast('error', 'Self-Approval Prohibited', 'Staff cannot issue cards for their own requests.');
       return;
     }
     setIsProcessing(true);
@@ -206,6 +228,13 @@ export const CardApplicationReviewModal: React.FC<CardApplicationReviewModalProp
     setIsProcessing(false);
 
     if (res.success && res.card) {
+      AuditService.logWorkflowAction(currentUser, 'issue', 'health_card', res.card.id, {
+        cardNumber: res.card.cardNumber,
+        applicationId: application.id,
+        patientName: res.patient?.fullName || application.fullName,
+        tier: res.card.tier
+      });
+
       triggerCelebrationFireworks();
       showToast(
         'success',
@@ -237,6 +266,11 @@ export const CardApplicationReviewModal: React.FC<CardApplicationReviewModalProp
       setIsProcessing(false);
 
       if (res.success) {
+        AuditService.logWorkflowAction(currentUser, 'reject', 'card_request', application.id, {
+          applicationNo: application.applicationNo || application.trackingId,
+          reason
+        });
+
         showToast('info', 'Application Rejected', `Application ${application.trackingId || application.applicationNo} marked as rejected.`);
         onRejected();
         onClose();
@@ -785,6 +819,12 @@ export const CardApplicationReviewModal: React.FC<CardApplicationReviewModalProp
                 >
                   Delete
                 </Button>
+              )}
+              {isOwnSubmission && !isSuperAdmin && (
+                <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs font-semibold">
+                  <ShieldAlert className="w-4 h-4 text-amber-400 shrink-0" />
+                  <span>Self-Approval Prohibited: You submitted this request. An independent reviewer or Super Admin must approve.</span>
+                </div>
               )}
               {canApprove && (
                 <Button

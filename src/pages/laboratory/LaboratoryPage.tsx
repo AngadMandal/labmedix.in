@@ -31,6 +31,8 @@ import { DoctorMasterEditModal } from '../../components/emr/DoctorMasterEditModa
 import { TechnicianMasterService } from '../../services/technicianMasterService';
 import { DoctorMasterService, DoctorMasterItem } from '../../services/doctorMasterService';
 import { DiagnosticReportService } from '../../services/diagnosticReportService';
+import { AuditService } from '../../services/auditService';
+import { WorkflowPermissionService } from '../../services/workflowPermissionService';
 import {
   TestTube,
   Search,
@@ -99,7 +101,7 @@ export type LabTab =
   | 'settings';
 
 export const LaboratoryPage: React.FC = () => {
-  const { currentUser } = useAuth();
+  const { currentUser, can } = useAuth();
   const { showToast } = useToast();
 
   // Navigation Tab
@@ -218,6 +220,11 @@ export const LaboratoryPage: React.FC = () => {
       phlebotomistName: currentUser?.fullName || 'Senior Phlebotomist',
       phlebotomistId: currentUser?.id
     });
+    AuditService.logWorkflowAction(currentUser, 'collect', 'specimen', res.order.id, {
+      accessionNumber: res.order.accessionNumber,
+      barcode: res.order.sampleBarcode,
+      patientName: res.order.patientName
+    });
     reloadAllData();
     showToast('success', 'Specimen Accessioned & Labeled', `Accession: ${res.order.accessionNumber} | Barcode: ${res.order.sampleBarcode}`);
     setSelectedOrderForBarcode(res.order);
@@ -225,6 +232,11 @@ export const LaboratoryPage: React.FC = () => {
 
   const handleReceiveInLab = (order: LabOrderRecord) => {
     LaboratoryService.receiveSpecimenInLab(order.id, currentUser?.fullName || 'Clinical Technologist');
+    AuditService.logWorkflowAction(currentUser, 'receive', 'specimen', order.id, {
+      orderNumber: order.orderNumber,
+      department: order.department,
+      patientName: order.patientName
+    });
     reloadAllData();
     showToast('success', 'Specimen Received in Lab', `Order ${order.orderNumber} routed to ${order.department}.`);
   };
@@ -781,16 +793,18 @@ export const LaboratoryPage: React.FC = () => {
                           <td className="px-4 py-3 text-right">
                             <div className="flex items-center justify-end gap-1.5 flex-wrap">
                               {/* Print Barcode Label */}
-                              <button
-                                onClick={() => setSelectedOrderForBarcode(order)}
-                                className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-purple-300 transition"
-                                title="Print Specimen Tube Barcode Label"
-                              >
-                                <Tag className="w-3.5 h-3.5" />
-                              </button>
+                              {(can('barcode_print') || can('specimen_collect')) && (
+                                <button
+                                  onClick={() => setSelectedOrderForBarcode(order)}
+                                  className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-purple-300 transition"
+                                  title="Print Specimen Tube Barcode Label"
+                                >
+                                  <Tag className="w-3.5 h-3.5" />
+                                </button>
+                              )}
 
                               {/* Collection action */}
-                              {(order.status === 'ready_for_collection' || order.status === 'ordered' || order.status === 'recollection_required') && (
+                              {can('specimen_collect') && (order.status === 'ready_for_collection' || order.status === 'ordered' || order.status === 'recollection_required') && (
                                 <button
                                   onClick={() => handleMarkSampleCollected(order)}
                                   className="px-2 py-1 rounded-lg bg-purple-600 hover:bg-purple-500 text-white font-bold text-[10px] transition shadow-sm"
@@ -800,7 +814,7 @@ export const LaboratoryPage: React.FC = () => {
                               )}
 
                               {/* Reception action */}
-                              {order.status === 'collected' && (
+                              {can('specimen_receive') && order.status === 'collected' && (
                                 <button
                                   onClick={() => {
                                     setSelectedSpecimenForReception(order);
@@ -813,7 +827,7 @@ export const LaboratoryPage: React.FC = () => {
                               )}
 
                               {/* Result Entry action */}
-                              {(order.status === 'processing' || order.status === 'in_lab' || order.status === 'results_entered') && (
+                              {can('result_enter') && (order.status === 'processing' || order.status === 'in_lab' || order.status === 'results_entered') && (
                                 <button
                                   onClick={() => setSelectedOrderForResultEntry(order)}
                                   className="px-2 py-1 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-[10px] transition shadow-sm"
@@ -823,7 +837,7 @@ export const LaboratoryPage: React.FC = () => {
                               )}
 
                               {/* Pathologist Verification action */}
-                              {(order.status === 'results_entered' || order.status === 'verification_pending') && (
+                              {(can('result_verify') || can('report_finalize')) && (order.status === 'results_entered' || order.status === 'verification_pending') && (
                                 <button
                                   onClick={() => setSelectedOrderForVerification(order)}
                                   className="px-2 py-1 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-bold text-[10px] transition shadow-sm"
@@ -846,41 +860,47 @@ export const LaboratoryPage: React.FC = () => {
                               {/* Finalized Report actions */}
                               {(order.status === 'verified' || order.status === 'finalized' || order.status === 'report_ready') && (
                                 <>
-                                  <button
-                                    onClick={() => setSelectedOrderForReport(order)}
-                                    className="px-2 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[10px] transition shadow-sm flex items-center gap-1"
-                                    title="View Official A4 Diagnostic Report"
-                                  >
-                                    <Printer className="w-3 h-3" /> Report
-                                  </button>
+                                  {(can('report_download') || can('lab_order_view')) && (
+                                    <button
+                                      onClick={() => setSelectedOrderForReport(order)}
+                                      className="px-2 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[10px] transition shadow-sm flex items-center gap-1"
+                                      title="View Official A4 Diagnostic Report"
+                                    >
+                                      <Printer className="w-3 h-3" /> Report
+                                    </button>
+                                  )}
 
-                                  <button
-                                    onClick={() => {
-                                      const rpt = DiagnosticReportService.createOrGetReportForOrder(order as any);
-                                      const res = DiagnosticReportService.validateAndPrepareWhatsAppShare(rpt.reportNumber, currentUser);
-                                      if (res.success && res.url) {
-                                        window.open(res.url, '_blank', 'noopener,noreferrer');
-                                        showToast('success', 'WhatsApp Dispatched', `Opened WhatsApp report link for ${order.patientName}.`);
-                                      } else {
-                                        showToast('error', 'WhatsApp Blocked', res.error || 'Report is not ready for external sharing.');
-                                      }
-                                    }}
-                                    className="p-1 rounded-lg bg-emerald-950 hover:bg-emerald-900 border border-emerald-500/40 text-emerald-300 transition"
-                                    title="Send Official Report Link via WhatsApp"
-                                  >
-                                    <Share2 className="w-3 h-3" />
-                                  </button>
+                                  {can('report_share') && (
+                                    <button
+                                      onClick={() => {
+                                        const rpt = DiagnosticReportService.createOrGetReportForOrder(order as any);
+                                        const res = DiagnosticReportService.validateAndPrepareWhatsAppShare(rpt.reportNumber, currentUser);
+                                        if (res.success && res.url) {
+                                          window.open(res.url, '_blank', 'noopener,noreferrer');
+                                          showToast('success', 'WhatsApp Dispatched', `Opened WhatsApp report link for ${order.patientName}.`);
+                                        } else {
+                                          showToast('error', 'WhatsApp Blocked', res.error || 'Report is not ready for external sharing.');
+                                        }
+                                      }}
+                                      className="p-1 rounded-lg bg-emerald-950 hover:bg-emerald-900 border border-emerald-500/40 text-emerald-300 transition"
+                                      title="Send Official Report Link via WhatsApp"
+                                    >
+                                      <Share2 className="w-3 h-3" />
+                                    </button>
+                                  )}
 
-                                  <button
-                                    onClick={() => {
-                                      const rpt = DiagnosticReportService.createOrGetReportForOrder(order as any);
-                                      setSelectedReportForAmendment(rpt);
-                                    }}
-                                    className="p-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] transition border border-slate-700"
-                                    title="Amend Report"
-                                  >
-                                    Amend
-                                  </button>
+                                  {can('report_amend') && (
+                                    <button
+                                      onClick={() => {
+                                        const rpt = DiagnosticReportService.createOrGetReportForOrder(order as any);
+                                        setSelectedReportForAmendment(rpt);
+                                      }}
+                                      className="p-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] transition border border-slate-700"
+                                      title="Amend Report"
+                                    >
+                                      Amend
+                                    </button>
+                                  )}
                                 </>
                               )}
                             </div>

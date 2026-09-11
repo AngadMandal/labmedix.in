@@ -48,7 +48,9 @@ import {
   HelpCircle,
   Clock,
   Zap,
-  Info
+  Info,
+  Check,
+  ShieldCheck
 } from 'lucide-react';
 
 interface FamilyMemberFormState extends CreateFamilyMemberInput {
@@ -644,6 +646,107 @@ export const PatientCreatePage: React.FC = () => {
           onSubmit={handleSubmit}
           className="lg:col-span-8 space-y-6"
         >
+          {/* TWO CLEAR REGISTRATION PATHWAYS (OPTION A vs OPTION B) */}
+          <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 sm:p-7 border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 dark:border-slate-800 pb-3">
+              <div>
+                <span className="text-[10px] font-black uppercase tracking-wider text-blue-600 dark:text-blue-400 font-mono">
+                  Hospital Patient Intake • Two Clear Options
+                </span>
+                <h2 className="text-base font-black text-slate-900 dark:text-white flex items-center gap-2">
+                  <span>Choose Registration Pathway</span>
+                </h2>
+              </div>
+              <Badge variant={issueHealthCard ? 'blue' : 'neutral'}>
+                {issueHealthCard ? 'Option B • Health Card: ON' : 'Option A • Health Card: OFF (Non-Card Patient)'}
+              </Badge>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Option A Card: Direct Patient Registration */}
+              <div
+                onClick={() => setIssueHealthCard(false)}
+                className={`relative p-5 rounded-2xl border-2 cursor-pointer transition-all duration-200 ${
+                  !issueHealthCard
+                    ? 'border-emerald-500 bg-emerald-50/50 dark:bg-emerald-950/30 shadow-md ring-2 ring-emerald-500/20'
+                    : 'border-slate-200 dark:border-slate-700/80 bg-slate-50/50 dark:bg-slate-800/30 hover:border-slate-300 dark:hover:border-slate-600'
+                }`}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-center gap-2.5">
+                    <div className={`w-9 h-9 rounded-xl flex items-center justify-center font-bold text-sm ${
+                      !issueHealthCard ? 'bg-emerald-600 text-white shadow-sm' : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
+                    }`}>
+                      A
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-black text-slate-900 dark:text-white flex items-center gap-1.5">
+                        <span>OPTION A: Direct Hospital Registration</span>
+                      </h4>
+                      <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 dark:text-emerald-400">
+                        Health Card: OFF • Standard Pricing
+                      </span>
+                    </div>
+                  </div>
+                  <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 ${
+                    !issueHealthCard ? 'border-emerald-600 bg-emerald-600 text-white' : 'border-slate-300 dark:border-slate-600'
+                  }`}>
+                    {!issueHealthCard && <Check className="w-3 h-3 stroke-[3]" />}
+                  </div>
+                </div>
+                <p className="text-xs text-slate-600 dark:text-slate-400 mt-2.5 leading-relaxed">
+                  Register patient directly with a permanent Patient ID. Eligible immediately for normal Doctor Appointments, OPD, Diagnostics, Pharmacy, and Billing at standard hospital charges without purchasing a Health Card.
+                </p>
+                <div className="mt-3 pt-2.5 border-t border-slate-200/70 dark:border-slate-700/60 flex items-center justify-between text-[11px]">
+                  <span className="text-slate-500 font-medium">Card Purchase:</span>
+                  <span className="font-bold text-slate-700 dark:text-slate-300">₹0 (Zero Card Fees)</span>
+                </div>
+              </div>
+
+              {/* Option B Card: Patient + Health Card Registration */}
+              <div
+                onClick={() => setIssueHealthCard(true)}
+                className={`relative p-5 rounded-2xl border-2 cursor-pointer transition-all duration-200 ${
+                  issueHealthCard
+                    ? 'border-blue-600 bg-blue-50/50 dark:bg-blue-950/30 shadow-md ring-2 ring-blue-600/20'
+                    : 'border-slate-200 dark:border-slate-700/80 bg-slate-50/50 dark:bg-slate-800/30 hover:border-slate-300 dark:hover:border-slate-600'
+                }`}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-center gap-2.5">
+                    <div className={`w-9 h-9 rounded-xl flex items-center justify-center font-bold text-sm ${
+                      issueHealthCard ? 'bg-blue-600 text-white shadow-sm' : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
+                    }`}>
+                      B
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-black text-slate-900 dark:text-white flex items-center gap-1.5">
+                        <span>OPTION B: Patient + Health Card</span>
+                      </h4>
+                      <span className="inline-flex items-center gap-1 text-[11px] font-bold text-blue-700 dark:text-blue-400">
+                        Health Card: ON • Tier Benefits & Discounts
+                      </span>
+                    </div>
+                  </div>
+                  <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 ${
+                    issueHealthCard ? 'border-blue-600 bg-blue-600 text-white' : 'border-slate-300 dark:border-slate-600'
+                  }`}>
+                    {issueHealthCard && <Check className="w-3 h-3 stroke-[3]" />}
+                  </div>
+                </div>
+                <p className="text-xs text-slate-600 dark:text-slate-400 mt-2.5 leading-relaxed">
+                  Enroll in an active Health Card plan. Unlocks OPD & Lab discounts, Pharmacy benefits, and Family Health Shield covering up to 5 family members under one primary membership.
+                </p>
+                <div className="mt-3 pt-2.5 border-t border-slate-200/70 dark:border-slate-700/60 flex items-center justify-between text-[11px]">
+                  <span className="text-slate-500 font-medium">Card Plan:</span>
+                  <span className="font-bold text-blue-600 dark:text-blue-400">
+                    {selectedMembership?.name} ({formatCurrency(selectedMembership?.registrationFee || 0)})
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+
           {/* 1. PRIMARY PATIENT IDENTITY */}
           <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 sm:p-8 border border-slate-200 dark:border-slate-800 shadow-sm space-y-6">
             <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
@@ -1130,199 +1233,217 @@ export const PatientCreatePage: React.FC = () => {
                 </h3>
               </div>
 
-              {/* Real-time Counter: Family Members Added: X / 5 */}
-              <div className="flex items-center gap-2">
-                <span
-                  className={`px-3 py-1 rounded-full text-xs font-black font-mono border transition-all ${
-                    familyMembers.length <= maxIncludedMembers
-                      ? 'bg-emerald-50 text-emerald-700 border-emerald-300 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-700'
-                      : 'bg-amber-50 text-amber-800 border-amber-300 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-700'
-                  }`}
-                >
-                  Family Members Added: {familyMembers.length} / {maxIncludedMembers}
-                </span>
+              {issueHealthCard ? (
+                <div className="flex items-center gap-2">
+                  <span
+                    className={`px-3 py-1 rounded-full text-xs font-black font-mono border transition-all ${
+                      familyMembers.length <= maxIncludedMembers
+                        ? 'bg-emerald-50 text-emerald-700 border-emerald-300 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-700'
+                        : 'bg-amber-50 text-amber-800 border-amber-300 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-700'
+                    }`}
+                  >
+                    Family Members: {familyMembers.length} / {maxIncludedMembers}
+                  </span>
 
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={addFamilyMemberRow}
-                  leftIcon={<Plus className="w-3.5 h-3.5" />}
-                  className="text-xs"
-                >
-                  Add Dependent
-                </Button>
-              </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={addFamilyMemberRow}
+                    leftIcon={<Plus className="w-3.5 h-3.5" />}
+                    className="text-xs"
+                  >
+                    Add Dependent
+                  </Button>
+                </div>
+              ) : (
+                <Badge variant="neutral">Health Card: OFF</Badge>
+              )}
             </div>
 
-            {/* Surcharge Notification when > 5 members */}
-            {familyMembers.length > maxIncludedMembers && (
-              <div className="p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-700/80 text-amber-900 dark:text-amber-200 space-y-2 animate-in fade-in duration-200">
-                <div className="flex items-center gap-2 font-bold text-xs">
-                  <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
-                  <span>Standard Family Allowance Exceeded ({maxIncludedMembers} Included)</span>
-                </div>
-                <p className="text-xs text-slate-600 dark:text-amber-200/90 leading-relaxed">
-                  You have added <strong>{familyMembers.length} family members</strong>. The first{' '}
-                  <strong>{maxIncludedMembers} dependents</strong> are included under the standard Family Health Shield allowance. Additional dependents incur an applicable card charge of{' '}
-                  <strong>₹{additionalMemberFee} each</strong>.
+            {!issueHealthCard ? (
+              <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/30 border border-dashed border-slate-200 dark:border-slate-700 text-center space-y-2">
+                <Users className="w-7 h-7 text-slate-400 mx-auto" />
+                <h4 className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                  Family Health Shield Inactive (Health Card: OFF)
+                </h4>
+                <p className="text-xs text-slate-500 max-w-lg mx-auto leading-relaxed">
+                  Family Health Shield is an optional benefit of Health Card membership. The patient is registering directly as a <strong>Non-Card Patient</strong>. Family members can be registered independently as direct patients, or linked to a Family Health Shield if the patient purchases a Health Card later.
                 </p>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2 border-t border-amber-200 dark:border-amber-800/60 font-mono text-xs">
-                  <div className="p-2.5 rounded-xl bg-white/80 dark:bg-slate-900/80 border border-amber-200/80">
-                    <span className="text-[10px] text-slate-500 block uppercase font-sans">Included Members</span>
-                    <span className="font-bold text-emerald-600">{maxIncludedMembers}</span>
-                  </div>
-                  <div className="p-2.5 rounded-xl bg-white/80 dark:bg-slate-900/80 border border-amber-200/80">
-                    <span className="text-[10px] text-slate-500 block uppercase font-sans">Additional Members</span>
-                    <span className="font-bold text-amber-600">{familyMembers.length - maxIncludedMembers}</span>
-                  </div>
-                  <div className="p-2.5 rounded-xl bg-white/80 dark:bg-slate-900/80 border border-amber-200/80">
-                    <span className="text-[10px] text-slate-500 block uppercase font-sans">Additional Card Charge</span>
-                    <span className="font-bold text-slate-900 dark:text-white">
-                      ₹{(familyMembers.length - maxIncludedMembers) * additionalMemberFee}
-                    </span>
-                  </div>
-                  <div className="p-2.5 rounded-xl bg-white/80 dark:bg-slate-900/80 border border-amber-200/80">
-                    <span className="text-[10px] text-slate-500 block uppercase font-sans">Total Payable</span>
-                    <span className="font-bold text-blue-600">{formatCurrency(billCalculation.netPayable)}</span>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {familyMembers.length === 0 ? (
-              <div className="p-6 rounded-2xl bg-slate-50 dark:bg-slate-800/30 border border-dashed border-slate-200 dark:border-slate-800 text-center space-y-2">
-                <Users className="w-8 h-8 text-slate-400 mx-auto" />
-                <p className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                  No Family Members Added Yet (0 / {maxIncludedMembers})
-                </p>
-                <p className="text-xs text-slate-400 max-w-sm mx-auto">
-                  Primary holder can include spouse, children, and parents under the same Family Health Shield.
-                </p>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={addFamilyMemberRow}
-                  leftIcon={<Plus className="w-3.5 h-3.5" />}
-                  className="mt-2 text-xs"
-                >
-                  Add Family Member
-                </Button>
               </div>
             ) : (
-              <div className="space-y-3">
-                {familyMembers.map((member, index) => (
-                  <div
-                    key={member.id}
-                    className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/80 space-y-3 relative group"
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <span className="w-6 h-6 rounded-lg bg-indigo-100 text-indigo-700 dark:bg-indigo-900/60 dark:text-indigo-300 font-bold text-xs flex items-center justify-center font-mono">
-                          #{index + 1}
-                        </span>
-                        <span className="text-xs font-black text-slate-900 dark:text-white">
-                          Family Member {index + 1}{' '}
-                          {index < maxIncludedMembers ? (
-                            <span className="text-emerald-600 font-normal text-[11px]">(Included in standard allowance)</span>
-                          ) : (
-                            <span className="text-amber-600 font-bold text-[11px]">(+₹{additionalMemberFee} Extra Charge)</span>
-                          )}
-                        </span>
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={() => removeFamilyMember(member.id)}
-                        className="text-slate-400 hover:text-rose-500 p-1.5 rounded-lg transition-colors"
-                        title="Remove Dependent"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+              <>
+                {/* Notice at exact limit (5/5) */}
+                {familyMembers.length === maxIncludedMembers && (
+                  <div className="p-3.5 rounded-2xl bg-emerald-50/80 dark:bg-emerald-950/40 border border-emerald-300 dark:border-emerald-800 text-emerald-900 dark:text-emerald-200 flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-2 font-bold">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                      <span>Maximum included family-member limit reached ({maxIncludedMembers}/{maxIncludedMembers} Covered).</span>
                     </div>
+                    <span className="font-mono text-[11px] text-emerald-700 dark:text-emerald-300">
+                      Standard Allowance: 100% Free
+                    </span>
+                  </div>
+                )}
 
-                    <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
-                      <Input
-                        label="Full Name *"
-                        placeholder="e.g. Priya Mukherjee"
-                        value={member.fullName}
-                        onChange={(e) => updateFamilyMember(member.id, 'fullName', e.target.value)}
-                        required
-                      />
-
-                      <Select
-                        label="Relationship *"
-                        value={member.relationship}
-                        onChange={(e) => updateFamilyMember(member.id, 'relationship', e.target.value)}
-                        options={[
-                          { value: 'Spouse', label: 'Spouse' },
-                          { value: 'Son', label: 'Son' },
-                          { value: 'Daughter', label: 'Daughter' },
-                          { value: 'Father', label: 'Father' },
-                          { value: 'Mother', label: 'Mother' },
-                          { value: 'Brother', label: 'Brother' },
-                          { value: 'Sister', label: 'Sister' },
-                          { value: 'Other Dependent', label: 'Other' }
-                        ]}
-                      />
-
-                      <div className="grid grid-cols-2 gap-2">
-                        <Input
-                          label="Age"
-                          type="number"
-                          placeholder="28"
-                          value={member.age || ''}
-                          onChange={(e) => updateFamilyMember(member.id, 'age', parseInt(e.target.value, 10) || 0)}
-                        />
-                        <Select
-                          label="Gender"
-                          value={member.gender}
-                          onChange={(e) => updateFamilyMember(member.id, 'gender', e.target.value)}
-                          options={[
-                            { value: 'female', label: 'Female' },
-                            { value: 'male', label: 'Male' },
-                            { value: 'other', label: 'Other' }
-                          ]}
-                        />
-                      </div>
-
-                      <Select
-                        label="Blood Group"
-                        value={member.bloodGroup || 'Unknown / Not Known'}
-                        onChange={(e) => updateFamilyMember(member.id, 'bloodGroup', e.target.value)}
-                        options={BLOOD_GROUP_OPTIONS.map(opt => ({
-                          value: opt.value,
-                          label: opt.badge
-                        }))}
-                      />
+                {/* Surcharge Notification when > 5 members */}
+                {familyMembers.length > maxIncludedMembers && (
+                  <div className="p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-700/80 text-amber-900 dark:text-amber-200 space-y-2 animate-in fade-in duration-200">
+                    <div className="flex items-center gap-2 font-bold text-xs">
+                      <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+                      <span>Maximum {maxIncludedMembers} family members are included in this Health Card plan.</span>
                     </div>
-
-                    <div className="flex items-center justify-between pt-1 border-t border-slate-200/50 dark:border-slate-700/50 text-xs">
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="checkbox"
-                          id={`issue_card_${member.id}`}
-                          checked={member.issueCard}
-                          onChange={(e) => updateFamilyMember(member.id, 'issueCard', e.target.checked)}
-                          disabled={!issueHealthCard}
-                          className="rounded text-blue-600 focus:ring-blue-500"
-                        />
-                        <label
-                          htmlFor={`issue_card_${member.id}`}
-                          className={`cursor-pointer ${!issueHealthCard ? 'text-slate-400' : 'text-slate-700 dark:text-slate-300'}`}
-                        >
-                          Issue Individual Health Card for this dependent
-                        </label>
+                    <p className="text-xs text-slate-600 dark:text-amber-200/90 leading-relaxed">
+                      You have added <strong>{familyMembers.length} family members</strong>. The first{' '}
+                      <strong>{maxIncludedMembers} dependents</strong> are included at ₹0. Additional dependents incur the configured charge of{' '}
+                      <strong>₹{additionalMemberFee} each</strong>.
+                    </p>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2 border-t border-amber-200 dark:border-amber-800/60 font-mono text-xs">
+                      <div className="p-2.5 rounded-xl bg-white/80 dark:bg-slate-900/80 border border-amber-200/80">
+                        <span className="text-[10px] text-slate-500 block uppercase font-sans">Included Members</span>
+                        <span className="font-bold text-emerald-600">{maxIncludedMembers}</span>
                       </div>
-
-                      <span className="text-[10px] text-slate-400">
-                        Generates dedicated patient ID in Firestore
-                      </span>
+                      <div className="p-2.5 rounded-xl bg-white/80 dark:bg-slate-900/80 border border-amber-200/80">
+                        <span className="text-[10px] text-slate-500 block uppercase font-sans">Additional Members</span>
+                        <span className="font-bold text-amber-600">{familyMembers.length - maxIncludedMembers}</span>
+                      </div>
+                      <div className="p-2.5 rounded-xl bg-white/80 dark:bg-slate-900/80 border border-amber-200/80">
+                        <span className="text-[10px] text-slate-500 block uppercase font-sans">Additional Member Fee</span>
+                        <span className="font-bold text-slate-900 dark:text-white">
+                          ₹{(familyMembers.length - maxIncludedMembers) * additionalMemberFee}
+                        </span>
+                      </div>
+                      <div className="p-2.5 rounded-xl bg-white/80 dark:bg-slate-900/80 border border-amber-200/80">
+                        <span className="text-[10px] text-slate-500 block uppercase font-sans">Total Net Payable</span>
+                        <span className="font-bold text-blue-600">{formatCurrency(billCalculation.netPayable)}</span>
+                      </div>
                     </div>
                   </div>
-                ))}
-              </div>
+                )}
+
+                {familyMembers.length === 0 ? (
+                  <div className="p-6 rounded-2xl bg-slate-50 dark:bg-slate-800/30 border border-dashed border-slate-200 dark:border-slate-800 text-center space-y-2">
+                    <Users className="w-8 h-8 text-slate-400 mx-auto" />
+                    <p className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                      Family Members: 0 / {maxIncludedMembers} Added
+                    </p>
+                    <p className="text-xs text-slate-400 max-w-sm mx-auto">
+                      Primary cardholder can include spouse, children, and parents under the same Family Health Shield.
+                    </p>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={addFamilyMemberRow}
+                      leftIcon={<Plus className="w-3.5 h-3.5" />}
+                      className="mt-2 text-xs"
+                    >
+                      Add Dependent
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {familyMembers.map((member, index) => (
+                      <div
+                        key={member.id}
+                        className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/80 space-y-3 relative group"
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <span className="w-6 h-6 rounded-lg bg-indigo-100 text-indigo-700 dark:bg-indigo-900/60 dark:text-indigo-300 font-bold text-xs flex items-center justify-center font-mono">
+                              #{index + 1}
+                            </span>
+                            <span className="text-xs font-black text-slate-900 dark:text-white">
+                              Family Member {index + 1}{' '}
+                              {index < maxIncludedMembers ? (
+                                <span className="text-emerald-600 font-normal text-[11px]">(Included in standard allowance)</span>
+                              ) : (
+                                <span className="text-amber-600 font-bold text-[11px]">(+₹{additionalMemberFee} Configured Charge)</span>
+                              )}
+                            </span>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => removeFamilyMember(member.id)}
+                            className="text-slate-400 hover:text-rose-500 p-1.5 rounded-lg transition-colors"
+                            title="Remove Dependent"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                          <Input
+                            label="Full Name *"
+                            placeholder="e.g. Priya Mukherjee"
+                            value={member.fullName}
+                            onChange={(e) => updateFamilyMember(member.id, 'fullName', e.target.value)}
+                            required
+                          />
+
+                          <Select
+                            label="Relationship *"
+                            value={member.relationship}
+                            onChange={(e) => updateFamilyMember(member.id, 'relationship', e.target.value)}
+                            options={[
+                              { value: 'Spouse', label: 'Spouse' },
+                              { value: 'Son', label: 'Son' },
+                              { value: 'Daughter', label: 'Daughter' },
+                              { value: 'Father', label: 'Father' },
+                              { value: 'Mother', label: 'Mother' },
+                              { value: 'Brother', label: 'Brother' },
+                              { value: 'Sister', label: 'Sister' },
+                              { value: 'Other Dependent', label: 'Other' }
+                            ]}
+                          />
+
+                          <div className="grid grid-cols-2 gap-2">
+                            <Input
+                              label="Age"
+                              type="number"
+                              placeholder="28"
+                              value={member.age || ''}
+                              onChange={(e) => updateFamilyMember(member.id, 'age', parseInt(e.target.value, 10) || 0)}
+                            />
+                            <Select
+                              label="Gender"
+                              value={member.gender}
+                              onChange={(e) => updateFamilyMember(member.id, 'gender', e.target.value)}
+                              options={[
+                                { value: 'female', label: 'Female' },
+                                { value: 'male', label: 'Male' },
+                                { value: 'other', label: 'Other' }
+                              ]}
+                            />
+                          </div>
+
+                          <Select
+                            label="Blood Group"
+                            value={member.bloodGroup || 'Unknown / Not Known'}
+                            onChange={(e) => updateFamilyMember(member.id, 'bloodGroup', e.target.value)}
+                            options={BLOOD_GROUP_OPTIONS.map(opt => ({
+                              value: opt.value,
+                              label: opt.badge
+                            }))}
+                          />
+                        </div>
+
+                        {/* Covered Under Family Health Shield Notice (No Auto-Issued Card) */}
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 pt-2 border-t border-slate-200/50 dark:border-slate-700/50 text-xs">
+                          <div className="flex items-center gap-1.5 text-emerald-700 dark:text-emerald-400 font-semibold">
+                            <ShieldCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                            <span>Covered Under Family Health Shield (No separate physical card auto-issued)</span>
+                          </div>
+                          <span className="text-[10px] text-slate-400 font-mono">
+                            Receives dedicated Patient ID in Firestore Master
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </>
             )}
           </div>
 
@@ -1454,9 +1575,9 @@ export const PatientCreatePage: React.FC = () => {
                   <strong className="text-slate-900 dark:text-white text-sm">{fullName || 'Patient Name'}</strong>
                 </div>
                 <div>
-                  <span className="text-slate-400 block text-[10px] uppercase">Card Status</span>
-                  <strong className={issueHealthCard ? 'text-blue-600' : 'text-slate-500'}>
-                    {issueHealthCard ? `Issue Card (${selectedMembership?.name})` : 'Card Issuance: OFF'}
+                  <span className="text-slate-400 block text-[10px] uppercase">Patient Type / Card Status</span>
+                  <strong className={issueHealthCard ? 'text-blue-600' : 'text-slate-600 dark:text-slate-400'}>
+                    {issueHealthCard ? `Issue Card (${selectedMembership?.name})` : 'Non-Card Patient (Standard Pricing)'}
                   </strong>
                 </div>
                 <div>

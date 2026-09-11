@@ -9,6 +9,7 @@ import { EMRService } from '../../services/emrService';
 import { PortalService, BloodTestBooking, MedicineOrder } from '../../services/portalService';
 import { ApiSyncService } from '../../services/apiSyncService';
 import { PatientRecordPdfService } from '../../services/patientRecordPdfService';
+import { CardBenefitService } from '../../services/cardBenefitService';
 import { ClinicalEncounter, PatientAppointment, Membership } from '../../types';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
@@ -28,6 +29,7 @@ import { formatCurrency, formatDate, formatDateTime } from '../../utils/formatte
 import {
   ArrowLeft,
   User,
+  Users,
   CreditCard,
   Wallet as WalletIcon,
   Users2,
@@ -134,6 +136,7 @@ export const PatientDetailPage: React.FC = () => {
   const transactions = patient ? WalletService.getTransactions(patient.id) : [];
   const family = patient ? FamilyService.getByPatientId(patient.id) : undefined;
   const auditLogs = StorageService.getAuditLogs().filter(l => l.referenceId === id || l.description.includes(id || ''));
+  const benefitStatus = useMemo(() => CardBenefitService.getPatientCardBenefitStatus(patient ? patient.id : ''), [patient, tick]);
 
   // Live Clinical Data linked to Card/Patient
   const encounters = useMemo(() => {
@@ -148,13 +151,13 @@ export const PatientDetailPage: React.FC = () => {
 
   const labBookings = useMemo(() => {
     if (!patient) return [];
-    return PortalService.getLabBookings(patient.id);
-  }, [patient]);
+    return PortalService.getLabBookings().filter(b => b.patientId === patient.id);
+  }, [patient, tick]);
 
-  const pharmacyOrders = useMemo(() => {
+  const medicineOrders = useMemo(() => {
     if (!patient) return [];
-    return PortalService.getPharmacyOrders(patient.id);
-  }, [patient]);
+    return PortalService.getPharmacyOrders().filter(o => o.patientId === patient.id);
+  }, [patient, tick]);
 
   // Aggregate all prescribed medicines across encounters
   const allPrescribedMeds = useMemo(() => {
@@ -191,11 +194,11 @@ export const PatientDetailPage: React.FC = () => {
 
   const handleDownloadFullRecord = async () => {
     if (!patient) return;
+    setIsGeneratingPdf(true);
     try {
-      setIsGeneratingPdf(true);
       showToast('info', 'Compiling Medical Record', `Aggregating clinical profile, vitals, prescriptions & tests for ${patient.fullName}...`);
       await PatientRecordPdfService.generateFullRecordPdf(patient.id);
-      showToast('success', 'Full Record Downloaded', 'Comprehensive Patient Health Record PDF downloaded successfully.');
+      showToast('success', 'Medical Record Downloaded', `PDF record generated for ${patient.fullName}.`);
     } catch (err: any) {
       console.error('Error generating PDF:', err);
       showToast('error', 'Download Failed', err?.message || 'Failed to generate PDF record.');
@@ -244,7 +247,13 @@ export const PatientDetailPage: React.FC = () => {
               <h2 className="text-xl font-black text-slate-900 dark:text-white">
                 {patient.fullName}
               </h2>
-              {card && <CardStatusBadge status={card.status} />}
+              {card ? (
+                <CardStatusBadge status={card.status} />
+              ) : (
+                <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border border-slate-300 dark:border-slate-700">
+                  {benefitStatus.badgeLabel}
+                </span>
+              )}
             </div>
             <span className="text-xs font-mono text-slate-500">
               Patient ID: {patient.id} • Registered: {formatDate(patient.createdAt)}
@@ -265,7 +274,7 @@ export const PatientDetailPage: React.FC = () => {
             Download Full Patient Record (PDF)
           </Button>
 
-          {can('card_request_create') && !card && (
+          {can('card_request_create') && !benefitStatus.hasActiveCard && (
             pendingApp ? (
               <span className="px-3 py-1.5 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-300 text-xs font-bold flex items-center gap-1.5 shadow-sm">
                 <Clock className="w-3.5 h-3.5" />
@@ -275,11 +284,11 @@ export const PatientDetailPage: React.FC = () => {
               <Button
                 size="sm"
                 variant="primary"
-                leftIcon={<CreditCard className="w-3.5 h-3.5" />}
+                leftIcon={<Sparkles className="w-3.5 h-3.5" />}
                 onClick={() => setIsCreateCardModalOpen(true)}
-                className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-sm"
+                className="bg-teal-600 hover:bg-teal-700 text-white font-bold shadow-sm"
               >
-                Request Health Card
+                + Enroll in Health Card
               </Button>
             )
           )}
@@ -352,11 +361,13 @@ export const PatientDetailPage: React.FC = () => {
           </div>
 
           <div>
-            <span className="text-slate-400 uppercase font-semibold block text-[10px]">Health Card & Tier</span>
+            <span className="text-slate-400 uppercase font-semibold block text-[10px]">Health Card & Status</span>
             <strong className="font-mono text-brand-blue dark:text-blue-400 text-sm block mt-0.5">
-              {card ? card.cardNumber : 'No Active Card'}
+              {benefitStatus.hasActiveCard ? (card?.cardNumber || benefitStatus.cardNumber) : 'Non-Card Patient'}
             </strong>
-            <span className="text-slate-600 dark:text-slate-300 font-semibold">{membership.name}</span>
+            <span className="text-slate-600 dark:text-slate-300 font-semibold">
+              {benefitStatus.hasActiveCard ? (benefitStatus.planName || membership.name) : 'Standard Rack Pricing (0% Off)'}
+            </span>
           </div>
 
           <div>
@@ -368,6 +379,78 @@ export const PatientDetailPage: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* AUTHORITATIVE CARD BENEFIT & PRICING STATUS HERO BANNER */}
+      {benefitStatus.hasActiveCard ? (
+        <div className="bg-gradient-to-r from-emerald-900/30 via-teal-900/20 to-slate-900 p-5 rounded-3xl border border-emerald-500/40 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="flex items-center gap-3.5">
+            <div className="w-12 h-12 rounded-2xl bg-emerald-500/20 border border-emerald-400/30 text-emerald-400 flex items-center justify-center shrink-0">
+              <Sparkles className="w-6 h-6" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h4 className="text-sm font-black text-emerald-800 dark:text-emerald-300 uppercase tracking-wide">
+                  Active Health Cardholder Benefits
+                </h4>
+                <span className="px-2 py-0.5 rounded-md text-[10px] font-mono font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-400/30">
+                  {benefitStatus.planName}
+                </span>
+              </div>
+              <p className="text-xs text-slate-600 dark:text-slate-300 mt-0.5">
+                {benefitStatus.policyNote}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 text-xs">
+            <div className="px-3 py-1.5 rounded-xl bg-white/10 backdrop-blur-md border border-emerald-500/30 text-emerald-700 dark:text-emerald-200">
+              <span className="text-[10px] uppercase font-bold text-slate-400 block">OPD</span>
+              <strong>{benefitStatus.discounts.opdDiscount}% Off</strong>
+            </div>
+            <div className="px-3 py-1.5 rounded-xl bg-white/10 backdrop-blur-md border border-blue-500/30 text-blue-700 dark:text-blue-200">
+              <span className="text-[10px] uppercase font-bold text-slate-400 block">Lab</span>
+              <strong>{benefitStatus.discounts.labDiscount}% Off</strong>
+            </div>
+            <div className="px-3 py-1.5 rounded-xl bg-white/10 backdrop-blur-md border border-purple-500/30 text-purple-700 dark:text-purple-200">
+              <span className="text-[10px] uppercase font-bold text-slate-400 block">Pharmacy</span>
+              <strong>{benefitStatus.discounts.pharmacyDiscount}% Off</strong>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="bg-gradient-to-r from-slate-100 to-amber-50/40 dark:from-slate-900 dark:to-amber-950/20 p-5 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="flex items-center gap-3.5">
+            <div className="w-12 h-12 rounded-2xl bg-slate-200 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-600 dark:text-slate-300 flex items-center justify-center shrink-0">
+              <Users className="w-6 h-6" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h4 className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-wide">
+                  Direct Registered Patient • {benefitStatus.badgeLabel}
+                </h4>
+                <span className="px-2 py-0.5 rounded-md text-[10px] font-mono font-bold bg-amber-100 text-amber-800 dark:bg-amber-900/60 dark:text-amber-300 border border-amber-300 dark:border-amber-700">
+                  Standard Hospital Rack Pricing
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                {benefitStatus.policyNote} All doctor consultations, diagnostic tests, and pharmacy orders are billed at standard hospital tariffs (0% Health Card discount).
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={() => setIsCreateCardModalOpen(true)}
+              leftIcon={<Sparkles className="w-4 h-4" />}
+              className="bg-teal-600 hover:bg-teal-700 text-white font-bold whitespace-nowrap shadow-sm"
+            >
+              + Enroll in Health Card
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/* Tabs Navigation Bar */}
       <div className="flex items-center gap-2 overflow-x-auto border-b border-slate-200 dark:border-slate-800 pb-2">
