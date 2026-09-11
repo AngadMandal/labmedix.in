@@ -94,12 +94,23 @@ export const PharmacyBillPrintModal: React.FC<PharmacyBillPrintModalProps> = ({
             </div>
 
             <div className="text-right md:min-w-[200px]">
-              <span className="inline-block px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700/50 mb-1">
-                RETAIL TAX INVOICE (CASH/CREDIT)
+              <span className={`inline-block px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider mb-1 border ${
+                sale.sourceType === 'PRESCRIPTION' || sale.saleType === 'PRESCRIPTION'
+                  ? 'bg-purple-100 text-purple-800 dark:bg-purple-950/60 dark:text-purple-300 border-purple-300 dark:border-purple-700/50'
+                  : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700/50'
+              }`}>
+                {sale.sourceType === 'PRESCRIPTION' || sale.saleType === 'PRESCRIPTION'
+                  ? 'PRESCRIPTION DISPENSING INVOICE'
+                  : 'RETAIL PHARMACY TAX INVOICE (OTC)'}
               </span>
               <div className="font-mono text-xs font-black text-slate-900 dark:text-white">
                 {sale.invoiceNumber}
               </div>
+              {sale.prescriptionId && (
+                <div className="text-[10px] text-purple-600 dark:text-purple-400 font-mono font-bold">
+                  Rx Ref: #{sale.prescriptionId.slice(-8).toUpperCase()}
+                </div>
+              )}
               <div className="text-[10px] text-slate-500 dark:text-slate-400 font-mono mt-0.5">
                 Date: {formatDateTime(sale.saleDate)}
               </div>
@@ -112,7 +123,11 @@ export const PharmacyBillPrintModal: React.FC<PharmacyBillPrintModalProps> = ({
           {/* 2. PATIENT & PRESCRIBER METADATA */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs">
             <div>
-              <span className="text-[10px] uppercase font-bold text-slate-400 block tracking-wider">Patient / Customer</span>
+              <span className="text-[10px] uppercase font-bold text-slate-400 block tracking-wider">
+                {sale.sourceType === 'PRESCRIPTION' || sale.saleType === 'PRESCRIPTION'
+                  ? 'Prescription Patient'
+                  : 'Customer / Patient'}
+              </span>
               <strong className="text-sm text-slate-900 dark:text-white block mt-0.5">
                 {sale.patientName}
               </strong>
@@ -151,15 +166,21 @@ export const PharmacyBillPrintModal: React.FC<PharmacyBillPrintModalProps> = ({
             </div>
 
             <div>
-              <span className="text-[10px] uppercase font-bold text-slate-400 block tracking-wider">Prescribing Doctor</span>
+              <span className="text-[10px] uppercase font-bold text-slate-400 block tracking-wider">
+                {sale.sourceType === 'PRESCRIPTION' || sale.saleType === 'PRESCRIPTION'
+                  ? 'Prescribing Doctor'
+                  : 'Counter / Cashier'}
+              </span>
               <strong className="text-xs text-slate-900 dark:text-white block mt-0.5">
-                {sale.prescribingDoctor || 'Hospital Out-Patient Department (OPD)'}
+                {sale.sourceType === 'PRESCRIPTION' || sale.saleType === 'PRESCRIPTION'
+                  ? (sale.prescribingDoctor || 'Hospital Out-Patient Department (OPD)')
+                  : 'Direct Walk-in Retail Counter'}
               </strong>
               <div className="text-[10px] text-slate-500 dark:text-slate-400 font-mono mt-0.5">
                 Dispensed by: {sale.dispensedBy}
               </div>
               <div className="text-[10px] text-slate-500 dark:text-slate-400">
-                Category: <span className="capitalize">{sale.saleType.replace(/_/g, ' ')}</span>
+                Workflow: <span className="font-semibold uppercase text-emerald-600 dark:text-emerald-400">{sale.sourceType || sale.saleType}</span>
               </div>
             </div>
           </div>

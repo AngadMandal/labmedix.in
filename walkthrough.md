@@ -98,11 +98,180 @@ flowchart LR
 
 1. **TypeScript Type Check**:
    ```bash
-   npm run typecheck
-   # Output: tsc --noEmit (Exit code 0, 0 errors)
+   npx tsc --noEmit
+   # Exited with code 0.
    ```
-2. **Production Build**:
+2. **Production Bundle Build**:
    ```bash
    npm run build
-   # Output: vite build (Exit code 0, built in 18.10s)
+   # Built in 16.46s with 0 errors.
+   ```
+
+---
+
+# Walkthrough: Hospital Pharmacy Workflow Separation (Retail vs. Prescription Pharmacy)
+
+We have implemented strict **Workflow Separation** in the **Pharmacy Management Hub**, clearly dividing operations between **Retail Pharmacy** (Direct Walk-in / OTC Sales) and **Prescription Pharmacy** (Doctor Prescription Verification & Dispensing), while anchoring both to a shared inventory engine, distinct audit ledgers, separate returns handling, and segregated real-time dashboard counters.
+
+---
+
+## 1. Architectural Overview & Workflow Separation
+
+```mermaid
+graph TD
+    subgraph CommonCore["Common Shared Inventory Core"]
+        MM["Medicine Master (Catalog & Prices)"]
+        BM["Batch Master (Stock & Expiry)"]
+        FEFO["FEFO Recommendation Engine"]
+        ST["Stock Deduction & Audit Movements"]
+    end
+
+    subgraph RetailFlow["1. Retail Pharmacy Workflow (OTC)"]
+        R1["Direct Walk-in / Patient Search"]
+        R2["Scan Barcode / Search OTC Drugs"]
+        R3["Auto FEFO Batch Pick"]
+        R4["Apply Health Card Tier Discount"]
+        R5["Calculate Tax (CGST / SGST)"]
+        R6["Generate PHARM-RET-YYYY-XXXXXX"]
+        R7["Deduct Stock & Issue Retail Invoice"]
+    end
+
+    subgraph RxFulfillment["2. Prescription Pharmacy Workflow (Doctor Rx)"]
+        P1["Doctor Prescription Queue (EMR)"]
+        P2["Verify Patient & Doctor Reg No"]
+        P3["Review Dosage, Frequency & Duration"]
+        P4["Auto-Match Medicine Master & FEFO Batches"]
+        P5["Clinical Safety Sign-Off Checklist"]
+        P6["Generate PHARM-RX-YYYY-XXXXXX"]
+        P7["Deduct Stock, Mark Rx Dispensed & Issue Rx Invoice"]
+    end
+
+    subgraph ReturnsFlow["3. Separated Returns with Quality Inspection"]
+        RET1["Retail Return (Receipt Ref)"]
+        RET2["Prescription Return (Rx/Ward Ref)"]
+        INSP["Mandatory Pharmacist Inspection"]
+        RESTOCK["Passed: Restocked to Batch Stock"]
+        QUARANTINE["Failed: Quarantined / Scrapped"]
+    end
+
+    MM --> R2
+    MM --> P4
+    BM --> R3
+    BM --> P4
+    R6 --> ST
+    P6 --> ST
+    RET1 --> INSP
+    RET2 --> INSP
+    INSP -->|Intact/Valid| RESTOCK
+    INSP -->|Damaged/Expired| QUARANTINE
+    RESTOCK --> BM
+```
+
+---
+
+## 2. Key Features Implemented
+
+### A. Primary Entry Points & Navigation
+- **Two Prominent Navigation Entry Points** in the top hero banner and tabs:
+  1. **Retail Pharmacy (OTC)**: Direct walk-in & over-the-counter sales without prescription requirement.
+  2. **Prescription Pharmacy (Rx)**: EMR doctor prescription queue with pending counter badge.
+- **Additional Navigation Tabs**:
+  - `Dashboard & Partitioned Analytics`
+  - `Sales & Rx Returns` (with Pharmacist Inspection Audit)
+  - `Medicine Master`
+  - `Batch Stock & FEFO`
+  - `Purchases & Inward`
+  - `Suppliers Master`
+  - `Ledger & Audit`
+  - `Online Orders`
+
+---
+
+### B. Retail Pharmacy Workflow
+- **Zero Prescription Friction**: Walk-in customers and registered patients purchase eligible medications without selecting a doctor or uploading a prescription.
+- **Fast Search & FEFO Batch Allocation**: Real-time barcode scan, generic composition match, and auto-allocated earliest expiry batch.
+- **Health Card Tier Integration**: Automatic discount application for registered cardholders (10% - 20% discount).
+- **Invoice Generation**: Generates official tax invoices with serial `PHARM-RET-YYYY-XXXXXX`, `sourceType: 'RETAIL'`, and `prescriptionId: undefined`.
+- **Stock Movement Ledger**: Immediate stock deduction with `STOCK_OUT` movement and financial ledger record.
+
+---
+
+### C. Prescription Pharmacy Workflow
+- **Live Hospital Prescription Queue**:
+  - Automatically receives digital prescriptions from doctor consultations (OPD, IPD, Emergency, External).
+  - Filter queue by `Pending Dispense`, `Dispensed`, or `All Prescriptions`.
+- **Prescription Dispensing & Clinical Verification Modal**:
+  - Displays Patient UHID, Name, Contact, and Health Card discount.
+  - Displays Doctor Name, Medical Council Registration Number, Department, and Encounter ID.
+  - Automatically matches prescribed drugs against the Medicine Master and allocates candidate unexpired batches via **FEFO**.
+  - Allows pharmacists to substitute batches or adjust dispense quantities.
+  - **Mandatory Clinical Safety Sign-Off**:
+    - [x] Dosage & Regimen Verified against clinical protocols
+    - [x] Patient Allergies & Contraindications Screened
+    - [x] Drug-Drug & Drug-Food Interactions Checked
+    - Pharmacist clinical remarks & patient instructions
+- **Prescription Invoice**: Generates official invoice with serial `PHARM-RX-YYYY-XXXXXX`, links `doctorId` and `prescriptionId`, updates encounter status to `isDispensed: true`, and links `dispensedInvoiceNo`.
+
+---
+
+### D. Dedicated Returns Management with Pharmacist Quality Inspection
+- **Separated Workflows**: Filter and record returns by `RETAIL` vs `PRESCRIPTION`.
+- **Invoice Traceability**: Selects from historical billed invoices and verifies returned quantities.
+- **Mandatory Quality Inspection Gate**:
+  - **Passed Inspection (Restockable)**: Unopened packaging, intact strip, cold-chain verified. Automatically restocks back into the active shelf batch and generates `STOCK_IN` movement.
+  - **Failed / Quarantined (Scrapped)**: Broken seal, expired, or temperature compromised. Scrapped and recorded without returning to sellable inventory.
+- Logs full auditable reason, inspector name, and refund transaction in the ledger.
+
+---
+
+### E. Partitioned Dashboard Metrics (Zero Hardcoding)
+The Pharmacy Dashboard displays 3 segregated, real-time counter groups:
+1. **Retail Pharmacy Workflow**:
+   - Today's Retail Sales (₹)
+   - Total Retail Revenue (₹)
+   - Retail Invoices Count (`PHARM-RET`)
+   - Retail Returns Count & Total Value Refunded
+2. **Prescription Pharmacy Workflow**:
+   - Pending Prescriptions Count
+   - Dispensed Prescriptions Count
+   - Prescription Sales Revenue (₹)
+   - Prescription Returns Count
+3. **Common Inventory & FEFO Expiry Core**:
+   - Total Inventory Valuation (MRP & Cost)
+   - Active SKUs & Batches Count
+   - Low Stock & Out-of-Stock SKUs
+   - FEFO Expiry Alerts (Expired, <30d, <60d, <90d)
+
+---
+
+### F. Differentiated Tax Invoice Printing (`PharmacyBillPrintModal`)
+- Branded differently depending on `sourceType` or `saleType`:
+  - **RETAIL**: Branded as `RETAIL PHARMACY TAX INVOICE (OTC)`, displays customer/patient details, cashier, and direct OTC sale notice.
+  - **PRESCRIPTION**: Branded as `PRESCRIPTION DISPENSING INVOICE`, prominently displays Prescribing Doctor, Medical Council Reg No, Department, and Prescription Reference ID (`Rx Ref: #XXXXXX`).
+
+---
+
+## 3. Files Modified & Created
+
+| File | Change | Description |
+|---|---|---|
+| [src/types/index.ts](file:///d:/Labmedix.in/src/types/index.ts) | Modified | Added `dispensedQuantity`, `prescriptionItemId`, `PharmacySourceType = 'RETAIL' \| 'PRESCRIPTION'`, and segregated fields on `PharmacySale` and `PharmacySalesReturn`. |
+| [src/services/pharmacyService.ts](file:///d:/Labmedix.in/src/services/pharmacyService.ts) | Modified | Added `dispenseRetailSale()` (`PHARM-RET-`), `dispensePrescriptionSale()` (`PHARM-RX-`), segregated `getDashboardMetrics()`, quality-inspected `recordSalesReturn()`, and enriched `getDoctorPrescriptions()`. |
+| [src/components/pharmacy/PharmacyBillPrintModal.tsx](file:///d:/Labmedix.in/src/components/pharmacy/PharmacyBillPrintModal.tsx) | Modified | Differentiated layout and metadata between Retail OTC Tax Invoices and Doctor Prescription Dispensing Invoices. |
+| [src/pages/pharmacy/PharmacyPage.tsx](file:///d:/Labmedix.in/src/pages/pharmacy/PharmacyPage.tsx) | Modified | Added separate primary entry points (`retail`, `prescriptions`, `returns`), partitioned 3-group dashboard, Prescription Dispense & Clinical Safety Modal, and Sales Return Modal with Quality Inspection. |
+
+---
+
+## 4. Verification Results
+
+1. **TypeScript Type Check**:
+   ```bash
+   npx tsc --noEmit
+   # Exit code: 0 (Zero errors)
+   ```
+
+2. **Production Bundle Build**:
+   ```bash
+   npm run build
+   # Built in 16.46s with 0 errors
    ```

@@ -2202,6 +2202,8 @@ export interface PharmacySaleItem {
   batchNumber: string;
   expiryDate: string;
   quantity: number;
+  dispensedQuantity?: number;
+  prescriptionItemId?: string;
   mrp: number;
   unitPrice: number;
   discountPercent: number;
@@ -2211,18 +2213,25 @@ export interface PharmacySaleItem {
   totalAmount: number;
 }
 
+export type PharmacySaleType = 'RETAIL' | 'PRESCRIPTION' | 'walkin' | 'patient_linked' | 'prescription';
+export type PharmacySourceType = 'RETAIL' | 'PRESCRIPTION';
+
 export interface PharmacySale {
   id: string;
-  invoiceNumber: string; // e.g. PHARM-INV-2026-0001
+  invoiceNumber: string; // e.g. PHARM-RET-2026-0001 or PHARM-RX-2026-0001
   saleDate: string;
-  saleType: 'walkin' | 'patient_linked' | 'prescription';
+  saleType: PharmacySaleType;
+  sourceType: PharmacySourceType;
+  customerId?: string;
   patientId?: string;
   patientName: string;
   patientPhone?: string;
   patientCardNo?: string;
   cardTier?: string;
+  doctorId?: string;
   prescribingDoctor?: string;
-  prescriptionId?: string;
+  prescriptionId?: string; // null / undefined for Retail sales
+  dispensingStatus?: 'pending' | 'partially_dispensed' | 'fully_dispensed';
   items: PharmacySaleItem[];
   subtotal: number;
   discountAmount: number;
@@ -2241,9 +2250,11 @@ export interface PharmacySale {
 export interface PharmacySalesReturn {
   id: string;
   returnNumber: string; // e.g. SR-2026-001
+  returnType: 'RETAIL' | 'PRESCRIPTION';
   originalInvoiceNo: string;
   saleId: string;
   patientName: string;
+  prescriptionId?: string;
   medicineId: string;
   medicineName: string;
   batchId: string;

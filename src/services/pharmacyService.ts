@@ -69,20 +69,72 @@ export interface DispenseRequest {
   patientName: string;
   patientPhone?: string;
   doctorName?: string;
+  doctorId?: string;
+  prescriptionId?: string;
   items: DispenseItem[];
   paymentMode: 'Cash' | 'Card' | 'UPI' | 'Health Wallet';
   paidAmount?: number;
   notes?: string;
   performedBy: string;
   cardNo?: string;
-  saleType?: 'walkin' | 'patient_linked' | 'prescription';
+  saleType?: 'RETAIL' | 'PRESCRIPTION' | 'walkin' | 'patient_linked' | 'prescription';
+}
+
+export interface RetailDispenseRequest {
+  customerId?: string;
+  customerName?: string;
+  patientName?: string;
+  customerPhone?: string;
+  patientPhone?: string;
+  patientId?: string;
+  cardNo?: string;
+  items: DispenseItem[];
+  paymentMode: 'Cash' | 'Card' | 'UPI' | 'Health Wallet';
+  paidAmount?: number;
+  notes?: string;
+  performedBy: string;
+}
+
+export interface PrescriptionDispenseRequest {
+  prescriptionId: string;
+  prescriptionItemId?: string;
+  patientId: string;
+  patientName: string;
+  patientPhone?: string;
+  cardNo?: string;
+  doctorId: string;
+  doctorName: string;
+  doctorRegNo?: string;
+  department?: string;
+  sourceType?: string;
+  items: DispenseItem[];
+  paymentMode: 'Cash' | 'Card' | 'UPI' | 'Health Wallet';
+  paidAmount?: number;
+  notes?: string;
+  performedBy: string;
 }
 
 export interface PharmacyDashboardMetrics {
-  todaySalesAmount: number;
-  todaySalesCount: number;
-  todayPurchasesAmount: number;
-  todayPurchasesCount: number;
+  // RETAIL METRICS
+  todayRetailSalesAmount: number;
+  todayRetailSalesCount: number;
+  todayRetailReturnsTotal: number;
+  todayRetailTransactionsCount: number;
+  totalRetailRevenue: number;
+  retailSalesCount: number;
+  retailReturnsCount: number;
+  retailReturnsAmount: number;
+
+  // PRESCRIPTION METRICS
+  pendingPrescriptionsCount: number;
+  dispensedPrescriptionsCount: number;
+  todayPrescriptionSalesAmount: number;
+  todayPrescriptionSalesCount: number;
+  todayPrescriptionReturnsTotal: number;
+  prescriptionSalesAmount: number;
+  prescriptionReturnsCount: number;
+
+  // INVENTORY METRICS
   totalMedicinesCount: number;
   totalBatchesCount: number;
   totalStockUnits: number;
@@ -94,7 +146,12 @@ export interface PharmacyDashboardMetrics {
   nearExpiry30DaysCount: number;
   nearExpiry60DaysCount: number;
   nearExpiry90DaysCount: number;
-  pendingPrescriptionsCount: number;
+
+  // CONSOLIDATED TOTALS
+  todaySalesAmount: number;
+  todaySalesCount: number;
+  todayPurchasesAmount: number;
+  todayPurchasesCount: number;
   todayDiscountsTotal: number;
   todayReturnsTotal: number;
   cashCollectedToday: number;
@@ -1217,7 +1274,7 @@ export class PharmacyService {
   }
 
   /* =======================================================================
-     7. SALES / POS COUNTER & FEFO DISPENSING
+     7. SALES / POS COUNTER & FEFO DISPENSING (RETAIL VS PRESCRIPTION)
      ======================================================================= */
   public static getSales(): PharmacySale[] {
     return StorageService.getItem<PharmacySale[]>(PHARMACY_SALES_KEY, []);
@@ -1227,13 +1284,18 @@ export class PharmacyService {
     StorageService.setItem(PHARMACY_SALES_KEY, sales);
   }
 
-  public static async dispenseSale(request: DispenseRequest): Promise<{
+  /**
+   * RETAIL PHARMACY WORKFLOW
+   * For walk-in, registered patients, and cardholders without prescriptions.
+   * Direct medicine OTC / general sales.
+   */
+  public static async dispenseRetailSale(request: RetailDispenseRequest): Promise<{
     sale: PharmacySale;
     bill: HospitalBill;
     items: PharmacySaleItem[];
   }> {
     if (!request.items || request.items.length === 0) {
-      throw new Error('Dispense request must contain at least one item.');
+      throw new Error('Retail dispense request must contain at least one item.');
     }
 
     const medicines = this.getMedicines();
@@ -1263,19 +1325,15 @@ export class PharmacyService {
         targetBatch = fefoCandidates[0];
       }
 
-      // STRICT SAFETY VALIDATION
+      // Strict safety validation
       if (targetBatch.status === 'quarantine' || targetBatch.status === 'recalled') {
         throw new Error(`Batch "${targetBatch.batchNumber}" for "${med.name}" is ${targetBatch.status.toUpperCase()} and cannot be dispensed.`);
       }
       if (targetBatch.expiryDate < today) {
-        throw new Error(
-          `CRITICAL SAFETY ALERT: Batch "${targetBatch.batchNumber}" for "${med.name}" expired on ${targetBatch.expiryDate}. Dispensing expired medication is prohibited.`
-        );
+        throw new Error(`CRITICAL: Batch "${targetBatch.batchNumber}" for "${med.name}" expired on ${targetBatch.expiryDate}. Sale prohibited.`);
       }
       if (targetBatch.availableQty < reqItem.quantity) {
-        throw new Error(
-          `Insufficient stock in Batch "${targetBatch.batchNumber}" for "${med.name}". Available: ${targetBatch.availableQty}, Requested: ${reqItem.quantity}.`
-        );
+        throw new Error(`Insufficient stock in Batch "${targetBatch.batchNumber}". Available: ${targetBatch.availableQty}, Requested: ${reqItem.quantity}.`);
       }
 
       const unitPrice = reqItem.unitPrice !== undefined ? reqItem.unitPrice : targetBatch.sellingPrice;
@@ -1321,7 +1379,7 @@ export class PharmacyService {
       });
     }
 
-    // Step 2: Calculate financial totals
+    // Step 2: Totals
     const subtotal = saleItems.reduce((acc, curr) => acc + (curr.quantity * curr.unitPrice), 0);
     const discountTotal = saleItems.reduce((acc, curr) => acc + curr.discountAmount, 0);
     const taxTotal = saleItems.reduce((acc, curr) => acc + curr.taxAmount, 0);
@@ -1329,18 +1387,20 @@ export class PharmacyService {
     const paidAmount = request.paidAmount !== undefined ? request.paidAmount : netTotal;
     const dueAmount = Math.max(0, netTotal - paidAmount);
 
-    const invoiceNumber = `PHARM-INV-${new Date().getFullYear()}-${Math.floor(100000 + Math.random() * 900000)}`;
+    const invoiceNumber = `PHARM-RET-${new Date().getFullYear()}-${Math.floor(100000 + Math.random() * 900000)}`;
 
     const sale: PharmacySale = {
       id: `sale_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
       invoiceNumber,
       saleDate: new Date().toISOString(),
-      saleType: request.saleType || (request.patientId ? 'patient_linked' : 'walkin'),
+      saleType: 'RETAIL',
+      sourceType: 'RETAIL',
+      customerId: request.customerId,
       patientId: request.patientId,
-      patientName: request.patientName,
-      patientPhone: request.patientPhone,
+      patientName: request.customerName || request.patientName || 'Walk-in Customer',
+      patientPhone: request.customerPhone || request.patientPhone,
       patientCardNo: request.cardNo,
-      prescribingDoctor: request.doctorName,
+      prescriptionId: undefined, // Explicitly undefined for Retail
       items: saleItems,
       subtotal,
       discountAmount: discountTotal,
@@ -1356,7 +1416,7 @@ export class PharmacyService {
       createdAt: new Date().toISOString()
     };
 
-    // Step 3: Create Hospital Bill for central ledger alignment
+    // Step 3: Hospital bill
     const paymentMethodMap: Record<string, 'cash' | 'upi' | 'card' | 'wallet' | 'netbanking'> = {
       'Cash': 'cash',
       'UPI': 'upi',
@@ -1365,13 +1425,13 @@ export class PharmacyService {
     };
 
     const bill = BillService.createHospitalBill({
-      patientId: request.patientId || 'walkin_patient',
-      patientName: request.patientName,
-      patientMobile: request.patientPhone,
+      patientId: request.patientId || 'walkin_retail',
+      patientName: request.customerName || request.patientName || 'Walk-in Customer',
+      patientMobile: request.customerPhone || request.patientPhone,
       healthCardNumber: request.cardNo,
       billCategory: 'pharmacy_dispensing',
       items: saleItems.map(i => ({
-        description: `${i.medicineName} (Batch: ${i.batchNumber})`,
+        description: `${i.medicineName} [Batch: ${i.batchNumber}]`,
         quantity: i.quantity,
         unitPrice: i.unitPrice,
         total: i.totalAmount
@@ -1379,7 +1439,7 @@ export class PharmacyService {
       discountAmount: discountTotal,
       paidAmount,
       paymentMethod: paymentMethodMap[request.paymentMode] || 'cash',
-      notes: `Pharmacy POS Dispensed [Invoice: ${invoiceNumber}] by ${request.performedBy}`
+      notes: `Retail Pharmacy Sale [Invoice: ${invoiceNumber}] by ${request.performedBy}`
     });
 
     // Step 4: Persist batches & stock movements
@@ -1389,7 +1449,7 @@ export class PharmacyService {
       this.recordMovement({
         ...mov,
         referenceId: invoiceNumber,
-        notes: `Dispensed to ${request.patientName} (${invoiceNumber})`
+        notes: `Retail Sale to ${request.customerName} (${invoiceNumber})`
       });
     }
 
@@ -1406,17 +1466,255 @@ export class PharmacyService {
       flow: 'inflow',
       paymentMethod: sale.paymentMethod,
       performedBy: request.performedBy,
-      notes: `Pharmacy Dispensed Invoice ${sale.invoiceNumber} (${saleItems.length} items)`
+      notes: `Retail Pharmacy Sale ${sale.invoiceNumber} (${saleItems.length} items)`
     });
 
     await ApiSyncService.saveDocument('pharmacySales', sale.id, sale);
-    AuditService.log('PHARMACY_SALE', 'pharmacy', `Dispensed invoice ${sale.invoiceNumber} to ${sale.patientName} for ₹${netTotal}`, sale.id);
+    AuditService.log('RETAIL_PHARMACY_SALE', 'pharmacy', `Retail sale ${sale.invoiceNumber} to ${sale.patientName} for ₹${netTotal}`, sale.id);
 
     return { sale, bill, items: saleItems };
   }
 
+  /**
+   * PRESCRIPTION PHARMACY WORKFLOW
+   * Strictly for medicines dispensed against a doctor-approved prescription.
+   */
+  public static async dispensePrescriptionSale(request: PrescriptionDispenseRequest): Promise<{
+    sale: PharmacySale;
+    bill: HospitalBill;
+    items: PharmacySaleItem[];
+  }> {
+    if (!request.items || request.items.length === 0) {
+      throw new Error('Prescription dispense request must contain at least one item.');
+    }
+    if (!request.prescriptionId) {
+      throw new Error('Prescription ID is required for prescription dispensing workflow.');
+    }
+    if (!request.doctorId) {
+      throw new Error('Prescribing Doctor ID is required for clinical prescription dispensing.');
+    }
+
+    const medicines = this.getMedicines();
+    const batches = this.getBatches();
+    const today = new Date().toISOString().split('T')[0];
+
+    const saleItems: PharmacySaleItem[] = [];
+    const updatedBatches: MedicineBatchItem[] = [];
+    const stockMovementsToRecord: Array<Omit<StockMovement, 'id' | 'timestamp'>> = [];
+
+    // Step 1: Validate stock & resolve batch via FEFO
+    for (const reqItem of request.items) {
+      const med = medicines.find(m => m.id === reqItem.medicineId);
+      if (!med) throw new Error(`Medicine ID "${reqItem.medicineId}" not found in master catalog.`);
+
+      let targetBatch: MedicineBatchItem | undefined;
+
+      if (reqItem.batchId) {
+        targetBatch = batches.find(b => b.id === reqItem.batchId);
+        if (!targetBatch) throw new Error(`Selected batch ID "${reqItem.batchId}" not found.`);
+      } else {
+        // Automatic FEFO Allocation
+        const fefoCandidates = this.getFefoRecommendedBatches(med.id);
+        if (fefoCandidates.length === 0) {
+          throw new Error(`No active unexpired batches available for "${med.name}". Zero negative-stock enforced.`);
+        }
+        targetBatch = fefoCandidates[0];
+      }
+
+      // Strict safety validation
+      if (targetBatch.status === 'quarantine' || targetBatch.status === 'recalled') {
+        throw new Error(`Batch "${targetBatch.batchNumber}" for "${med.name}" is ${targetBatch.status.toUpperCase()} and cannot be dispensed.`);
+      }
+      if (targetBatch.expiryDate < today) {
+        throw new Error(`CRITICAL: Batch "${targetBatch.batchNumber}" for "${med.name}" expired on ${targetBatch.expiryDate}. Clinical dispensing prohibited.`);
+      }
+      if (targetBatch.availableQty < reqItem.quantity) {
+        throw new Error(`Insufficient stock in Batch "${targetBatch.batchNumber}". Available: ${targetBatch.availableQty}, Requested: ${reqItem.quantity}.`);
+      }
+
+      const unitPrice = reqItem.unitPrice !== undefined ? reqItem.unitPrice : targetBatch.sellingPrice;
+      const discountPercent = reqItem.discountPercent || 0;
+      const gross = reqItem.quantity * unitPrice;
+      const discountAmount = Math.round((gross * discountPercent) / 100 * 100) / 100;
+      const net = gross - discountAmount;
+      const gstPercent = med.taxGstRate || 12;
+      const taxAmount = Math.round((net * gstPercent) / (100 + gstPercent) * 100) / 100;
+
+      const saleItem: PharmacySaleItem = {
+        medicineId: med.id,
+        medicineName: med.name,
+        batchId: targetBatch.id,
+        batchNumber: targetBatch.batchNumber,
+        expiryDate: targetBatch.expiryDate,
+        quantity: reqItem.quantity,
+        dispensedQuantity: reqItem.quantity,
+        prescriptionItemId: request.prescriptionItemId,
+        mrp: targetBatch.mrp,
+        unitPrice,
+        discountPercent,
+        discountAmount,
+        taxGstPercent: gstPercent,
+        taxAmount,
+        totalAmount: net
+      };
+      saleItems.push(saleItem);
+
+      // Decrement batch availableQty
+      const prevStock = targetBatch.availableQty;
+      targetBatch.availableQty -= reqItem.quantity;
+      targetBatch.updatedAt = new Date().toISOString();
+      updatedBatches.push(targetBatch);
+
+      stockMovementsToRecord.push({
+        medicineId: med.id,
+        medicineName: med.name,
+        batchNumber: targetBatch.batchNumber,
+        type: 'STOCK_OUT_DISPENSED',
+        quantity: reqItem.quantity,
+        previousStock: prevStock,
+        newStock: targetBatch.availableQty,
+        performedBy: request.performedBy
+      });
+    }
+
+    // Step 2: Totals
+    const subtotal = saleItems.reduce((acc, curr) => acc + (curr.quantity * curr.unitPrice), 0);
+    const discountTotal = saleItems.reduce((acc, curr) => acc + curr.discountAmount, 0);
+    const taxTotal = saleItems.reduce((acc, curr) => acc + curr.taxAmount, 0);
+    const netTotal = Math.max(0, Math.round((subtotal - discountTotal) * 100) / 100);
+    const paidAmount = request.paidAmount !== undefined ? request.paidAmount : netTotal;
+    const dueAmount = Math.max(0, netTotal - paidAmount);
+
+    const invoiceNumber = `PHARM-RX-${new Date().getFullYear()}-${Math.floor(100000 + Math.random() * 900000)}`;
+
+    const sale: PharmacySale = {
+      id: `sale_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      invoiceNumber,
+      saleDate: new Date().toISOString(),
+      saleType: 'PRESCRIPTION',
+      sourceType: 'PRESCRIPTION',
+      patientId: request.patientId,
+      patientName: request.patientName,
+      patientPhone: request.patientPhone,
+      patientCardNo: request.cardNo,
+      doctorId: request.doctorId,
+      prescribingDoctor: request.doctorName,
+      prescriptionId: request.prescriptionId,
+      dispensingStatus: 'fully_dispensed',
+      items: saleItems,
+      subtotal,
+      discountAmount: discountTotal,
+      healthCardDiscount: request.cardNo ? discountTotal : 0,
+      taxAmount: taxTotal,
+      netTotal,
+      paidAmount,
+      dueAmount,
+      paymentMethod: request.paymentMode,
+      dispensedBy: request.performedBy,
+      status: 'dispensed',
+      notes: request.notes,
+      createdAt: new Date().toISOString()
+    };
+
+    // Step 3: Hospital bill
+    const paymentMethodMap: Record<string, 'cash' | 'upi' | 'card' | 'wallet' | 'netbanking'> = {
+      'Cash': 'cash',
+      'UPI': 'upi',
+      'Card': 'card',
+      'Health Wallet': 'wallet'
+    };
+
+    const bill = BillService.createHospitalBill({
+      patientId: request.patientId,
+      patientName: request.patientName,
+      patientMobile: request.patientPhone,
+      healthCardNumber: request.cardNo,
+      billCategory: 'pharmacy_dispensing',
+      items: saleItems.map(i => ({
+        description: `${i.medicineName} [Batch: ${i.batchNumber}] (Rx: ${request.prescriptionId})`,
+        quantity: i.quantity,
+        unitPrice: i.unitPrice,
+        total: i.totalAmount
+      })),
+      discountAmount: discountTotal,
+      paidAmount,
+      paymentMethod: paymentMethodMap[request.paymentMode] || 'cash',
+      notes: `Prescription Dispensed [Rx: ${request.prescriptionId}, Invoice: ${invoiceNumber}] by ${request.performedBy}`
+    });
+
+    // Step 4: Persist batches & stock movements
+    this.saveBatchesList(batches);
+
+    for (const mov of stockMovementsToRecord) {
+      this.recordMovement({
+        ...mov,
+        referenceId: invoiceNumber,
+        notes: `Prescription Dispensed to ${request.patientName} (Rx #${request.prescriptionId}, Invoice: ${invoiceNumber})`
+      });
+    }
+
+    // Step 5: Save Sale record & Financial Transaction
+    const sales = this.getSales();
+    sales.unshift(sale);
+    this.saveSalesList(sales);
+
+    this.recordPharmacyTransaction({
+      type: 'sale',
+      referenceId: sale.invoiceNumber,
+      entityName: sale.patientName,
+      amount: netTotal,
+      flow: 'inflow',
+      paymentMethod: sale.paymentMethod,
+      performedBy: request.performedBy,
+      notes: `Prescription Dispensed Invoice ${sale.invoiceNumber} for Dr. ${request.doctorName}'s Rx #${request.prescriptionId}`
+    });
+
+    await ApiSyncService.saveDocument('pharmacySales', sale.id, sale);
+    AuditService.log('PRESCRIPTION_DISPENSED', 'pharmacy', `Prescription ${request.prescriptionId} dispensed (${invoiceNumber}) to ${sale.patientName} for ₹${netTotal}`, sale.id);
+
+    return { sale, bill, items: saleItems };
+  }
+
+  /**
+   * Universal Dispense Dispatcher (backward compatible)
+   */
+  public static async dispenseSale(request: DispenseRequest): Promise<{
+    sale: PharmacySale;
+    bill: HospitalBill;
+    items: PharmacySaleItem[];
+  }> {
+    if (request.prescriptionId || request.saleType === 'PRESCRIPTION' || request.saleType === 'prescription') {
+      return this.dispensePrescriptionSale({
+        prescriptionId: request.prescriptionId || `RX-${Date.now().toString().slice(-4)}`,
+        patientId: request.patientId || 'patient_unspecified',
+        patientName: request.patientName,
+        patientPhone: request.patientPhone,
+        cardNo: request.cardNo,
+        doctorId: request.doctorId || 'doc_opd',
+        doctorName: request.doctorName || 'Hospital OPD Physician',
+        items: request.items,
+        paymentMode: request.paymentMode,
+        paidAmount: request.paidAmount,
+        notes: request.notes,
+        performedBy: request.performedBy
+      });
+    }
+
+    return this.dispenseRetailSale({
+      customerName: request.patientName,
+      customerPhone: request.patientPhone,
+      patientId: request.patientId,
+      cardNo: request.cardNo,
+      items: request.items,
+      paymentMode: request.paymentMode,
+      paidAmount: request.paidAmount,
+      notes: request.notes,
+      performedBy: request.performedBy
+    });
+  }
+
   /* =======================================================================
-     8. SALES RETURN / MEDICINE RETURN
+     8. SALES RETURN / MEDICINE RETURN (SEPARATED BY SOURCE)
      ======================================================================= */
   public static getSalesReturns(): PharmacySalesReturn[] {
     return StorageService.getItem<PharmacySalesReturn[]>(PHARMACY_SALES_RETURNS_KEY, []);
@@ -1429,12 +1727,15 @@ export class PharmacyService {
     quantity: number;
     refundRate: number;
     returnReason: string;
+    returnType?: 'RETAIL' | 'PRESCRIPTION';
     stockAction: 'return_to_active' | 'quarantine_damaged' | 'discard_expired';
     authorizedBy: string;
   }): Promise<PharmacySalesReturn> {
     const sales = this.getSales();
     const originalSale = sales.find(s => s.invoiceNumber === params.originalInvoiceNo);
     const patientName = originalSale ? originalSale.patientName : 'Customer';
+    const detectedReturnType: 'RETAIL' | 'PRESCRIPTION' =
+      params.returnType || (originalSale && originalSale.sourceType === 'PRESCRIPTION' ? 'PRESCRIPTION' : 'RETAIL');
 
     const batches = this.getBatches();
     const batch = batches.find(
@@ -1444,6 +1745,7 @@ export class PharmacyService {
     const qty = Math.max(1, Math.floor(params.quantity));
     const refundAmount = Math.round(qty * params.refundRate * 100) / 100;
 
+    // Only restock if inspection explicitly approves 'return_to_active'
     if (batch && params.stockAction === 'return_to_active') {
       const prevStock = batch.availableQty;
       batch.availableQty += qty;
@@ -1459,16 +1761,18 @@ export class PharmacyService {
         previousStock: prevStock,
         newStock: batch.availableQty,
         referenceId: params.originalInvoiceNo,
-        notes: `Sales Return Restocked from ${patientName} (${params.returnReason})`,
+        notes: `${detectedReturnType} Return Restocked from ${patientName} (${params.returnReason})`,
         performedBy: params.authorizedBy
       });
     }
 
     const sReturn: PharmacySalesReturn = {
       id: `sret_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-      returnNumber: `SR-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`,
+      returnNumber: `SR-${detectedReturnType.slice(0, 3)}-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`,
+      returnType: detectedReturnType,
       originalInvoiceNo: params.originalInvoiceNo,
       saleId: originalSale ? originalSale.id : '',
+      prescriptionId: originalSale?.prescriptionId,
       patientName,
       medicineId: params.medicineId,
       medicineName: batch ? batch.medicineName : 'Medicine',
@@ -1496,11 +1800,11 @@ export class PharmacyService {
       flow: 'outflow',
       paymentMethod: 'Cash / Refund',
       performedBy: params.authorizedBy,
-      notes: `Sales return ${sReturn.returnNumber} against ${params.originalInvoiceNo}`
+      notes: `${detectedReturnType} return ${sReturn.returnNumber} against ${params.originalInvoiceNo} (${params.returnReason})`
     });
 
     await ApiSyncService.saveDocument('pharmacySalesReturns', sReturn.id, sReturn);
-    AuditService.log('SALES_RETURN', 'pharmacy', `Sales return ${sReturn.returnNumber} for ₹${refundAmount} authorized by ${params.authorizedBy}`, sReturn.id);
+    AuditService.log('SALES_RETURN', 'pharmacy', `${detectedReturnType} return ${sReturn.returnNumber} for ₹${refundAmount} authorized by ${params.authorizedBy}`, sReturn.id);
 
     return sReturn;
   }
@@ -1622,12 +1926,16 @@ export class PharmacyService {
     encounterNo: string;
     patientId: string;
     patientName: string;
+    patientPhone?: string;
     cardNo?: string;
     doctorId: string;
     doctorName: string;
     doctorSpeciality: string;
     date: string;
     diagnoses: string[];
+    sourceType?: string;
+    isDispensed?: boolean;
+    dispensedInvoiceNo?: string;
     medications: Array<{
       id: string;
       name: string;
@@ -1640,25 +1948,34 @@ export class PharmacyService {
     }>;
   }> {
     const encounters = EMRService.getAllEncounters();
+    const sales = this.getSales();
+
     return encounters
       .filter(e => e.medications && e.medications.length > 0)
-      .map(e => ({
-        encounterId: e.id,
-        encounterNo: e.encounterNo,
-        patientId: e.patientId,
-        patientName: e.patientName,
-        cardNo: e.cardNo,
-        doctorId: e.doctorId,
-        doctorName: e.doctorName,
-        doctorSpeciality: e.doctorSpeciality,
-        date: e.date || e.createdAt,
-        diagnoses: e.diagnoses || [],
-        medications: e.medications
-      }));
+      .map(e => {
+        const matchingSale = sales.find(s => s.prescriptionId === e.id || s.prescriptionId === e.encounterNo);
+        return {
+          encounterId: e.id,
+          encounterNo: e.encounterNo,
+          patientId: e.patientId,
+          patientName: e.patientName,
+          patientPhone: (e as any).patientPhone,
+          cardNo: e.cardNo,
+          doctorId: e.doctorId,
+          doctorName: e.doctorName,
+          doctorSpeciality: e.doctorSpeciality,
+          date: e.date || e.createdAt,
+          diagnoses: e.diagnoses || [],
+          sourceType: (e as any).department || 'OPD',
+          isDispensed: !!matchingSale,
+          dispensedInvoiceNo: matchingSale?.invoiceNumber,
+          medications: e.medications
+        };
+      });
   }
 
   /* =======================================================================
-     12. LIVE DASHBOARD METRICS & KPI ENGINE
+     12. LIVE DASHBOARD METRICS & KPI ENGINE (SEPARATED RETAIL VS RX)
      ======================================================================= */
   public static getDashboardMetrics(): PharmacyDashboardMetrics {
     const medicines = this.getMedicines();
@@ -1671,17 +1988,49 @@ export class PharmacyService {
     const todayStr = new Date().toISOString().split('T')[0];
     const nowTime = new Date().getTime();
 
-    // Today's Sales
+    // Today's Sales Filter
     const todaySales = sales.filter(s => s.saleDate.startsWith(todayStr));
-    const todaySalesAmount = todaySales.reduce((acc, s) => acc + s.netTotal, 0);
-    const todaySalesCount = todaySales.length;
 
-    // Today's Purchases
-    const todayPurchases = purchases.filter(p => p.createdAt.startsWith(todayStr) || p.invoiceDate === todayStr);
-    const todayPurchasesAmount = todayPurchases.reduce((acc, p) => acc + p.netTotal, 0);
-    const todayPurchasesCount = todayPurchases.length;
+    // RETAIL METRICS
+    const todayRetailSales = todaySales.filter(
+      s => s.sourceType === 'RETAIL' || s.saleType === 'RETAIL' || (!s.prescriptionId && s.saleType !== 'PRESCRIPTION')
+    );
+    const todayRetailSalesAmount = todayRetailSales.reduce((acc, s) => acc + s.netTotal, 0);
+    const todayRetailSalesCount = todayRetailSales.length;
+    const todayRetailReturns = sReturns.filter(r => r.returnDate === todayStr && r.returnType === 'RETAIL');
+    const todayRetailReturnsTotal = todayRetailReturns.reduce((acc, r) => acc + r.refundAmount, 0);
 
-    // Stock Valuations
+    const totalRetailSales = sales.filter(
+      s => s.sourceType === 'RETAIL' || s.saleType === 'RETAIL' || (!s.prescriptionId && s.saleType !== 'PRESCRIPTION')
+    );
+    const totalRetailRevenue = totalRetailSales.reduce((acc, s) => acc + s.netTotal, 0);
+    const retailSalesCount = totalRetailSales.length;
+
+    const retailReturns = sReturns.filter(r => r.returnType === 'RETAIL');
+    const retailReturnsCount = retailReturns.length;
+    const retailReturnsAmount = retailReturns.reduce((acc, r) => acc + r.refundAmount, 0);
+
+    // PRESCRIPTION METRICS
+    const todayPrescriptionSales = todaySales.filter(
+      s => s.sourceType === 'PRESCRIPTION' || s.saleType === 'PRESCRIPTION' || !!s.prescriptionId
+    );
+    const todayPrescriptionSalesAmount = todayPrescriptionSales.reduce((acc, s) => acc + s.netTotal, 0);
+    const todayPrescriptionSalesCount = todayPrescriptionSales.length;
+    const todayPrescriptionReturns = sReturns.filter(r => r.returnDate === todayStr && r.returnType === 'PRESCRIPTION');
+    const todayPrescriptionReturnsTotal = todayPrescriptionReturns.reduce((acc, r) => acc + r.refundAmount, 0);
+
+    const totalPrescriptionSales = sales.filter(
+      s => s.sourceType === 'PRESCRIPTION' || s.saleType === 'PRESCRIPTION' || !!s.prescriptionId
+    );
+    const prescriptionSalesAmount = totalPrescriptionSales.reduce((acc, s) => acc + s.netTotal, 0);
+
+    const prescriptionReturns = sReturns.filter(r => r.returnType === 'PRESCRIPTION');
+    const prescriptionReturnsCount = prescriptionReturns.length;
+
+    const pendingPrescriptionsCount = prescriptions.filter(p => !p.isDispensed).length;
+    const dispensedPrescriptionsCount = prescriptions.filter(p => p.isDispensed).length;
+
+    // INVENTORY METRICS
     let stockValuationPurchase = 0;
     let stockValuationMrp = 0;
     let totalStockUnits = 0;
@@ -1694,7 +2043,6 @@ export class PharmacyService {
       }
     }
 
-    // Low stock & Out of stock
     let lowStockCount = 0;
     let outOfStockCount = 0;
 
@@ -1708,7 +2056,6 @@ export class PharmacyService {
       }
     }
 
-    // Expiry counts
     let expiredBatchesCount = 0;
     let nearExpiry30DaysCount = 0;
     let nearExpiry60DaysCount = 0;
@@ -1734,12 +2081,17 @@ export class PharmacyService {
       }
     }
 
-    // Discounts & Returns
-    const todayDiscountsTotal = todaySales.reduce((acc, s) => acc + s.discountAmount, 0);
-    const todayReturns = sReturns.filter(r => r.returnDate === todayStr);
-    const todayReturnsTotal = todayReturns.reduce((acc, r) => acc + r.refundAmount, 0);
+    // CONSOLIDATED TOTALS
+    const todaySalesAmount = todaySales.reduce((acc, s) => acc + s.netTotal, 0);
+    const todaySalesCount = todaySales.length;
 
-    // Cash vs Digital breakdown
+    const todayPurchases = purchases.filter(p => p.createdAt.startsWith(todayStr) || p.invoiceDate === todayStr);
+    const todayPurchasesAmount = todayPurchases.reduce((acc, p) => acc + p.netTotal, 0);
+    const todayPurchasesCount = todayPurchases.length;
+
+    const todayDiscountsTotal = todaySales.reduce((acc, s) => acc + s.discountAmount, 0);
+    const todayReturnsTotal = todayRetailReturnsTotal + todayPrescriptionReturnsTotal;
+
     let cashCollectedToday = 0;
     let digitalCollectedToday = 0;
 
@@ -1752,10 +2104,26 @@ export class PharmacyService {
     }
 
     return {
-      todaySalesAmount,
-      todaySalesCount,
-      todayPurchasesAmount,
-      todayPurchasesCount,
+      // RETAIL
+      todayRetailSalesAmount,
+      todayRetailSalesCount,
+      todayRetailReturnsTotal,
+      todayRetailTransactionsCount: todayRetailSalesCount + todayRetailReturns.length,
+      totalRetailRevenue,
+      retailSalesCount,
+      retailReturnsCount,
+      retailReturnsAmount,
+
+      // PRESCRIPTION
+      pendingPrescriptionsCount,
+      dispensedPrescriptionsCount,
+      todayPrescriptionSalesAmount,
+      todayPrescriptionSalesCount,
+      todayPrescriptionReturnsTotal,
+      prescriptionSalesAmount,
+      prescriptionReturnsCount,
+
+      // INVENTORY
       totalMedicinesCount: medicines.length,
       totalBatchesCount: batches.length,
       totalStockUnits,
@@ -1767,7 +2135,12 @@ export class PharmacyService {
       nearExpiry30DaysCount,
       nearExpiry60DaysCount,
       nearExpiry90DaysCount,
-      pendingPrescriptionsCount: prescriptions.length,
+
+      // OVERALL
+      todaySalesAmount,
+      todaySalesCount,
+      todayPurchasesAmount,
+      todayPurchasesCount,
       todayDiscountsTotal,
       todayReturnsTotal,
       cashCollectedToday,
