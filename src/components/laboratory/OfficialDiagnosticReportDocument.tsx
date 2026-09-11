@@ -315,130 +315,197 @@ export const OfficialDiagnosticReportDocument = forwardRef<
       </div>
 
       {/* =====================================================================
-          4. RESULTS TABLE & TEST-SPECIFIC RENDERINGS
+          4. RESULTS TABLE & TEST-SPECIFIC RENDERINGS (PARTITIONED BY TEST)
           ===================================================================== */}
       {hasResults ? (
-        <div className="border-x border-b border-slate-300 rounded-b-lg overflow-hidden mb-3">
-          <table className="w-full text-left text-xs border-collapse">
-            <thead>
-              <tr className="bg-slate-100 text-slate-800 border-b border-slate-300 font-bold uppercase text-[10.5px]">
-                <th className="py-2 px-3">Test Investigation / Analyte</th>
-                <th className="py-2 px-3">Observed Result</th>
-                <th className="py-2 px-3">Unit</th>
-                <th className="py-2 px-3">Biological Reference Interval</th>
-                <th className="py-2 px-3 text-center">Status Flag</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-200">
-              {parameters
-                .filter(p => p.observedValue && p.observedValue.trim())
-                .map((p, idx) => (
-                  <tr key={idx} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/70'}>
-                    <td className="py-1.5 px-3 font-semibold text-slate-900 text-xs">
-                      {p.parameterName}
-                    </td>
-                    <td className="py-1.5 px-3 font-black text-xs sm:text-sm">
-                      <span
-                        className={
-                          p.flag === 'critical' || p.flag === 'high'
-                            ? 'text-rose-600 font-black'
-                            : p.flag === 'low'
-                            ? 'text-blue-600 font-black'
-                            : 'text-slate-950'
-                        }
-                      >
-                        {p.observedValue}
+        <div className="space-y-4 mb-3">
+          {(() => {
+            // Check if results belong to multiple distinct tests
+            const distinctTestMap = new Map<string, { name: string; department?: string; specimen?: string; method?: string; params: LabParameterResult[] }>();
+
+            // Group parameters by testId / testName if present
+            parameters
+              .filter(p => p.observedValue && p.observedValue.trim())
+              .forEach(p => {
+                const groupKey = p.testId || p.testName || report.testName || 'Investigation';
+                const groupName = p.testName || report.testName || 'Investigation';
+                
+                // Lookup metadata from snapshot if available
+                const matchedConfig = report.bookedTests?.find(bt => bt.testId === p.testId || bt.testName === p.testName);
+
+                if (!distinctTestMap.has(groupKey)) {
+                  distinctTestMap.set(groupKey, {
+                    name: groupName,
+                    department: matchedConfig?.department || report.department || report.testCategory,
+                    specimen: matchedConfig?.specimen || report.sampleTubeType,
+                    method: matchedConfig?.method,
+                    params: []
+                  });
+                }
+                distinctTestMap.get(groupKey)!.params.push(p);
+              });
+
+            const testPanels = Array.from(distinctTestMap.values());
+            const hasMultiplePanels = testPanels.length > 1;
+
+            return testPanels.map((panel, panelIdx) => {
+              const panelNameLower = panel.name.toLowerCase();
+              const isPanelHematology = panelNameLower.includes('cbc') || panelNameLower.includes('hemogram') || panelNameLower.includes('complete blood');
+              const isPanelBio = panelNameLower.includes('lipid') || panelNameLower.includes('glucose') || panelNameLower.includes('sugar') || panelNameLower.includes('hba1c') || panelNameLower.includes('lft') || panelNameLower.includes('kft');
+              const isPanelMicro = panelNameLower.includes('culture') || panelNameLower.includes('sensitivity');
+
+              // Panel DLC
+              const pDlcN = parseFloat(panel.params.find(p => p.parameterName.toLowerCase().includes('neutrophil'))?.observedValue || '0');
+              const pDlcL = parseFloat(panel.params.find(p => p.parameterName.toLowerCase().includes('lymphocyte'))?.observedValue || '0');
+              const pDlcM = parseFloat(panel.params.find(p => p.parameterName.toLowerCase().includes('monocyte'))?.observedValue || '0');
+              const pDlcE = parseFloat(panel.params.find(p => p.parameterName.toLowerCase().includes('eosinophil'))?.observedValue || '0');
+              const pDlcB = parseFloat(panel.params.find(p => p.parameterName.toLowerCase().includes('basophil'))?.observedValue || '0');
+              const pHasValidDlc = pDlcN > 0 || pDlcL > 0;
+
+              // Panel HbA1c
+              const pHba1c = panel.params.find(p => p.parameterName.toLowerCase().includes('hba1c'));
+              const pHba1cVal = pHba1c ? parseFloat(pHba1c.observedValue) : null;
+              const pEag = pHba1cVal && !isNaN(pHba1cVal) ? Math.round(28.7 * pHba1cVal - 46.7) : null;
+
+              return (
+                <div key={panelIdx} className="border border-slate-300 rounded-lg overflow-hidden shadow-xs">
+                  {/* Panel Header */}
+                  <div className="bg-slate-800 text-white px-3 py-1.5 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <TestTube className="w-3.5 h-3.5 text-cyan-400" />
+                      <span className="font-bold tracking-wide uppercase text-xs">
+                        {panel.name}
                       </span>
-                    </td>
-                    <td className="py-1.5 px-3 text-slate-600 font-medium text-[11px]">{p.unit || '—'}</td>
-                    <td className="py-1.5 px-3 text-slate-700 font-mono text-[10.5px]">
-                      {p.referenceRange || '—'}
-                    </td>
-                    <td className="py-1.5 px-3 text-center">
-                      {p.flag === 'critical' ? (
-                        <span className="inline-block px-1.5 py-0.5 bg-red-100 text-red-900 text-[9.5px] font-black rounded border border-red-400">
-                          CRITICAL ⚠
-                        </span>
-                      ) : p.flag === 'high' ? (
-                        <span className="inline-block px-1.5 py-0.5 bg-rose-100 text-rose-800 text-[9.5px] font-bold rounded border border-rose-300">
-                          HIGH ▲
-                        </span>
-                      ) : p.flag === 'low' ? (
-                        <span className="inline-block px-1.5 py-0.5 bg-blue-100 text-blue-800 text-[9.5px] font-bold rounded border border-blue-300">
-                          LOW ▼
-                        </span>
-                      ) : (
-                        <span className="inline-block px-1.5 py-0.5 bg-emerald-100 text-emerald-800 text-[9.5px] font-bold rounded border border-emerald-300">
-                          NORMAL ✓
-                        </span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-            </tbody>
-          </table>
+                    </div>
+                    <div className="flex items-center gap-2 text-[10px] text-slate-300 font-mono">
+                      {panel.department && <span>Dept: {panel.department}</span>}
+                      {panel.method && <span>• Method: {panel.method}</span>}
+                    </div>
+                  </div>
 
-          {/* SPECIAL TEST FORMAT 1: HEMATOLOGY DLC VISUAL BREAKDOWN BAR */}
-          {isHematology && hasValidDlc && (
-            <div className="p-2.5 bg-indigo-50/40 border-t border-slate-200">
-              <div className="flex items-center justify-between mb-1 text-[10.5px] font-bold text-indigo-950">
-                <span>Differential Leukocyte Count (DLC) Distribution Matrix:</span>
-                <span className="font-mono text-slate-600 text-[9.5px]">
-                  N: {dlcNeutrophils}% | L: {dlcLymphocytes}% | M: {dlcMonocytes}% | E: {dlcEosinophils}% | B: {dlcBasophils}%
-                </span>
-              </div>
-              <div className="h-2.5 w-full rounded-full overflow-hidden flex bg-slate-200 border border-slate-300 shadow-inner">
-                <div style={{ width: `${dlcNeutrophils}%` }} className="bg-indigo-600" title={`Neutrophils ${dlcNeutrophils}%`} />
-                <div style={{ width: `${dlcLymphocytes}%` }} className="bg-teal-500" title={`Lymphocytes ${dlcLymphocytes}%`} />
-                <div style={{ width: `${dlcMonocytes}%` }} className="bg-amber-500" title={`Monocytes ${dlcMonocytes}%`} />
-                <div style={{ width: `${dlcEosinophils}%` }} className="bg-rose-500" title={`Eosinophils ${dlcEosinophils}%`} />
-                <div style={{ width: `${dlcBasophils}%` }} className="bg-purple-600" title={`Basophils ${dlcBasophils}%`} />
-              </div>
-              <div className="flex items-center justify-between text-[8.5px] font-mono text-slate-600 mt-1">
-                <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-indigo-600 inline-block" /> Neutrophils</span>
-                <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-teal-500 inline-block" /> Lymphocytes</span>
-                <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-amber-500 inline-block" /> Monocytes</span>
-                <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-rose-500 inline-block" /> Eosinophils</span>
-                <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-purple-600 inline-block" /> Basophils</span>
-              </div>
-            </div>
-          )}
+                  {/* Panel Analytes Table */}
+                  <table className="w-full text-left text-xs border-collapse">
+                    <thead>
+                      <tr className="bg-slate-100 text-slate-800 border-b border-slate-300 font-bold uppercase text-[10px]">
+                        <th className="py-1.5 px-3">Investigation / Analyte</th>
+                        <th className="py-1.5 px-3">Observed Result</th>
+                        <th className="py-1.5 px-3">Unit</th>
+                        <th className="py-1.5 px-3">Biological Reference Interval</th>
+                        <th className="py-1.5 px-3 text-center">Flag</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-200">
+                      {panel.params.map((p, pIdx) => (
+                        <tr key={pIdx} className={pIdx % 2 === 0 ? 'bg-white' : 'bg-slate-50/70'}>
+                          <td className="py-1.5 px-3 font-semibold text-slate-900 text-xs">
+                            {p.parameterName}
+                          </td>
+                          <td className="py-1.5 px-3 font-black text-xs sm:text-sm">
+                            <span
+                              className={
+                                p.flag === 'critical' || p.flag === 'high'
+                                  ? 'text-rose-600 font-black'
+                                  : p.flag === 'low'
+                                  ? 'text-blue-600 font-black'
+                                  : 'text-slate-950'
+                              }
+                            >
+                              {p.observedValue}
+                            </span>
+                          </td>
+                          <td className="py-1.5 px-3 text-slate-600 font-medium text-[11px]">{p.unit || '—'}</td>
+                          <td className="py-1.5 px-3 text-slate-700 font-mono text-[10.5px]">
+                            {p.referenceRange || '—'}
+                          </td>
+                          <td className="py-1.5 px-3 text-center">
+                            {p.flag === 'critical' ? (
+                              <span className="inline-block px-1.5 py-0.5 bg-red-100 text-red-900 text-[9px] font-black rounded border border-red-400">
+                                CRITICAL ⚠
+                              </span>
+                            ) : p.flag === 'high' ? (
+                              <span className="inline-block px-1.5 py-0.5 bg-rose-100 text-rose-800 text-[9px] font-bold rounded border border-rose-300">
+                                HIGH ▲
+                              </span>
+                            ) : p.flag === 'low' ? (
+                              <span className="inline-block px-1.5 py-0.5 bg-blue-100 text-blue-800 text-[9px] font-bold rounded border border-blue-300">
+                                LOW ▼
+                              </span>
+                            ) : (
+                              <span className="inline-block px-1.5 py-0.5 bg-emerald-100 text-emerald-800 text-[9px] font-bold rounded border border-emerald-300">
+                                NORMAL ✓
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
 
-          {/* SPECIAL TEST FORMAT 2: BIOCHEMISTRY HbA1c ESTIMATED GLUCOSE */}
-          {isBiochemistry && estimatedAverageGlucose !== null && (
-            <div className="p-2.5 bg-amber-50/50 border-t border-slate-200 text-xs">
-              <div className="flex items-center justify-between font-bold text-slate-800 text-[11px]">
-                <span>Glycemic Control Risk Interpretation (ADA Guidelines):</span>
-                <span className="font-mono text-teal-800">
-                  Estimated Average Glucose (eAG): <strong>{estimatedAverageGlucose} mg/dL</strong>
-                </span>
-              </div>
-              <div className="grid grid-cols-3 gap-2 mt-1.5 text-[10px] font-mono text-center">
-                <div className={`p-1 rounded border ${hba1cVal! < 5.7 ? 'bg-emerald-100 border-emerald-400 font-bold text-emerald-900' : 'bg-slate-50 border-slate-200 text-slate-500'}`}>
-                  Normal &lt; 5.7%
-                </div>
-                <div className={`p-1 rounded border ${hba1cVal! >= 5.7 && hba1cVal! <= 6.4 ? 'bg-amber-100 border-amber-400 font-bold text-amber-900' : 'bg-slate-50 border-slate-200 text-slate-500'}`}>
-                  Prediabetes 5.7 - 6.4%
-                </div>
-                <div className={`p-1 rounded border ${hba1cVal! >= 6.5 ? 'bg-rose-100 border-rose-400 font-bold text-rose-900' : 'bg-slate-50 border-slate-200 text-slate-500'}`}>
-                  Diabetes &ge; 6.5%
-                </div>
-              </div>
-            </div>
-          )}
+                  {/* Panel Specific Hematology DLC breakdown */}
+                  {isPanelHematology && pHasValidDlc && (
+                    <div className="p-2.5 bg-indigo-50/40 border-t border-slate-200">
+                      <div className="flex items-center justify-between mb-1 text-[10px] font-bold text-indigo-950">
+                        <span>Differential Leukocyte Count (DLC) Distribution Matrix:</span>
+                        <span className="font-mono text-slate-600 text-[9px]">
+                          N: {pDlcN}% | L: {pDlcL}% | M: {pDlcM}% | E: {pDlcE}% | B: {pDlcB}%
+                        </span>
+                      </div>
+                      <div className="h-2 w-full rounded-full overflow-hidden flex bg-slate-200 border border-slate-300 shadow-inner">
+                        <div style={{ width: `${pDlcN}%` }} className="bg-indigo-600" title={`Neutrophils ${pDlcN}%`} />
+                        <div style={{ width: `${pDlcL}%` }} className="bg-teal-500" title={`Lymphocytes ${pDlcL}%`} />
+                        <div style={{ width: `${pDlcM}%` }} className="bg-amber-500" title={`Monocytes ${pDlcM}%`} />
+                        <div style={{ width: `${pDlcE}%` }} className="bg-rose-500" title={`Eosinophils ${pDlcE}%`} />
+                        <div style={{ width: `${pDlcB}%` }} className="bg-purple-600" title={`Basophils ${pDlcB}%`} />
+                      </div>
+                      <div className="flex items-center justify-between text-[8px] font-mono text-slate-600 mt-1">
+                        <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-indigo-600 inline-block" /> Neutrophils ({pDlcN}%)</span>
+                        <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-teal-500 inline-block" /> Lymphocytes ({pDlcL}%)</span>
+                        <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-amber-500 inline-block" /> Monocytes ({pDlcM}%)</span>
+                        <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-rose-500 inline-block" /> Eosinophils ({pDlcE}%)</span>
+                        <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-purple-600 inline-block" /> Basophils ({pDlcB}%)</span>
+                      </div>
+                    </div>
+                  )}
 
-          {/* SPECIAL TEST FORMAT 3: MICROBIOLOGY / CULTURE SUSCEPTIBILITY */}
-          {isMicrobiology && (
-            <div className="p-2.5 bg-cyan-50/50 border-t border-slate-200 text-xs font-mono">
-              <div className="flex items-center gap-1.5 text-cyan-950 font-bold text-[10.5px]">
-                <Microscope className="w-3.5 h-3.5 text-cyan-700" />
-                <span>Antibiotic Susceptibility Testing (CLSI Standards): S = Sensitive, I = Intermediate, R = Resistant</span>
-              </div>
-            </div>
-          )}
+                  {/* Panel Specific Biochemistry HbA1c */}
+                  {isPanelBio && pEag !== null && (
+                    <div className="p-2 bg-amber-50/50 border-t border-slate-200 text-xs">
+                      <div className="flex items-center justify-between font-bold text-slate-800 text-[10.5px]">
+                        <span>Glycemic Control Risk Interpretation (ADA Guidelines):</span>
+                        <span className="font-mono text-teal-800">
+                          Estimated Average Glucose (eAG): <strong>{pEag} mg/dL</strong>
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-3 gap-1.5 mt-1 text-[9.5px] font-mono text-center">
+                        <div className={`p-0.5 rounded border ${pHba1cVal! < 5.7 ? 'bg-emerald-100 border-emerald-400 font-bold text-emerald-900' : 'bg-slate-50 border-slate-200 text-slate-500'}`}>
+                          Normal &lt; 5.7%
+                        </div>
+                        <div className={`p-0.5 rounded border ${pHba1cVal! >= 5.7 && pHba1cVal! <= 6.4 ? 'bg-amber-100 border-amber-400 font-bold text-amber-900' : 'bg-slate-50 border-slate-200 text-slate-500'}`}>
+                          Prediabetes 5.7 - 6.4%
+                        </div>
+                        <div className={`p-0.5 rounded border ${pHba1cVal! >= 6.5 ? 'bg-rose-100 border-rose-400 font-bold text-rose-900' : 'bg-slate-50 border-slate-200 text-slate-500'}`}>
+                          Diabetes &ge; 6.5%
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Panel Specific Microbiology */}
+                  {isPanelMicro && (
+                    <div className="p-2 bg-cyan-50/50 border-t border-slate-200 text-xs font-mono">
+                      <div className="flex items-center gap-1.5 text-cyan-950 font-bold text-[10px]">
+                        <Microscope className="w-3 h-3 text-cyan-700" />
+                        <span>Antibiotic Susceptibility Testing (CLSI Standards): S = Sensitive, I = Intermediate, R = Resistant</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            });
+          })()}
         </div>
       ) : (
-        <div className="border-x border-b border-slate-300 rounded-b-lg p-6 text-center mb-3 bg-slate-50">
+        <div className="border border-slate-300 rounded-lg p-6 text-center mb-3 bg-slate-50">
           <TestTube className="w-8 h-8 text-amber-500 mx-auto mb-1.5" />
           <h4 className="text-xs font-bold text-slate-800">Analytical Findings In Progress</h4>
           <p className="text-[11px] text-slate-500 mt-0.5 max-w-sm mx-auto">

@@ -202,6 +202,12 @@ const PERMISSION_LABELS: Record<Permission, { label: string; category: string }>
   pharmacy_sale_create: { label: 'Create Pharmacy Cash Desk Sale', category: 'Pharmacy' },
   pharmacy_stock_manage: { label: 'Manage Pharmacy Medication Inventory', category: 'Pharmacy' },
   pharmacy_bill_print: { label: 'Print Pharmacy Dispensing Invoice', category: 'Pharmacy' },
+  pharmacy_purchase_manage: { label: 'Record Inward Purchase Bills & Receive Stock', category: 'Pharmacy' },
+  pharmacy_supplier_manage: { label: 'Manage Pharmaceutical Suppliers & Drug Licenses', category: 'Pharmacy' },
+  pharmacy_batch_manage: { label: 'Manage Batches, Expiry & Quarantine', category: 'Pharmacy' },
+  pharmacy_return_process: { label: 'Process Sales & Purchase Returns', category: 'Pharmacy' },
+  pharmacy_adjust_stock: { label: 'Perform Audited Stock Adjustments', category: 'Pharmacy' },
+  pharmacy_reports_view: { label: 'View Pharmacy Sales & Expiry Analytics', category: 'Pharmacy' },
 
   // Ledger & Transactions Granular
   transactions_view_own: { label: 'View Own Generated Transactions', category: 'Financial' },

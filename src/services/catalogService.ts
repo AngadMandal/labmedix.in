@@ -1,5 +1,6 @@
 import { StorageService } from './storage';
 import { ApiSyncService } from './apiSyncService';
+import { MasterTestParameter, LabPanelItem } from '../types';
 
 export interface LabTestItem {
   id: string;
@@ -8,12 +9,18 @@ export interface LabTestItem {
   category: string;
   department: string;
   specimen: string;
+  method?: string;
+  reportTemplate?: string;
+  parameters?: MasterTestParameter[];
   fastingRequired: boolean;
   tatHours: number;
   mrp: number;
   description: string;
+  instructions?: string;
   popular?: boolean;
   status?: 'active' | 'inactive';
+  version?: number;
+  updatedAt?: string;
 }
 
 export interface HealthPackageItem {
@@ -49,6 +56,7 @@ export interface PharmacyMedicineItem {
 }
 
 const LAB_TESTS_STORAGE_KEY = 'LABMEDIX_TEST_MASTER_LIST';
+const LAB_PANELS_STORAGE_KEY = 'LABMEDIX_PANELS_MASTER_LIST';
 const HEALTH_PACKAGES_STORAGE_KEY = 'LABMEDIX_HEALTH_PACKAGES_LIST';
 
 export const MASTER_TEST_CATALOG_DATA: LabTestItem[] = [
@@ -558,6 +566,189 @@ export class CatalogService {
 
   public static getMedicines(): PharmacyMedicineItem[] {
     return this.getPharmacyMedicines();
+  }
+
+  /**
+   * Panel / Package Master (Requirement 2 & 4):
+   * Groups multiple individual tests together. References existing Individual Tests
+   * without duplicating parameters or reference ranges.
+   */
+  public static getPanels(): LabPanelItem[] {
+    const defaultPanels: LabPanelItem[] = [
+      {
+        id: 'pnl_lipid_profile',
+        code: 'PNL-LPD-01',
+        name: 'Lipid Profile Comprehensive Panel',
+        category: 'Biochemistry',
+        department: 'Clinical Biochemistry',
+        specimen: 'Serum (2ml)',
+        type: 'panel',
+        tag: 'CARDIO RISK • 6 ANALYTES',
+        description: 'Complete coronary heart disease risk assessment: Total Cholesterol, Triglycerides, HDL, and auto-calculated LDL, VLDL & Non-HDL.',
+        individualTestIds: ['t_022', 't_023'], // Also mapped to Lipid subtests
+        mrp: 650,
+        offerPrice: 450,
+        fastingRequired: true,
+        tatHours: 4,
+        popular: true,
+        status: 'active',
+        version: 1
+      },
+      {
+        id: 'pnl_lft',
+        code: 'PNL-LFT-02',
+        name: 'Liver Function Test (LFT) Complete Panel',
+        category: 'Biochemistry',
+        department: 'Clinical Biochemistry',
+        specimen: 'Serum (2ml)',
+        type: 'panel',
+        tag: 'HEPATIC HEALTH • 10 ANALYTES',
+        description: 'Bilirubin Total/Direct/Indirect, SGOT, SGPT, Alkaline Phosphatase, Total Protein, Albumin, Globulin & A:G Ratio.',
+        individualTestIds: ['t_013', 't_017', 't_028'],
+        mrp: 800,
+        offerPrice: 550,
+        fastingRequired: true,
+        tatHours: 4,
+        popular: true,
+        status: 'active',
+        version: 1
+      },
+      {
+        id: 'pnl_kft',
+        code: 'PNL-KFT-03',
+        name: 'Kidney Function Test (KFT / RFT) Panel',
+        category: 'Biochemistry',
+        department: 'Clinical Biochemistry',
+        specimen: 'Serum (2ml)',
+        type: 'panel',
+        tag: 'RENAL HEALTH • 8 ANALYTES',
+        description: 'Serum Urea, Creatinine, Uric Acid, BUN, Calcium, Phosphorus & Electrolytes.',
+        individualTestIds: ['t_038', 't_040', 't_044'],
+        mrp: 850,
+        offerPrice: 600,
+        fastingRequired: false,
+        tatHours: 4,
+        popular: true,
+        status: 'active',
+        version: 1
+      },
+      {
+        id: 'pnl_cbc',
+        code: 'PNL-CBC-04',
+        name: 'Complete Blood Count (CBC / Hemogram) Panel',
+        category: 'Hematology',
+        department: 'Clinical Pathology & Hematology',
+        specimen: 'EDTA Whole Blood (2ml Lavender Top)',
+        type: 'panel',
+        tag: 'COMPLETE HEMOGRAM • 15 ANALYTES',
+        description: 'Hemoglobin, TLC/WBC, RBC, Platelets, PCV, MCV, MCH, MCHC, and 5-Part Differential Leukocyte Count (DLC).',
+        individualTestIds: [],
+        mrp: 350,
+        offerPrice: 280,
+        fastingRequired: false,
+        tatHours: 2,
+        popular: true,
+        status: 'active',
+        version: 1
+      },
+      {
+        id: 'pnl_thyroid',
+        code: 'PNL-THY-05',
+        name: 'Thyroid Function Test (TFT) Total Profile',
+        category: 'Endocrinology',
+        department: 'Immunoassay / Hormones',
+        specimen: 'Serum (2ml)',
+        type: 'panel',
+        tag: 'THYROID PROFILE • T3, T4, TSH',
+        description: 'Triiodothyronine (T3), Thyroxine (T4), and Thyroid Stimulating Hormone (TSH Ultrasensitive).',
+        individualTestIds: [],
+        mrp: 550,
+        offerPrice: 399,
+        fastingRequired: false,
+        tatHours: 4,
+        popular: true,
+        status: 'active',
+        version: 1
+      },
+      {
+        id: 'pnl_diabetes',
+        code: 'PNL-DIA-06',
+        name: 'Comprehensive Diabetes Monitoring Profile',
+        category: 'Diabetes',
+        department: 'Clinical Biochemistry',
+        specimen: 'Fluoride Plasma & EDTA Blood',
+        type: 'panel',
+        tag: 'GLYCEMIC CONTROL • 4 ANALYTES',
+        description: 'Fasting Blood Sugar (FBS), HbA1c (HPLC), Estimated Average Glucose (eAG), and Urine Sugar.',
+        individualTestIds: ['t_029'],
+        mrp: 650,
+        offerPrice: 450,
+        fastingRequired: true,
+        tatHours: 3,
+        popular: true,
+        status: 'active',
+        version: 1
+      }
+    ];
+
+    const stored = StorageService.getItem<LabPanelItem[]>(LAB_PANELS_STORAGE_KEY, []);
+    if (!stored || stored.length === 0) {
+      StorageService.setItem(LAB_PANELS_STORAGE_KEY, defaultPanels);
+      return defaultPanels;
+    }
+    return stored;
+  }
+
+  public static savePanels(panels: LabPanelItem[]): void {
+    StorageService.setItem(LAB_PANELS_STORAGE_KEY, panels);
+  }
+
+  public static getPanelById(idOrCode: string): LabPanelItem | undefined {
+    const clean = idOrCode.trim().toLowerCase();
+    return this.getPanels().find(p => p.id.toLowerCase() === clean || p.code.toLowerCase() === clean || p.name.toLowerCase() === clean);
+  }
+
+  public static addPanel(panel: Omit<LabPanelItem, 'id' | 'version'>): LabPanelItem {
+    const panels = this.getPanels();
+    const newPanel: LabPanelItem = {
+      ...panel,
+      id: `pnl_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
+      version: 1,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      status: panel.status || 'active'
+    };
+    panels.unshift(newPanel);
+    this.savePanels(panels);
+    ApiSyncService.saveDocument('labPanels', newPanel.id, newPanel).catch(() => {});
+    return newPanel;
+  }
+
+  public static updatePanel(id: string, updates: Partial<LabPanelItem>): LabPanelItem | null {
+    const panels = this.getPanels();
+    const idx = panels.findIndex(p => p.id === id);
+    if (idx === -1) return null;
+
+    const current = panels[idx];
+    const updated: LabPanelItem = {
+      ...current,
+      ...updates,
+      version: (current.version || 1) + 1,
+      updatedAt: new Date().toISOString()
+    };
+    panels[idx] = updated;
+    this.savePanels(panels);
+    ApiSyncService.saveDocument('labPanels', id, updated).catch(() => {});
+    return updated;
+  }
+
+  public static deletePanel(id: string): boolean {
+    const panels = this.getPanels();
+    const filtered = panels.filter(p => p.id !== id);
+    if (filtered.length === panels.length) return false;
+    this.savePanels(filtered);
+    ApiSyncService.deleteDocument('labPanels', id).catch(() => {});
+    return true;
   }
 
   public static getTests(): LabTestItem[] {

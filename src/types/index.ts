@@ -134,6 +134,12 @@ export type Permission =
   | 'pharmacy_sale_create'
   | 'pharmacy_stock_manage'
   | 'pharmacy_bill_print'
+  | 'pharmacy_purchase_manage'
+  | 'pharmacy_supplier_manage'
+  | 'pharmacy_batch_manage'
+  | 'pharmacy_return_process'
+  | 'pharmacy_adjust_stock'
+  | 'pharmacy_reports_view'
   // Transactions
   | 'transactions_view_own'
   | 'transactions_view_all'
@@ -911,9 +917,102 @@ export type LabResultStatus =
 
 export type LabParameterFlag = 'normal' | 'low' | 'high' | 'critical';
 
+export type TestResultType =
+  | 'numeric'
+  | 'text'
+  | 'positive_negative'
+  | 'reactive_non_reactive'
+  | 'qualitative'
+  | 'multi_parameter';
+
+export interface AgeGenderReferenceRange {
+  gender?: 'male' | 'female' | 'all';
+  minAgeYears?: number;
+  maxAgeYears?: number;
+  referenceRange: string;
+  minVal?: number;
+  maxVal?: number;
+  criticalLow?: number;
+  criticalHigh?: number;
+}
+
+export interface CalculationRule {
+  targetParameterCode: string;
+  targetParameterName: string;
+  formulaDescription: string;
+  requiredParameterCodes: string[];
+  conditionDescription?: string;
+  unit?: string;
+}
+
+export interface MasterTestParameter {
+  id: string;
+  parameterCode?: string;
+  parameterName: string;
+  method?: string;
+  resultType: TestResultType;
+  unit: string;
+  defaultReferenceRange: string;
+  minVal?: number;
+  maxVal?: number;
+  criticalLow?: number;
+  criticalHigh?: number;
+  ageGenderRanges?: AgeGenderReferenceRange[];
+  qualitativeOptions?: string[];
+  required?: boolean;
+  displayOrder: number;
+  reportOrder: number;
+  remarks?: string;
+  isCalculated?: boolean;
+  calculationFormula?: string;
+  calculationDependencies?: string[];
+}
+
+export interface LabPanelItem {
+  id: string;
+  code: string;
+  name: string;
+  category: string;
+  department: string;
+  specimen: string;
+  type: 'panel' | 'package';
+  tag?: string;
+  description?: string;
+  individualTestIds: string[]; // Strict reference to Individual Tests (no duplication)
+  mrp: number;
+  offerPrice?: number;
+  fastingRequired: boolean;
+  tatHours: number;
+  popular?: boolean;
+  status: 'active' | 'inactive';
+  version: number;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface BookedTestConfig {
+  testId: string;
+  testCode: string;
+  testName: string;
+  department: string;
+  specimen: string;
+  method?: string;
+  tatHours?: number;
+  panelId?: string;
+  panelName?: string;
+  isFromPanel?: boolean;
+  parameters: MasterTestParameter[];
+}
+
 export interface LabParameterResult {
   id?: string;
+  testId?: string;
+  testName?: string;
+  panelId?: string;
+  panelName?: string;
+  isFromPanel?: boolean;
   parameterId?: string;
+  parameterCode?: string;
   parameterName: string;
   observedValue: string;
   unit: string;
@@ -922,6 +1021,18 @@ export interface LabParameterResult {
   critical?: boolean;
   method?: string;
   notes?: string;
+  resultType?: TestResultType;
+  displayOrder?: number;
+  reportOrder?: number;
+  required?: boolean;
+  qualitativeOptions?: string[];
+  minVal?: number;
+  maxVal?: number;
+  criticalLow?: number;
+  criticalHigh?: number;
+  isCalculated?: boolean;
+  calculationFormula?: string;
+  calculationDependencies?: string[];
 }
 
 export type SpecimenStatus =
@@ -1039,6 +1150,8 @@ export interface LabOrderRecord {
   testNames?: string[];
   testName?: string;
   testId?: string;
+  bookedTestIds?: string[];
+  bookedTests?: BookedTestConfig[];
   category?: string;
   department: string;
   specimenType?: string;
@@ -1193,6 +1306,7 @@ export interface DiagnosticReportRecord {
   testName: string;
   testCategory: string; // Hematology | Biochemistry | Clinical Pathology | Serology | Microbiology | Hormones | Urine | etc.
   department: string;
+  bookedTests?: BookedTestConfig[];
   parameters: LabParameterResult[];
   clinicalImpression?: string;
   technicianId?: string;
@@ -1943,3 +2057,234 @@ export interface CentralMultiDeviceMetrics {
   walQueueSize: number;
   isCentralFirestoreLive: boolean;
 }
+
+/* =======================================================================
+   STANDALONE PHARMACY MANAGEMENT HUB INTERFACES
+   ======================================================================= */
+
+export interface MedicineMasterItem {
+  id: string;
+  code: string; // e.g. MED-001
+  barcode: string;
+  name: string; // Brand / Product Name e.g. Telma 40mg
+  genericName: string; // e.g. Telmisartan
+  brandName: string; // e.g. Glenmark
+  manufacturer: string; // e.g. Glenmark Pharmaceuticals Ltd
+  category: string; // Cardiovascular, Anti-Diabetic, Antibiotics, etc.
+  dosageForm: string; // Tablet, Capsule, Syrup, Injection, Ointment, etc.
+  strength: string; // 40mg, 500mg, 100ml, etc.
+  packSize: string; // 10 Tablets/Strip, 100ml Bottle, 1 Vial
+  unit: string; // Tablets, Capsules, Strips, Bottles, Vials, Ampoules, Tubes
+  hsnSac?: string; // HSN Code e.g. 300490
+  taxGstRate: number; // GST % (0, 5, 12, 18, 28)
+  mrp: number;
+  purchasePrice: number;
+  sellingPrice: number;
+  discountRules?: {
+    maxDiscountPercent: number;
+    allowedRole?: string;
+  };
+  reorderLevel: number;
+  minStock: number;
+  maxStock: number;
+  prescriptionRequired: boolean;
+  status: 'active' | 'inactive';
+  description?: string;
+  rackLocation?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MedicineBatchItem {
+  id: string;
+  medicineId: string;
+  medicineName: string;
+  batchNumber: string;
+  mfgDate: string; // YYYY-MM-DD
+  expiryDate: string; // YYYY-MM-DD
+  purchaseQty: number;
+  freeQty: number;
+  availableQty: number;
+  purchasePrice: number;
+  mrp: number;
+  sellingPrice: number;
+  supplierId: string;
+  supplierName: string;
+  invoiceNumber: string;
+  purchaseDate: string;
+  barcode?: string;
+  status: 'active' | 'quarantine' | 'recalled' | 'expired' | 'depleted';
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PharmacySupplier {
+  id: string;
+  supplierCode: string; // e.g. SUP-001
+  name: string;
+  contactPerson: string;
+  phone: string;
+  email: string;
+  address: string;
+  gstNumber: string;
+  drugLicenseNo: string;
+  paymentTerms: string; // e.g. "Net 30 Days", "Immediate", "COD"
+  outstandingAmount: number;
+  status: 'active' | 'inactive';
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PharmacyPurchaseItem {
+  id: string;
+  medicineId: string;
+  medicineName: string;
+  batchNumber: string;
+  mfgDate: string;
+  expiryDate: string;
+  quantity: number;
+  freeQuantity: number;
+  purchaseRate: number;
+  mrp: number;
+  sellingPrice: number;
+  taxGstPercent: number;
+  taxAmount: number;
+  totalAmount: number;
+}
+
+export interface PharmacyPurchase {
+  id: string;
+  purchaseInvoiceNo: string;
+  supplierId: string;
+  supplierName: string;
+  supplierGst?: string;
+  invoiceDate: string;
+  receivedDate: string;
+  items: PharmacyPurchaseItem[];
+  subtotal: number;
+  taxTotal: number;
+  discountTotal: number;
+  netTotal: number;
+  paidAmount: number;
+  paymentStatus: 'paid' | 'partial' | 'unpaid';
+  paymentMethod: string;
+  receivedBy: string;
+  notes?: string;
+  status: 'received' | 'draft' | 'cancelled';
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PharmacyPurchaseReturn {
+  id: string;
+  returnNumber: string; // e.g. PR-2026-001
+  supplierId: string;
+  supplierName: string;
+  purchaseInvoiceNo: string;
+  medicineId: string;
+  medicineName: string;
+  batchNumber: string;
+  quantity: number;
+  returnRate: number;
+  returnAmount: number;
+  reason: string;
+  authorizedBy: string;
+  returnDate: string;
+  status: 'completed' | 'pending' | 'rejected';
+  createdAt: string;
+}
+
+export interface PharmacySaleItem {
+  medicineId: string;
+  medicineName: string;
+  batchId: string;
+  batchNumber: string;
+  expiryDate: string;
+  quantity: number;
+  mrp: number;
+  unitPrice: number;
+  discountPercent: number;
+  discountAmount: number;
+  taxGstPercent: number;
+  taxAmount: number;
+  totalAmount: number;
+}
+
+export interface PharmacySale {
+  id: string;
+  invoiceNumber: string; // e.g. PHARM-INV-2026-0001
+  saleDate: string;
+  saleType: 'walkin' | 'patient_linked' | 'prescription';
+  patientId?: string;
+  patientName: string;
+  patientPhone?: string;
+  patientCardNo?: string;
+  cardTier?: string;
+  prescribingDoctor?: string;
+  prescriptionId?: string;
+  items: PharmacySaleItem[];
+  subtotal: number;
+  discountAmount: number;
+  healthCardDiscount: number;
+  taxAmount: number;
+  netTotal: number;
+  paidAmount: number;
+  dueAmount: number;
+  paymentMethod: 'Cash' | 'Card' | 'UPI' | 'Health Wallet' | 'Bank Transfer';
+  dispensedBy: string;
+  status: 'dispensed' | 'returned' | 'cancelled';
+  notes?: string;
+  createdAt: string;
+}
+
+export interface PharmacySalesReturn {
+  id: string;
+  returnNumber: string; // e.g. SR-2026-001
+  originalInvoiceNo: string;
+  saleId: string;
+  patientName: string;
+  medicineId: string;
+  medicineName: string;
+  batchId: string;
+  batchNumber: string;
+  quantity: number;
+  refundRate: number;
+  refundAmount: number;
+  returnReason: string;
+  stockAction: 'return_to_active' | 'quarantine_damaged' | 'discard_expired';
+  authorizedBy: string;
+  returnDate: string;
+  createdAt: string;
+}
+
+export interface PharmacyStockAdjustment {
+  id: string;
+  adjustmentNumber: string; // e.g. ADJ-2026-001
+  medicineId: string;
+  medicineName: string;
+  batchId: string;
+  batchNumber: string;
+  adjustmentType: 'stock_increase' | 'stock_decrease' | 'damaged' | 'expired' | 'audit_reconciliation' | 'correction';
+  previousQty: number;
+  adjustedQty: number;
+  newQty: number;
+  reason: string;
+  performedBy: string;
+  timestamp: string;
+}
+
+export interface PharmacyTransaction {
+  id: string;
+  transactionId: string; // e.g. PTX-2026-001
+  type: 'sale' | 'purchase' | 'sales_return' | 'purchase_return' | 'adjustment' | 'payment_collection' | 'refund';
+  referenceId: string; // Invoice #, PR #, etc.
+  entityName: string; // Patient or Supplier Name
+  amount: number;
+  flow: 'inflow' | 'outflow' | 'non_monetary';
+  paymentMethod: string;
+  performedBy: string;
+  notes: string;
+  timestamp: string;
+}
+

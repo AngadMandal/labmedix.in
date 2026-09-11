@@ -36,11 +36,16 @@ export const CreateLabOrderModal: React.FC<CreateLabOrderModalProps> = ({
   const patients = useMemo(() => StorageService.getPatients().filter(p => !p.isDeleted), []);
   const cards = useMemo(() => StorageService.getCards(), []);
   const tests = useMemo(() => CatalogService.getTests(), []);
+  const panels = useMemo(() => CatalogService.getPanels(), []);
+
+  // Mode: Individual Tests vs Panels / Packages (Requirement 3 & 17)
+  const [catalogMode, setCatalogMode] = useState<'individual' | 'panels'>('individual');
 
   const [patientSearch, setPatientSearch] = useState('');
   const [selectedPatientId, setSelectedPatientId] = useState('');
   const [testSearch, setTestSearch] = useState('');
-  const [selectedTestId, setSelectedTestId] = useState('');
+  const [selectedTestIds, setSelectedTestIds] = useState<string[]>([]);
+  const [selectedPanelIds, setSelectedPanelIds] = useState<string[]>([]);
   const [priority, setPriority] = useState<'routine' | 'urgent' | 'stat'>('routine');
   const [prescribedByDoctor, setPrescribedByDoctor] = useState('');
   const [clinicalNotes, setClinicalNotes] = useState('');
@@ -53,8 +58,47 @@ export const CreateLabOrderModal: React.FC<CreateLabOrderModalProps> = ({
     ? (selectedPatient.healthCardId ? cards.find(c => c.id === selectedPatient.healthCardId) : cards.find(c => c.patientId === selectedPatient.id))
     : null;
 
-  // Selected Test
-  const selectedTest = tests.find(t => t.id === selectedTestId);
+  // Selected Tests from Catalog
+  const selectedTests = useMemo(() => {
+    return tests.filter(t => selectedTestIds.includes(t.id));
+  }, [tests, selectedTestIds]);
+
+  // Selected Panels from Catalog
+  const selectedPanels = useMemo(() => {
+    return panels.filter(p => selectedPanelIds.includes(p.id));
+  }, [panels, selectedPanelIds]);
+
+  // Quick Preset Helper
+  const applyPreset = (testNames: string[]) => {
+    const matchedIds: string[] = [];
+    for (const name of testNames) {
+      const found = tests.find(t => t.name.toLowerCase().includes(name.toLowerCase()) || t.code.toLowerCase().includes(name.toLowerCase()));
+      if (found && !selectedTestIds.includes(found.id)) {
+        matchedIds.push(found.id);
+      }
+    }
+    if (matchedIds.length > 0) {
+      setSelectedTestIds(prev => Array.from(new Set([...prev, ...matchedIds])));
+    }
+  };
+
+  const handleToggleTest = (id: string) => {
+    setSelectedTestIds(prev => {
+      if (prev.includes(id)) {
+        return prev.filter(tId => tId !== id);
+      }
+      return [...prev, id];
+    });
+  };
+
+  const handleTogglePanel = (id: string) => {
+    setSelectedPanelIds(prev => {
+      if (prev.includes(id)) {
+        return prev.filter(pId => pId !== id);
+      }
+      return [...prev, id];
+    });
+  };
 
   // Filtered Patients
   const filteredPatients = useMemo(() => {
@@ -74,11 +118,26 @@ export const CreateLabOrderModal: React.FC<CreateLabOrderModalProps> = ({
       .slice(0, 15);
   }, [tests, testSearch]);
 
-  // Pricing calculation
-  const mrp = selectedTest?.mrp || 0;
+  // Filtered Panels
+  const filteredPanels = useMemo(() => {
+    if (!testSearch.trim()) return panels;
+    const q = testSearch.toLowerCase().trim();
+    return panels.filter(p =>
+      p.name.toLowerCase().includes(q) ||
+      p.code.toLowerCase().includes(q) ||
+      p.category.toLowerCase().includes(q) ||
+      p.department.toLowerCase().includes(q)
+    );
+  }, [panels, testSearch]);
+
+  // Pricing calculation across all selected individual investigations and panels
+  const totalIndividualMrp = selectedTests.reduce((acc, t) => acc + (t.mrp || 0), 0);
+  const totalPanelMrp = selectedPanels.reduce((acc, p) => acc + (p.offerPrice || p.mrp || 0), 0);
+  const totalMrp = totalIndividualMrp + totalPanelMrp;
+
   const discountPct = patientCard ? 25 : 0;
-  const discountAmount = Math.round((mrp * discountPct) / 100);
-  const netPayable = Math.max(0, mrp - discountAmount);
+  const discountAmount = Math.round((totalMrp * discountPct) / 100);
+  const netPayable = Math.max(0, totalMrp - discountAmount);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -86,30 +145,44 @@ export const CreateLabOrderModal: React.FC<CreateLabOrderModalProps> = ({
       showToast('error', 'Patient Required', 'Please select a registered patient.');
       return;
     }
-    if (!selectedTest) {
-      showToast('error', 'Test Required', 'Please select an investigation from the catalog.');
+    if (selectedTests.length === 0 && selectedPanels.length === 0) {
+      showToast('error', 'Investigation Required', 'Please select at least one individual test or panel/package.');
       return;
     }
 
     setIsSubmitting(true);
     try {
-      // 1. Create order in unified LaboratoryService (generates PatientBill, SpecimenRecord, financial ledger, and order record)
+      // Build test name composite
+      const allNames: string[] = [
+        ...selectedPanels.map(p => `[Panel] ${p.name}`),
+        ...selectedTests.map(t => t.name)
+      ];
+
+      // Create unified multi-test lab order with Test Master snapshot & panel expansion
       const labOrder = LaboratoryService.createOrder({
         patientId: selectedPatient.id,
-        testId: selectedTest.id,
-        testName: selectedTest.name,
-        department: selectedTest.department,
-        category: selectedTest.category,
+        testIds: [
+          ...selectedPanelIds,
+          ...selectedTestIds
+        ],
+        testNames: allNames,
+        testName: allNames.join(' + '),
+        department: selectedPanels[0]?.department || selectedTests[0]?.department || 'Clinical Pathology',
+        category: selectedPanels[0]?.category || selectedTests[0]?.category || 'Biochemistry',
         priority,
         clinicalNotes: clinicalNotes.trim(),
         prescribedByDoctorName: prescribedByDoctor.trim() || 'Walk-in Consultation',
-        mrp,
+        mrp: totalMrp,
         isPaid: true,
         paymentMethod,
         currentUser: currentUser as any
       });
 
-      showToast('success', 'Lab Order Booked! 🧪', `Requisition ${labOrder.orderNumber} created with bill recorded.`);
+      showToast(
+        'success',
+        'Lab Order Booked! 🧪',
+        `Requisition ${labOrder.orderNumber} booked with ${allNames.length} investigations from Test Master.`
+      );
       onOrderCreated(labOrder as any);
       onClose();
     } catch (err: any) {
@@ -200,39 +273,231 @@ export const CreateLabOrderModal: React.FC<CreateLabOrderModalProps> = ({
           )}
         </div>
 
-        {/* Step 2: Select Test from Catalog */}
-        <div className="space-y-2">
-          <label className="block text-xs font-bold uppercase tracking-wider text-slate-400">
-            2. Select Diagnostic Test / Investigation
-          </label>
+        {/* Step 2: Select Tests / Panels from Test Master */}
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <label className="block text-xs font-bold uppercase tracking-wider text-slate-400">
+              2. Select Diagnostic Investigations ({selectedTests.length + selectedPanels.length} Selected)
+            </label>
+            <span className="text-[11px] text-teal-400 font-medium">Test Master Single Source of Truth</span>
+          </div>
 
-          {!selectedTest ? (
-            <div className="space-y-2">
-              <div className="relative">
-                <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input
-                  type="text"
-                  value={testSearch}
-                  onChange={(e) => setTestSearch(e.target.value)}
-                  placeholder="Search test name (CBC, LFT, Lipid, Thyroid, Glucose, Urine...)..."
-                  className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-800 border border-slate-700 text-xs text-white focus:outline-none focus:border-teal-500"
-                />
+          {/* Separation Tabs (Requirement 3 & 17) */}
+          <div className="flex rounded-xl bg-slate-900 p-1 border border-slate-800">
+            <button
+              type="button"
+              onClick={() => setCatalogMode('individual')}
+              className={`flex-1 py-2 px-3 rounded-lg text-xs font-bold transition flex items-center justify-center gap-2 ${
+                catalogMode === 'individual'
+                  ? 'bg-teal-600 text-white shadow-md'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <TestTube className="w-3.5 h-3.5" />
+              <span>INDIVIDUAL TESTS ({tests.length})</span>
+              {selectedTests.length > 0 && (
+                <span className="px-1.5 py-0.2 rounded-full text-[9px] bg-white text-teal-900 font-black">
+                  {selectedTests.length}
+                </span>
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={() => setCatalogMode('panels')}
+              className={`flex-1 py-2 px-3 rounded-lg text-xs font-bold transition flex items-center justify-center gap-2 ${
+                catalogMode === 'panels'
+                  ? 'bg-teal-600 text-white shadow-md'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <CreditCard className="w-3.5 h-3.5" />
+              <span>PANELS / PACKAGES ({panels.length})</span>
+              {selectedPanels.length > 0 && (
+                <span className="px-1.5 py-0.2 rounded-full text-[9px] bg-white text-teal-900 font-black">
+                  {selectedPanels.length}
+                </span>
+              )}
+            </button>
+          </div>
+
+          {/* Quick Clinical Order Presets */}
+          <div className="flex flex-wrap gap-1.5 p-2 bg-slate-900/90 rounded-xl border border-slate-800">
+            <span className="text-[10px] text-slate-400 self-center font-bold mr-1">Quick Presets:</span>
+            <button
+              type="button"
+              onClick={() => {
+                const lipid = panels.find(p => p.id === 'pnl_lipid_profile' || p.name.toLowerCase().includes('lipid'));
+                const lft = panels.find(p => p.id === 'pnl_lft' || p.name.toLowerCase().includes('liver'));
+                const kft = panels.find(p => p.id === 'pnl_kft' || p.name.toLowerCase().includes('kidney'));
+                const cbc = panels.find(p => p.id === 'pnl_cbc' || p.name.toLowerCase().includes('complete blood'));
+                const matched = [lipid?.id, lft?.id, kft?.id, cbc?.id].filter(Boolean) as string[];
+                setSelectedPanelIds(prev => Array.from(new Set([...prev, ...matched])));
+              }}
+              className="px-2 py-1 rounded-lg text-[10px] font-bold bg-teal-950 text-teal-300 border border-teal-500/40 hover:bg-teal-900 transition"
+            >
+              ⚡ Comprehensive Executive (CBC + LFT + KFT + Lipid)
+            </button>
+            <button
+              type="button"
+              onClick={() => applyPreset(['Complete Haemogram', 'CBC'])}
+              className="px-2 py-1 rounded-lg text-[10px] font-bold bg-slate-800 text-slate-200 border border-slate-700 hover:bg-slate-700 transition"
+            >
+              + CBC Test
+            </button>
+            <button
+              type="button"
+              onClick={() => applyPreset(['Liver Function', 'LFT'])}
+              className="px-2 py-1 rounded-lg text-[10px] font-bold bg-slate-800 text-slate-200 border border-slate-700 hover:bg-slate-700 transition"
+            >
+              + LFT Test
+            </button>
+            <button
+              type="button"
+              onClick={() => applyPreset(['Kidney Function', 'KFT'])}
+              className="px-2 py-1 rounded-lg text-[10px] font-bold bg-slate-800 text-slate-200 border border-slate-700 hover:bg-slate-700 transition"
+            >
+              + KFT Test
+            </button>
+            <button
+              type="button"
+              onClick={() => applyPreset(['Lipid Profile'])}
+              className="px-2 py-1 rounded-lg text-[10px] font-bold bg-slate-800 text-slate-200 border border-slate-700 hover:bg-slate-700 transition"
+            >
+              + Lipid Test
+            </button>
+            <button
+              type="button"
+              onClick={() => applyPreset(['Thyroid Profile', 'TSH'])}
+              className="px-2 py-1 rounded-lg text-[10px] font-bold bg-slate-800 text-slate-200 border border-slate-700 hover:bg-slate-700 transition"
+            >
+              + Thyroid
+            </button>
+          </div>
+
+          {/* Selected Investigations Basket */}
+          {(selectedTests.length > 0 || selectedPanels.length > 0) && (
+            <div className="space-y-1.5 p-2.5 rounded-2xl bg-teal-950/40 border border-teal-500/30">
+              <div className="flex items-center justify-between text-[11px]">
+                <span className="font-bold text-teal-300">
+                  Booked Basket ({selectedPanels.length} Panels, {selectedTests.length} Individual Tests):
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedTestIds([]);
+                    setSelectedPanelIds([]);
+                  }}
+                  className="text-[10px] text-slate-400 hover:text-red-400"
+                >
+                  Clear All
+                </button>
               </div>
 
-              <div className="max-h-48 overflow-y-auto divide-y divide-slate-800 border border-slate-800 rounded-2xl bg-slate-900">
-                {filteredTests.map((t) => (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-40 overflow-y-auto pr-1">
+                {/* Selected Panels */}
+                {selectedPanels.map(p => (
+                  <div key={p.id} className="p-2 rounded-xl bg-slate-900 border border-teal-500/40 flex items-center justify-between gap-2">
+                    <div className="truncate">
+                      <div className="flex items-center gap-1.5">
+                        <span className="px-1.5 py-0.2 rounded text-[8.5px] font-black bg-teal-900 text-teal-200 border border-teal-500/50 uppercase">
+                          PANEL
+                        </span>
+                        <strong className="text-white font-bold text-xs truncate block">{p.name}</strong>
+                      </div>
+                      <div className="text-[10px] text-slate-400 truncate mt-0.5">
+                        {p.code} • {p.department}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className="text-xs font-mono font-bold text-teal-400">{formatCurrency(p.offerPrice || p.mrp)}</span>
+                      <button
+                        type="button"
+                        onClick={() => handleTogglePanel(p.id)}
+                        className="p-1 rounded-lg text-slate-400 hover:text-red-400 hover:bg-red-950/50"
+                        title="Remove panel"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  </div>
+                ))}
+
+                {/* Selected Individual Tests */}
+                {selectedTests.map(t => (
+                  <div key={t.id} className="p-2 rounded-xl bg-slate-900 border border-slate-700/80 flex items-center justify-between gap-2">
+                    <div className="truncate">
+                      <div className="flex items-center gap-1.5">
+                        <span className="px-1.5 py-0.2 rounded text-[8.5px] font-bold bg-slate-800 text-slate-300 border border-slate-600 uppercase">
+                          TEST
+                        </span>
+                        <strong className="text-white font-bold text-xs truncate block">{t.name}</strong>
+                      </div>
+                      <div className="text-[10px] text-slate-400 truncate mt-0.5">
+                        {t.code} • {t.department}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className="text-xs font-mono font-bold text-teal-400">{formatCurrency(t.mrp)}</span>
+                      <button
+                        type="button"
+                        onClick={() => handleToggleTest(t.id)}
+                        className="p-1 rounded-lg text-slate-400 hover:text-red-400 hover:bg-red-950/50"
+                        title="Remove test"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Search Bar */}
+          <div className="relative">
+            <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              type="text"
+              value={testSearch}
+              onChange={(e) => setTestSearch(e.target.value)}
+              placeholder={
+                catalogMode === 'individual'
+                  ? 'Search individual tests by name, code, or department...'
+                  : 'Search panels & packages (Lipid Profile, LFT, KFT, CBC, Thyroid)...'
+              }
+              className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-800 border border-slate-700 text-xs text-white focus:outline-none focus:border-teal-500"
+            />
+          </div>
+
+          {/* Catalog Picker: Individual Tests vs Panels */}
+          <div className="max-h-48 overflow-y-auto divide-y divide-slate-800 border border-slate-800 rounded-2xl bg-slate-900">
+            {catalogMode === 'individual' ? (
+              filteredTests.map((t) => {
+                const isSelected = selectedTestIds.includes(t.id);
+                return (
                   <button
                     key={t.id}
                     type="button"
-                    onClick={() => {
-                      setSelectedTestId(t.id);
-                      setTestSearch('');
-                    }}
-                    className="w-full p-2.5 text-left hover:bg-slate-800/60 transition flex items-center justify-between text-xs"
+                    onClick={() => handleToggleTest(t.id)}
+                    className={`w-full p-2.5 text-left transition flex items-center justify-between text-xs ${
+                      isSelected ? 'bg-teal-950/60 border-l-4 border-teal-400' : 'hover:bg-slate-800/60'
+                    }`}
                   >
                     <div>
-                      <strong className="text-white font-bold">{t.name}</strong>
-                      <div className="text-[10px] text-slate-400">
+                      <div className="flex items-center gap-2">
+                        <span className="px-1.5 py-0.2 rounded text-[8.5px] font-bold bg-slate-800 text-slate-300 border border-slate-600 uppercase">
+                          TEST
+                        </span>
+                        <strong className={isSelected ? 'text-teal-300 font-bold' : 'text-white font-bold'}>
+                          {t.name}
+                        </strong>
+                        {isSelected && (
+                          <span className="text-[9px] px-1.5 py-0.2 rounded bg-teal-600 text-white font-bold">
+                            ADDED ✓
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-[10px] text-slate-400 mt-0.5">
                         {t.code} • {t.department} • Specimen: {t.specimen}
                       </div>
                     </div>
@@ -240,30 +505,53 @@ export const CreateLabOrderModal: React.FC<CreateLabOrderModalProps> = ({
                       {formatCurrency(t.mrp)}
                     </span>
                   </button>
-                ))}
-              </div>
-            </div>
-          ) : (
-            <div className="p-3 bg-slate-800/80 rounded-2xl border border-slate-700 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-cyan-600/20 text-cyan-400 border border-cyan-500/30 flex items-center justify-center">
-                  <TestTube className="w-5 h-5" />
-                </div>
-                <div>
-                  <strong className="text-sm font-bold text-white block">{selectedTest.name}</strong>
-                  <span className="text-xs text-slate-400 font-mono">
-                    {selectedTest.code} • {selectedTest.department} • {selectedTest.specimen}
-                  </span>
-                </div>
-              </div>
-              <div className="flex items-center gap-3">
-                <span className="font-black text-white text-base">{formatCurrency(selectedTest.mrp)}</span>
-                <Button size="sm" variant="ghost" onClick={() => setSelectedTestId('')}>
-                  Change
-                </Button>
-              </div>
-            </div>
-          )}
+                );
+              })
+            ) : (
+              filteredPanels.map((p) => {
+                const isSelected = selectedPanelIds.includes(p.id);
+                return (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => handleTogglePanel(p.id)}
+                    className={`w-full p-2.5 text-left transition flex items-center justify-between text-xs ${
+                      isSelected ? 'bg-teal-950/60 border-l-4 border-teal-400' : 'hover:bg-slate-800/60'
+                    }`}
+                  >
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="px-1.5 py-0.2 rounded text-[8.5px] font-black bg-teal-900 text-teal-200 border border-teal-500/50 uppercase">
+                          PANEL
+                        </span>
+                        <strong className={isSelected ? 'text-teal-300 font-bold' : 'text-white font-bold'}>
+                          {p.name}
+                        </strong>
+                        {isSelected && (
+                          <span className="text-[9px] px-1.5 py-0.2 rounded bg-teal-600 text-white font-bold">
+                            ADDED ✓
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-[10px] text-slate-400 mt-0.5">
+                        {p.code} • {p.department} • {p.description || 'Predefined Multi-Test Profile'}
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <span className="font-bold text-teal-400 font-mono text-sm block">
+                        {formatCurrency(p.offerPrice || p.mrp)}
+                      </span>
+                      {p.offerPrice && p.offerPrice < p.mrp && (
+                        <span className="text-[10px] text-slate-500 line-through font-mono">
+                          {formatCurrency(p.mrp)}
+                        </span>
+                      )}
+                    </div>
+                  </button>
+                );
+              })
+            )}
+          </div>
         </div>
 
         {/* Step 3: Priority & Prescribing Doctor */}
@@ -314,7 +602,7 @@ export const CreateLabOrderModal: React.FC<CreateLabOrderModalProps> = ({
         <div className="p-4 bg-slate-900 border border-slate-800 rounded-2xl space-y-3">
           <div className="flex items-center justify-between text-xs">
             <span className="text-slate-400">Investigation Standard MRP:</span>
-            <span className="font-mono text-white font-bold">{formatCurrency(mrp)}</span>
+            <span className="font-mono text-white font-bold">{formatCurrency(totalMrp)}</span>
           </div>
 
           {discountAmount > 0 && (

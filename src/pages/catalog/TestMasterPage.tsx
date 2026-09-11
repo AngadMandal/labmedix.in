@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { CatalogService, LabTestItem, HealthPackageItem } from '../../services/catalogService';
+import { LabPanelItem } from '../../types';
 import {
   DiagnosticAIService,
   AI_SYMPTOM_KNOWLEDGE_BASE,
@@ -19,7 +20,10 @@ import { Modal } from '../../components/common/Modal';
 import { PhlebotomySampleLabelModal } from '../../components/patients/PhlebotomySampleLabelModal';
 import { PhlebotomySampleDispatchModal } from '../../components/patients/PhlebotomySampleDispatchModal';
 import { LabReportPrintModal } from '../../components/emr/LabReportPrintModal';
+import { LabResultEntryModal } from '../../components/laboratory/LabResultEntryModal';
 import { PortalService, BloodTestBooking, LabTestResultParameter } from '../../services/portalService';
+import { TestMasterService } from '../../services/testMasterService';
+import { MasterTestParameter, TestResultType } from '../../types';
 import { PatientService } from '../../services/patientService';
 import { CardService } from '../../services/cardService';
 import { formatCurrency, formatDate, formatDateTime } from '../../utils/formatters';
@@ -85,21 +89,63 @@ export const TestMasterPage: React.FC = () => {
   const isSuperAdmin = currentUser?.role === 'super_admin';
   const canManage = isSuperAdmin || currentUser?.role === 'admin' || can('catalog_manage');
 
-  // Main Tabs: Tests Directory vs Package Studio vs Live Lab Operations Hub
-  const [activeTab, setActiveTab] = useState<'test_master' | 'package_builder' | 'lab_operations'>('test_master');
+  // Main Tabs: Individual Tests vs Panels/Packages Master vs Calculation Studio vs Live Lab Operations Hub
+  const [activeTab, setActiveTab] = useState<'test_master' | 'panels_master' | 'calculation_rules' | 'package_builder' | 'lab_operations'>('test_master');
 
   // Core Data State
   const [tests, setTests] = useState<LabTestItem[]>(() => CatalogService.getLabTests());
+  const [panels, setPanels] = useState<LabPanelItem[]>(() => CatalogService.getPanels());
   const [packages, setPackages] = useState<HealthPackageItem[]>(() => CatalogService.getHealthPackages());
   const [labBookings, setLabBookings] = useState<BloodTestBooking[]>(() => PortalService.getLabBookings());
   const [labFilterStatus, setLabFilterStatus] = useState<string>('all');
   const [labSearchQuery, setLabSearchQuery] = useState<string>('');
+
+  // Panel Master Modal State
+  const [isAddPanelOpen, setIsAddPanelOpen] = useState(false);
+  const [editingPanel, setEditingPanel] = useState<LabPanelItem | null>(null);
+  const [panelSearchQuery, setPanelSearchQuery] = useState('');
+  const [panelForm, setPanelForm] = useState<{
+    code: string;
+    name: string;
+    category: string;
+    department: string;
+    specimen: string;
+    type: 'panel' | 'package';
+    tag: string;
+    description: string;
+    individualTestIds: string[];
+    mrp: number;
+    offerPrice: number;
+    fastingRequired: boolean;
+    tatHours: number;
+    popular: boolean;
+    status: 'active' | 'inactive';
+  }>({
+    code: '',
+    name: '',
+    category: 'Biochemistry',
+    department: 'Clinical Biochemistry',
+    specimen: 'Serum (2ml)',
+    type: 'panel',
+    tag: 'CLINICAL PANEL',
+    description: '',
+    individualTestIds: [],
+    mrp: 600,
+    offerPrice: 450,
+    fastingRequired: true,
+    tatHours: 4,
+    popular: true,
+    status: 'active'
+  });
 
   useEffect(() => {
     const handleSync = (e: CustomEvent) => {
       const key = e.detail?.key;
       if (!key || key === 'LABMEDIX_TEST_MASTER_LIST') {
         setTests(CatalogService.getLabTests());
+      }
+      if (!key || key === 'LABMEDIX_PANELS_MASTER_LIST') {
+        setPanels(CatalogService.getPanels());
       }
       if (!key || key === 'LABMEDIX_HEALTH_PACKAGES_LIST') {
         setPackages(CatalogService.getHealthPackages());
@@ -202,18 +248,35 @@ export const TestMasterPage: React.FC = () => {
   // Bulk Upload Paste Text State
   const [bulkPasteText, setBulkPasteText] = useState('');
 
-  // Single Test Form State
-  const [testForm, setTestForm] = useState({
+  // Single Test Form State with Parameters
+  const [testForm, setTestForm] = useState<{
+    code: string;
+    name: string;
+    category: string;
+    department: string;
+    specimen: string;
+    method: string;
+    reportTemplate: string;
+    fastingRequired: boolean;
+    tatHours: number;
+    mrp: number;
+    description: string;
+    popular: boolean;
+    parameters: MasterTestParameter[];
+  }>({
     code: '',
     name: '',
     category: 'Biochemistry',
     department: 'Clinical Biochemistry',
     specimen: 'Serum (2ml)',
+    method: 'Fully Automated Analyzer',
+    reportTemplate: 'standard_pathology',
     fastingRequired: false,
     tatHours: 4,
     mrp: 300,
     description: '',
-    popular: false
+    popular: false,
+    parameters: []
   });
 
   // Copy Feedback
@@ -594,13 +657,35 @@ export const TestMasterPage: React.FC = () => {
       return;
     }
 
+    let finalParams = testForm.parameters;
+    if (!finalParams || finalParams.length === 0) {
+      finalParams = TestMasterService.getBlueprintForTest(testForm.name) || [
+        {
+          id: `p_${testForm.code.toLowerCase().replace(/[^a-z0-9]/g, '_')}_1`,
+          parameterCode: testForm.code,
+          parameterName: testForm.name,
+          resultType: 'numeric',
+          unit: 'mg/dL',
+          defaultReferenceRange: 'Normal',
+          displayOrder: 1,
+          reportOrder: 1,
+          required: true
+        }
+      ];
+    }
+
+    const testPayload = {
+      ...testForm,
+      parameters: finalParams
+    };
+
     if (editingTest) {
-      CatalogService.updateLabTest(editingTest.id, testForm);
-      showToast('success', 'Test Updated', `Test ${testForm.name} updated successfully.`);
+      CatalogService.updateLabTest(editingTest.id, testPayload);
+      showToast('success', 'Test Master Updated', `Test "${testForm.name}" updated with ${finalParams.length} parameters configured.`);
     } else {
-      CatalogService.addLabTest(testForm);
+      CatalogService.addLabTest(testPayload);
       triggerCelebrationFireworks();
-      showToast('success', 'Test Created', `New test ${testForm.name} added to master directory.`);
+      showToast('success', 'Test Created in Master', `New test "${testForm.name}" saved with ${finalParams.length} configured parameters.`);
     }
 
     refreshData();
@@ -995,17 +1080,23 @@ export const TestMasterPage: React.FC = () => {
               title="Edit Test Details"
               onClick={() => {
                 setEditingTest(t);
+                const params = (t.parameters && t.parameters.length > 0)
+                  ? t.parameters
+                  : (TestMasterService.getBlueprintForTest(t.name) || []);
                 setTestForm({
                   code: t.code,
                   name: t.name,
                   category: t.category,
                   department: t.department,
                   specimen: t.specimen,
+                  method: t.method || 'Automated Analyzer',
+                  reportTemplate: t.reportTemplate || 'standard_pathology',
                   fastingRequired: t.fastingRequired,
                   tatHours: t.tatHours,
                   mrp: t.mrp,
                   description: t.description,
-                  popular: !!t.popular
+                  popular: !!t.popular,
+                  parameters: params
                 });
                 setIsAddTestOpen(true);
               }}
@@ -1145,11 +1236,14 @@ export const TestMasterPage: React.FC = () => {
                       category: 'Biochemistry',
                       department: 'Clinical Biochemistry',
                       specimen: 'Serum (2ml)',
+                      method: 'Fully Automated Analyzer',
+                      reportTemplate: 'standard_pathology',
                       fastingRequired: false,
                       tatHours: 4,
                       mrp: 300,
                       description: '',
-                      popular: false
+                      popular: false,
+                      parameters: []
                     });
                     setIsAddTestOpen(true);
                   }}
@@ -1205,7 +1299,7 @@ export const TestMasterPage: React.FC = () => {
         </div>
       </div>
 
-      {/* 3. WORKSPACE TOP NAVIGATION SUITE TABS */}
+      {/* 3. WORKSPACE TOP NAVIGATION SUITE TABS (Requirement 3 & 16) */}
       <div className="flex flex-wrap items-center justify-between gap-3 p-2 bg-slate-900/90 border border-slate-800 rounded-3xl shadow-xl">
         <div className="flex flex-wrap items-center gap-2">
           <button
@@ -1218,7 +1312,33 @@ export const TestMasterPage: React.FC = () => {
             }`}
           >
             <TestTube className="w-4 h-4 text-teal-300" />
-            <span>Master Diagnostic Tests ({tests.length})</span>
+            <span>Individual Tests ({tests.length})</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('panels_master')}
+            className={`px-4 py-2.5 rounded-2xl text-xs font-bold transition-all flex items-center gap-2 ${
+              activeTab === 'panels_master'
+                ? 'bg-gradient-to-r from-cyan-600 to-blue-600 text-white shadow-lg'
+                : 'text-slate-400 hover:text-white hover:bg-slate-800'
+            }`}
+          >
+            <Layers className="w-4 h-4 text-cyan-300" />
+            <span>Panels / Packages ({panels.length})</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('calculation_rules')}
+            className={`px-4 py-2.5 rounded-2xl text-xs font-bold transition-all flex items-center gap-2 ${
+              activeTab === 'calculation_rules'
+                ? 'bg-gradient-to-r from-amber-600 to-orange-600 text-white shadow-lg'
+                : 'text-slate-400 hover:text-white hover:bg-slate-800'
+            }`}
+          >
+            <Zap className="w-4 h-4 text-amber-300" />
+            <span>Calculation Engine ({TestMasterService.CALCULATION_RULES.length})</span>
           </button>
 
           <button
@@ -1231,7 +1351,7 @@ export const TestMasterPage: React.FC = () => {
             }`}
           >
             <Package className="w-4 h-4 text-purple-300" />
-            <span>Health Packages & Bundles ({packages.length})</span>
+            <span>Health Bundles ({packages.length})</span>
           </button>
 
           <button
@@ -1247,7 +1367,7 @@ export const TestMasterPage: React.FC = () => {
             }`}
           >
             <Activity className="w-4 h-4 text-cyan-300 animate-pulse" />
-            <span>🔬 Live Lab Operations & Results Hub ({labBookings.length})</span>
+            <span>🔬 Live Lab Operations ({labBookings.length})</span>
             {labBookings.filter(b => b.status === 'confirmed' || b.status === 'sample_collected').length > 0 && (
               <span className="px-2 py-0.5 text-[10px] font-black bg-rose-500 text-white rounded-full animate-bounce">
                 {labBookings.filter(b => b.status === 'confirmed' || b.status === 'sample_collected').length} Action
@@ -1620,7 +1740,249 @@ export const TestMasterPage: React.FC = () => {
         </div>
       )}
 
-      {/* 4. WORKSPACE TAB 2: HEALTH PACKAGE STUDIO & AUTO-BUILDER */}
+      {/* 4. WORKSPACE TAB 2: PANELS & PACKAGES MASTER (Requirement 2, 3, 4, 16) */}
+      {activeTab === 'panels_master' && (
+        <div className="space-y-6">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-4 rounded-3xl bg-slate-900 border border-slate-800 shadow-xl">
+            <div>
+              <div className="flex items-center gap-2">
+                <Layers className="w-5 h-5 text-cyan-400" />
+                <h3 className="text-sm font-black text-white uppercase tracking-wide">
+                  Panel / Package Master Studio ({panels.length} Configured)
+                </h3>
+              </div>
+              <p className="text-xs text-slate-400 mt-1">
+                Multi-test diagnostic profiles referencing configured Individual Tests without duplicating parameters. Includes auto-calculations.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2">
+              {canManage && (
+                <Button
+                  variant="primary"
+                  size="sm"
+                  className="bg-gradient-to-r from-cyan-600 to-blue-600 text-white font-black shadow-lg"
+                  leftIcon={<Plus className="w-4 h-4" />}
+                  onClick={() => {
+                    setEditingPanel(null);
+                    setPanelForm({
+                      code: `PNL-${100 + panels.length + 1}`,
+                      name: '',
+                      category: 'Biochemistry',
+                      department: 'Clinical Biochemistry',
+                      specimen: 'Serum (2ml)',
+                      type: 'panel',
+                      tag: 'CLINICAL PROFILE',
+                      description: '',
+                      individualTestIds: [],
+                      mrp: 650,
+                      offerPrice: 499,
+                      fastingRequired: true,
+                      tatHours: 4,
+                      popular: true,
+                      status: 'active'
+                    });
+                    setIsAddPanelOpen(true);
+                  }}
+                >
+                  + Configure New Panel
+                </Button>
+              )}
+            </div>
+          </div>
+
+          {/* Panels Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+            {panels.map((p) => {
+              const discountPct = p.mrp > 0 && p.offerPrice ? Math.round(((p.mrp - p.offerPrice) / p.mrp) * 100) : 0;
+              const constituentTests = tests.filter(t => p.individualTestIds?.includes(t.id));
+
+              return (
+                <div
+                  key={p.id}
+                  className="p-5 rounded-3xl bg-slate-900/90 border border-slate-800 hover:border-cyan-500/50 transition-all shadow-xl flex flex-col justify-between space-y-4 group"
+                >
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="px-2.5 py-1 rounded-xl text-xs font-mono font-black bg-slate-950 text-cyan-400 border border-slate-700">
+                        {p.code}
+                      </span>
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-cyan-950 text-cyan-300 border border-cyan-500/40 uppercase">
+                        {p.type.toUpperCase()}
+                      </span>
+                    </div>
+
+                    <div>
+                      <h4 className="text-sm font-black text-white group-hover:text-cyan-400 transition">
+                        {p.name}
+                      </h4>
+                      <p className="text-[11px] text-slate-400 mt-1 line-clamp-2">
+                        {p.description || 'Configured diagnostic panel.'}
+                      </p>
+                    </div>
+
+                    <div className="p-2.5 rounded-2xl bg-slate-950 border border-slate-800/80 space-y-1 text-xs">
+                      <div className="flex items-center justify-between text-[11px]">
+                        <span className="text-slate-400">Department:</span>
+                        <span className="font-bold text-slate-200">{p.department}</span>
+                      </div>
+                      <div className="flex items-center justify-between text-[11px]">
+                        <span className="text-slate-400">Specimen Tube:</span>
+                        <span className="font-mono text-slate-300 text-[10.5px] truncate max-w-[150px]">{p.specimen}</span>
+                      </div>
+                      <div className="flex items-center justify-between text-[11px]">
+                        <span className="text-slate-400">Fasting:</span>
+                        <span className={p.fastingRequired ? 'text-rose-400 font-bold' : 'text-emerald-400 font-bold'}>
+                          {p.fastingRequired ? 'Required (8-10H)' : 'Routine / Not Required'}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Referenced Individual Tests */}
+                    {constituentTests.length > 0 && (
+                      <div className="space-y-1">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                          Referenced Tests ({constituentTests.length}):
+                        </span>
+                        <div className="flex flex-wrap gap-1 max-h-20 overflow-y-auto">
+                          {constituentTests.map(t => (
+                            <span
+                              key={t.id}
+                              className="px-2 py-0.5 rounded-md text-[10px] bg-slate-800 text-slate-300 border border-slate-700 font-mono truncate max-w-[160px]"
+                            >
+                              {t.name}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Pricing and Action Footer */}
+                  <div className="pt-3 border-t border-slate-800 flex items-center justify-between">
+                    <div>
+                      <div className="flex items-baseline gap-1.5 font-mono">
+                        <strong className="text-base font-black text-cyan-400">
+                          {formatCurrency(p.offerPrice || p.mrp)}
+                        </strong>
+                        {p.offerPrice && p.offerPrice < p.mrp && (
+                          <span className="text-xs text-slate-500 line-through">
+                            {formatCurrency(p.mrp)}
+                          </span>
+                        )}
+                      </div>
+                      {discountPct > 0 && (
+                        <span className="text-[10px] font-bold text-emerald-400 block font-mono">
+                          {discountPct}% Special Discount
+                        </span>
+                      )}
+                    </div>
+
+                    {canManage && (
+                      <div className="flex items-center gap-1">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => {
+                            setEditingPanel(p);
+                            setPanelForm({
+                              code: p.code,
+                              name: p.name,
+                              category: p.category,
+                              department: p.department,
+                              specimen: p.specimen,
+                              type: p.type,
+                              tag: p.tag || 'CLINICAL PROFILE',
+                              description: p.description || '',
+                              individualTestIds: [...p.individualTestIds],
+                              mrp: p.mrp,
+                              offerPrice: p.offerPrice || p.mrp,
+                              fastingRequired: p.fastingRequired,
+                              tatHours: p.tatHours,
+                              popular: !!p.popular,
+                              status: p.status || 'active'
+                            });
+                            setIsAddPanelOpen(true);
+                          }}
+                        >
+                          <Edit2 className="w-3.5 h-3.5 text-cyan-400" />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => {
+                            if (window.confirm(`Delete panel ${p.name}?`)) {
+                              CatalogService.deletePanel(p.id);
+                              setPanels(CatalogService.getPanels());
+                              showToast('success', 'Panel Deleted', `Deleted panel ${p.name}`);
+                            }
+                          }}
+                        >
+                          <Trash2 className="w-3.5 h-3.5 text-rose-400" />
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* 4. WORKSPACE TAB 3: CALCULATION ENGINE & RULES (Requirement 9) */}
+      {activeTab === 'calculation_rules' && (
+        <div className="space-y-6">
+          <div className="p-5 rounded-3xl bg-slate-900 border border-amber-500/30 shadow-xl space-y-2">
+            <div className="flex items-center gap-2 text-amber-400">
+              <Zap className="w-5 h-5 animate-pulse" />
+              <h3 className="text-sm font-black uppercase tracking-wide">
+                Automated Clinical Calculation Engine
+              </h3>
+            </div>
+            <p className="text-xs text-slate-300 leading-relaxed max-w-3xl">
+              Parameters configured with calculation formulas are evaluated live in the Result Entry module whenever technicians enter primary observations. Calculations only execute when prerequisites and validity boundaries are satisfied (e.g., Friedewald equation valid when Triglycerides &lt; 400 mg/dL).
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {TestMasterService.CALCULATION_RULES.map((rule, idx) => (
+              <div
+                key={idx}
+                className="p-4 rounded-2xl bg-slate-900/90 border border-slate-800 space-y-2.5 shadow-md flex flex-col justify-between"
+              >
+                <div>
+                  <div className="flex items-center justify-between">
+                    <span className="px-2 py-0.5 rounded-lg text-[10px] font-mono font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                      {rule.targetParameterCode}
+                    </span>
+                    <span className="text-[10px] text-slate-400 font-mono">{rule.unit || 'unitless'}</span>
+                  </div>
+                  <strong className="text-xs font-bold text-white block mt-1">
+                    {rule.targetParameterName}
+                  </strong>
+                  <div className="p-2 mt-2 rounded-xl bg-slate-950 border border-slate-800 font-mono text-xs text-teal-300">
+                    Formula: <strong className="text-amber-300">{rule.formulaDescription}</strong>
+                  </div>
+                </div>
+
+                <div className="pt-2 border-t border-slate-800 text-[10px] space-y-1">
+                  <div className="text-slate-400">
+                    Prerequisites: <span className="font-mono text-slate-200">{rule.requiredParameterCodes.join(', ')}</span>
+                  </div>
+                  {rule.conditionDescription && (
+                    <div className="text-amber-400/90 font-mono">
+                      Rule: {rule.conditionDescription}
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* 4. WORKSPACE TAB 4: HEALTH PACKAGE STUDIO & AUTO-BUILDER */}
       {activeTab === 'package_builder' && (
         <div className="space-y-6">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-4 rounded-3xl bg-slate-900 border border-slate-800">
@@ -2666,112 +3028,346 @@ export const TestMasterPage: React.FC = () => {
         </Modal>
       )}
 
-      {/* 8. ADD / EDIT TEST MODAL */}
+      {/* 8. ADD / EDIT TEST MODAL & PARAMETER STUDIO */}
       {isAddTestOpen && (
         <Modal
           isOpen={isAddTestOpen}
           onClose={() => setIsAddTestOpen(false)}
-          title={editingTest ? 'Edit Diagnostic Investigation' : 'Add New Diagnostic Test to Master Catalog'}
-          maxWidth="lg"
+          title={editingTest ? `Test Master Studio — Edit ${editingTest.name}` : 'Test Master Studio — Configure New Diagnostic Investigation'}
+          maxWidth="6xl"
         >
           <form onSubmit={handleSaveTest} className="space-y-4 text-xs">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <label className="font-bold text-slate-300 block">Test Code:</label>
-                <Input
-                  value={testForm.code}
-                  onChange={(e) => setTestForm({ ...testForm, code: e.target.value })}
-                  placeholder="e.g. LAB-CBC-01"
-                  required
-                />
+            {/* Core Test Information */}
+            <div className="p-3.5 rounded-2xl bg-slate-900 border border-slate-800 space-y-3">
+              <span className="text-[11px] font-bold text-teal-400 uppercase tracking-wider block">
+                1. General Test Master Configuration
+              </span>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="space-y-1">
+                  <label className="font-bold text-slate-300 block">Test Code *</label>
+                  <Input
+                    value={testForm.code}
+                    onChange={(e) => setTestForm({ ...testForm, code: e.target.value })}
+                    placeholder="e.g. LAB-CBC-01"
+                    required
+                  />
+                </div>
+
+                <div className="space-y-1 sm:col-span-2">
+                  <label className="font-bold text-slate-300 block">Investigation Name *</label>
+                  <Input
+                    value={testForm.name}
+                    onChange={(e) => setTestForm({ ...testForm, name: e.target.value })}
+                    placeholder="e.g. Complete Haemogram with ESR (CBC)"
+                    required
+                  />
+                </div>
               </div>
 
-              <div className="space-y-1">
-                <label className="font-bold text-slate-300 block">Standard Rate (MRP ₹):</label>
-                <Input
-                  type="number"
-                  value={testForm.mrp}
-                  onChange={(e) => setTestForm({ ...testForm, mrp: parseFloat(e.target.value) || 0 })}
-                  placeholder="e.g. 350"
-                  required
-                />
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                <div className="space-y-1">
+                  <label className="font-bold text-slate-300 block">Category *</label>
+                  <select
+                    value={testForm.category}
+                    onChange={(e) => setTestForm({ ...testForm, category: e.target.value })}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-xs text-white"
+                  >
+                    <option value="Biochemistry">Biochemistry</option>
+                    <option value="Hematology">Hematology</option>
+                    <option value="Hormones">Hormones</option>
+                    <option value="Immunology">Immunology</option>
+                    <option value="Microbiology">Microbiology</option>
+                    <option value="Histopathology">Histopathology</option>
+                    <option value="Cytology">Cytology</option>
+                    <option value="Molecular & PCR">Molecular & PCR</option>
+                    <option value="Clinical Pathology">Clinical Pathology</option>
+                    <option value="Special Assays">Special Assays</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="font-bold text-slate-300 block">Department *</label>
+                  <Input
+                    value={testForm.department}
+                    onChange={(e) => setTestForm({ ...testForm, department: e.target.value })}
+                    placeholder="e.g. Hematology & Coagulation"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="font-bold text-slate-300 block">Specimen Requirement *</label>
+                  <Input
+                    value={testForm.specimen}
+                    onChange={(e) => setTestForm({ ...testForm, specimen: e.target.value })}
+                    placeholder="e.g. EDTA Whole Blood (2ml)"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="font-bold text-slate-300 block">Standard MRP (₹) *</label>
+                  <Input
+                    type="number"
+                    value={testForm.mrp}
+                    onChange={(e) => setTestForm({ ...testForm, mrp: parseFloat(e.target.value) || 0 })}
+                    placeholder="e.g. 350"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="space-y-1">
+                  <label className="font-bold text-slate-300 block">Analytical Method</label>
+                  <Input
+                    value={testForm.method}
+                    onChange={(e) => setTestForm({ ...testForm, method: e.target.value })}
+                    placeholder="e.g. Automated 5-Part Cell Counter / Photometry"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="font-bold text-slate-300 block">Turnaround Time (Hours)</label>
+                  <Input
+                    type="number"
+                    value={testForm.tatHours}
+                    onChange={(e) => setTestForm({ ...testForm, tatHours: parseInt(e.target.value, 10) || 4 })}
+                  />
+                </div>
+
+                <div className="flex items-center gap-4 pt-4">
+                  <label className="flex items-center gap-2 text-white font-bold cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={testForm.fastingRequired}
+                      onChange={(e) => setTestForm({ ...testForm, fastingRequired: e.target.checked })}
+                      className="rounded text-teal-600"
+                    />
+                    <span>Fasting Required</span>
+                  </label>
+
+                  <label className="flex items-center gap-2 text-white font-bold cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={testForm.popular}
+                      onChange={(e) => setTestForm({ ...testForm, popular: e.target.checked })}
+                      className="rounded text-amber-500"
+                    />
+                    <span>⭐ Popular</span>
+                  </label>
+                </div>
               </div>
             </div>
 
+            {/* Parameter Configuration Studio: Single Source of Truth */}
+            <div className="p-3.5 rounded-2xl bg-slate-900 border border-slate-800 space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <span className="text-[11px] font-bold text-teal-400 uppercase tracking-wider block">
+                    2. Parameter Configuration Studio ({testForm.parameters.length} Analytes Configured)
+                  </span>
+                  <span className="text-[10px] text-slate-400">
+                    Test Master is the single source of truth. Configured parameters will automatically load into Result Entry.
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const bp = TestMasterService.getBlueprintForTest(testForm.name) || TestMasterService.getBlueprintForTest(testForm.code);
+                      if (bp) {
+                        setTestForm(prev => ({ ...prev, parameters: [...bp] }));
+                        showToast('success', 'Blueprint Loaded', `Loaded ${bp.length} standard parameters for ${testForm.name}.`);
+                      } else {
+                        showToast('info', 'No Blueprint Match', 'No standard blueprint found for this name. You can add parameters manually below.');
+                      }
+                    }}
+                    className="px-2.5 py-1 rounded-xl bg-amber-950/80 border border-amber-500/40 text-amber-300 hover:text-amber-200 text-xs font-bold flex items-center gap-1.5 transition"
+                  >
+                    <Sparkles className="w-3.5 h-3.5" />
+                    <span>Auto-Load Blueprint</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const newP: MasterTestParameter = {
+                        id: `p_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
+                        parameterCode: `PRM-${testForm.parameters.length + 1}`,
+                        parameterName: '',
+                        resultType: 'numeric',
+                        unit: 'mg/dL',
+                        defaultReferenceRange: 'Normal',
+                        displayOrder: testForm.parameters.length + 1,
+                        reportOrder: testForm.parameters.length + 1,
+                        required: true
+                      };
+                      setTestForm(prev => ({ ...prev, parameters: [...prev.parameters, newP] }));
+                    }}
+                    className="px-2.5 py-1 rounded-xl bg-teal-950/80 border border-teal-500/40 text-teal-300 hover:text-teal-200 text-xs font-bold flex items-center gap-1.5 transition"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Add Analyte</span>
+                  </button>
+                </div>
+              </div>
+
+              {testForm.parameters.length === 0 ? (
+                <div className="p-6 text-center rounded-2xl bg-slate-950 border border-dashed border-slate-800 text-slate-400">
+                  <TestTube className="w-8 h-8 mx-auto mb-2 text-slate-600 opacity-60" />
+                  <p className="font-bold text-white text-xs">No Parameters Configured Yet</p>
+                  <p className="text-[11px] mt-1">Click "Auto-Load Blueprint" or "Add Analyte" to configure test parameters.</p>
+                </div>
+              ) : (
+                <div className="max-h-[300px] overflow-y-auto border border-slate-800 rounded-2xl bg-slate-950">
+                  <table className="w-full text-left text-xs border-collapse">
+                    <thead className="sticky top-0 z-10 bg-slate-900 border-b border-slate-800 text-slate-400 text-[10px] font-bold uppercase">
+                      <tr>
+                        <th className="py-2 px-2 w-10 text-center">#</th>
+                        <th className="py-2 px-3">Analyte Name *</th>
+                        <th className="py-2 px-2 w-28">Result Type</th>
+                        <th className="py-2 px-2 w-20">Unit</th>
+                        <th className="py-2 px-3 w-36">Default Ref Range *</th>
+                        <th className="py-2 px-2 w-24">Panic Low</th>
+                        <th className="py-2 px-2 w-24">Panic High</th>
+                        <th className="py-2 px-2 w-10 text-center">Del</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-800 text-slate-200">
+                      {testForm.parameters.map((param, idx) => (
+                        <tr key={param.id || idx} className="hover:bg-slate-900/50">
+                          <td className="py-2 px-2 text-center text-slate-500 font-mono text-[11px]">
+                            {idx + 1}
+                          </td>
+                          <td className="py-2 px-3">
+                            <input
+                              type="text"
+                              value={param.parameterName}
+                              onChange={(e) => {
+                                const next = [...testForm.parameters];
+                                next[idx] = { ...next[idx], parameterName: e.target.value };
+                                setTestForm({ ...testForm, parameters: next });
+                              }}
+                              className="w-full px-2 py-1 rounded bg-slate-900 border border-slate-700 text-white font-medium text-xs focus:border-teal-500 focus:outline-none"
+                              placeholder="Parameter name..."
+                              required
+                            />
+                            {param.resultType === 'qualitative' && (
+                              <div className="mt-1">
+                                <input
+                                  type="text"
+                                  value={param.qualitativeOptions?.join(', ') || ''}
+                                  onChange={(e) => {
+                                    const opts = e.target.value.split(',').map(s => s.trim()).filter(Boolean);
+                                    const next = [...testForm.parameters];
+                                    next[idx] = { ...next[idx], qualitativeOptions: opts };
+                                    setTestForm({ ...testForm, parameters: next });
+                                  }}
+                                  className="w-full px-1.5 py-0.5 rounded bg-slate-950 border border-slate-800 text-[10px] text-teal-300 focus:outline-none"
+                                  placeholder="Options (comma-separated): Nil, Trace, 1+, 2+, 3+"
+                                />
+                              </div>
+                            )}
+                          </td>
+                          <td className="py-2 px-2">
+                            <select
+                              value={param.resultType}
+                              onChange={(e) => {
+                                const next = [...testForm.parameters];
+                                next[idx] = { ...next[idx], resultType: e.target.value as TestResultType };
+                                setTestForm({ ...testForm, parameters: next });
+                              }}
+                              className="w-full px-2 py-1 rounded bg-slate-900 border border-slate-700 text-xs text-white focus:outline-none"
+                            >
+                              <option value="numeric">Numeric</option>
+                              <option value="positive_negative">Pos / Neg</option>
+                              <option value="reactive_non_reactive">Reactive</option>
+                              <option value="qualitative">Qualitative</option>
+                              <option value="text">Text Note</option>
+                            </select>
+                          </td>
+                          <td className="py-2 px-2">
+                            <input
+                              type="text"
+                              value={param.unit}
+                              onChange={(e) => {
+                                const next = [...testForm.parameters];
+                                next[idx] = { ...next[idx], unit: e.target.value };
+                                setTestForm({ ...testForm, parameters: next });
+                              }}
+                              className="w-full px-1.5 py-1 rounded bg-slate-900 border border-slate-700 text-xs text-slate-300 focus:outline-none"
+                              placeholder="Unit..."
+                            />
+                          </td>
+                          <td className="py-2 px-3">
+                            <input
+                              type="text"
+                              value={param.defaultReferenceRange}
+                              onChange={(e) => {
+                                const next = [...testForm.parameters];
+                                next[idx] = { ...next[idx], defaultReferenceRange: e.target.value };
+                                setTestForm({ ...testForm, parameters: next });
+                              }}
+                              className="w-full px-2 py-1 rounded bg-slate-900 border border-slate-700 text-xs text-slate-300 font-mono focus:outline-none"
+                              placeholder="e.g. 10 - 40"
+                              required
+                            />
+                          </td>
+                          <td className="py-2 px-2">
+                            <input
+                              type="number"
+                              value={param.criticalLow ?? ''}
+                              onChange={(e) => {
+                                const val = e.target.value ? parseFloat(e.target.value) : undefined;
+                                const next = [...testForm.parameters];
+                                next[idx] = { ...next[idx], criticalLow: val };
+                                setTestForm({ ...testForm, parameters: next });
+                              }}
+                              className="w-full px-1.5 py-1 rounded bg-slate-900 border border-slate-700 text-xs text-red-400 font-mono focus:outline-none"
+                              placeholder="Panic <"
+                            />
+                          </td>
+                          <td className="py-2 px-2">
+                            <input
+                              type="number"
+                              value={param.criticalHigh ?? ''}
+                              onChange={(e) => {
+                                const val = e.target.value ? parseFloat(e.target.value) : undefined;
+                                const next = [...testForm.parameters];
+                                next[idx] = { ...next[idx], criticalHigh: val };
+                                setTestForm({ ...testForm, parameters: next });
+                              }}
+                              className="w-full px-1.5 py-1 rounded bg-slate-900 border border-slate-700 text-xs text-red-400 font-mono focus:outline-none"
+                              placeholder="Panic >"
+                            />
+                          </td>
+                          <td className="py-2 px-2 text-center">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setTestForm({
+                                  ...testForm,
+                                  parameters: testForm.parameters.filter((_, i) => i !== idx)
+                                });
+                              }}
+                              className="text-slate-500 hover:text-red-400 p-1"
+                              title="Delete parameter"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            {/* Description & Clinical Notes */}
             <div className="space-y-1">
-              <label className="font-bold text-slate-300 block">Investigation Name:</label>
-              <Input
-                value={testForm.name}
-                onChange={(e) => setTestForm({ ...testForm, name: e.target.value })}
-                placeholder="e.g. Complete Haemogram with ESR"
-                required
-              />
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <div className="space-y-1">
-                <label className="font-bold text-slate-300 block">Category:</label>
-                <select
-                  value={testForm.category}
-                  onChange={(e) => setTestForm({ ...testForm, category: e.target.value })}
-                  className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-800 text-xs text-white"
-                >
-                  <option value="Biochemistry">Biochemistry</option>
-                  <option value="Hematology">Hematology</option>
-                  <option value="Hormones">Hormones</option>
-                  <option value="Immunology">Immunology</option>
-                  <option value="Microbiology">Microbiology</option>
-                  <option value="Histopathology">Histopathology</option>
-                  <option value="Cytology">Cytology</option>
-                  <option value="Molecular & PCR">Molecular & PCR</option>
-                  <option value="Clinical Pathology">Clinical Pathology</option>
-                  <option value="Special Assays">Special Assays</option>
-                </select>
-              </div>
-
-              <div className="space-y-1">
-                <label className="font-bold text-slate-300 block">Specimen Requirement:</label>
-                <Input
-                  value={testForm.specimen}
-                  onChange={(e) => setTestForm({ ...testForm, specimen: e.target.value })}
-                  placeholder="e.g. EDTA Whole Blood (2ml)"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="font-bold text-slate-300 block">Turnaround Time (Hours):</label>
-                <Input
-                  type="number"
-                  value={testForm.tatHours}
-                  onChange={(e) => setTestForm({ ...testForm, tatHours: parseInt(e.target.value, 10) || 4 })}
-                />
-              </div>
-            </div>
-
-            <div className="flex items-center gap-6 p-3 rounded-2xl bg-slate-900 border border-slate-800">
-              <label className="flex items-center gap-2 text-white font-bold cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={testForm.fastingRequired}
-                  onChange={(e) => setTestForm({ ...testForm, fastingRequired: e.target.checked })}
-                  className="rounded text-teal-600"
-                />
-                <span>⚠️ Fasting Required (8-10 Hours)</span>
-              </label>
-
-              <label className="flex items-center gap-2 text-white font-bold cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={testForm.popular}
-                  onChange={(e) => setTestForm({ ...testForm, popular: e.target.checked })}
-                  className="rounded text-amber-500"
-                />
-                <span>⭐ Mark as Popular / Recommended</span>
-              </label>
-            </div>
-
-            <div className="space-y-1">
-              <label className="font-bold text-slate-300 block">Clinical Description / Notes:</label>
+              <label className="font-bold text-slate-300 block">Clinical Indications / Notes:</label>
               <textarea
                 value={testForm.description}
                 onChange={(e) => setTestForm({ ...testForm, description: e.target.value })}
@@ -2781,12 +3377,13 @@ export const TestMasterPage: React.FC = () => {
               />
             </div>
 
+            {/* Actions */}
             <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-800">
               <Button variant="outline" size="sm" onClick={() => setIsAddTestOpen(false)}>
                 Cancel
               </Button>
-              <Button variant="primary" size="sm" type="submit">
-                {editingTest ? 'Update Test' : 'Save & Publish Test'}
+              <Button variant="primary" size="sm" type="submit" className="bg-gradient-to-r from-teal-600 to-emerald-600 font-bold shadow-lg">
+                {editingTest ? 'Save Test & Publish to Master' : 'Save & Publish Test to Master'}
               </Button>
             </div>
           </form>
@@ -2980,204 +3577,20 @@ export const TestMasterPage: React.FC = () => {
 
       {/* 14. ENTER TEST RESULTS & BIOLOGICAL VALUES MODAL */}
       {selectedBookingForResults && (
-        <Modal
+        <LabResultEntryModal
           isOpen={!!selectedBookingForResults}
           onClose={() => setSelectedBookingForResults(null)}
-          title={`🔬 Laboratory Test Result Entry & Verification (${selectedBookingForResults.bookingNo})`}
-          maxWidth="4xl"
-        >
-          <div className="space-y-4 text-xs">
-            {/* Patient Header */}
-            <div className="p-3.5 rounded-2xl bg-slate-900 border border-slate-800 flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <strong className="text-sm font-bold text-white block">{selectedBookingForResults.patientName}</strong>
-                <span className="text-[11px] text-slate-400 font-mono">
-                  UHID: {selectedBookingForResults.patientId} • Requisition: {selectedBookingForResults.bookingNo}
-                </span>
-              </div>
-              <div className="text-right">
-                <span className="text-[10px] text-slate-400 font-bold uppercase block">Investigation</span>
-                <span className="text-xs font-bold text-cyan-300">{selectedBookingForResults.testName}</span>
-              </div>
-            </div>
-
-            {/* Quick Template Preset Buttons */}
-            <div className="flex flex-wrap items-center gap-1.5 p-2.5 rounded-2xl bg-slate-950 border border-slate-800">
-              <span className="text-[10.5px] font-bold text-slate-400 mr-1 flex items-center gap-1">
-                <Sparkles className="w-3 h-3 text-amber-400" />
-                Load Panel Template:
-              </span>
-              {[
-                { label: 'CBC Panel', key: 'cbc' },
-                { label: 'Lipid Profile', key: 'lipid' },
-                { label: 'Sugar & HbA1c', key: 'glucose' },
-                { label: 'Liver (LFT)', key: 'lft' },
-                { label: 'Kidney (KFT)', key: 'kft' },
-                { label: 'Thyroid Panel', key: 'thyroid' }
-              ].map(tpl => (
-                <button
-                  key={tpl.key}
-                  type="button"
-                  onClick={() => handleOpenResultsModal({ ...selectedBookingForResults, testName: tpl.label })}
-                  className="px-2.5 py-1 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 text-[10.5px] font-bold text-teal-300"
-                >
-                  {tpl.label}
-                </button>
-              ))}
-            </div>
-
-            {/* Editable Parameter Table */}
-            <div className="rounded-2xl border border-slate-800 bg-slate-950 overflow-hidden">
-              <table className="w-full text-left text-xs border-collapse">
-                <thead>
-                  <tr className="bg-slate-900 text-slate-300 border-b border-slate-800 font-bold uppercase text-[10.5px]">
-                    <th className="py-2.5 px-3">Test Parameter / Analyte</th>
-                    <th className="py-2.5 px-3">Observed Value</th>
-                    <th className="py-2.5 px-3">Unit</th>
-                    <th className="py-2.5 px-3">Biological Reference Range</th>
-                    <th className="py-2.5 px-3">Status Flag</th>
-                    <th className="py-2.5 px-2 text-right">Del</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-800/80 text-slate-200">
-                  {editingResults.map((param, pIdx) => (
-                    <tr key={pIdx}>
-                      <td className="py-2 px-3">
-                        <input
-                          type="text"
-                          value={param.parameterName}
-                          onChange={(e) => {
-                            const copy = [...editingResults];
-                            copy[pIdx].parameterName = e.target.value;
-                            setEditingResults(copy);
-                          }}
-                          className="w-full px-2 py-1 rounded bg-slate-900 border border-slate-800 text-white font-semibold text-xs"
-                        />
-                      </td>
-                      <td className="py-2 px-3">
-                        <input
-                          type="text"
-                          value={param.observedValue}
-                          onChange={(e) => {
-                            const copy = [...editingResults];
-                            copy[pIdx].observedValue = e.target.value;
-                            setEditingResults(copy);
-                          }}
-                          className="w-28 px-2 py-1 rounded bg-slate-900 border border-slate-700 text-cyan-300 font-black text-xs"
-                        />
-                      </td>
-                      <td className="py-2 px-3">
-                        <input
-                          type="text"
-                          value={param.unit}
-                          onChange={(e) => {
-                            const copy = [...editingResults];
-                            copy[pIdx].unit = e.target.value;
-                            setEditingResults(copy);
-                          }}
-                          className="w-20 px-2 py-1 rounded bg-slate-900 border border-slate-800 text-slate-300 text-xs"
-                        />
-                      </td>
-                      <td className="py-2 px-3">
-                        <input
-                          type="text"
-                          value={param.referenceRange}
-                          onChange={(e) => {
-                            const copy = [...editingResults];
-                            copy[pIdx].referenceRange = e.target.value;
-                            setEditingResults(copy);
-                          }}
-                          className="w-36 px-2 py-1 rounded bg-slate-900 border border-slate-800 text-slate-400 font-mono text-[11px]"
-                        />
-                      </td>
-                      <td className="py-2 px-3">
-                        <select
-                          value={param.flag}
-                          onChange={(e) => {
-                            const copy = [...editingResults];
-                            copy[pIdx].flag = e.target.value as any;
-                            setEditingResults(copy);
-                          }}
-                          className="px-2 py-1 rounded bg-slate-900 border border-slate-700 text-xs font-bold text-white"
-                        >
-                          <option value="normal">Normal ✓</option>
-                          <option value="high">High ▲</option>
-                          <option value="low">Low ▼</option>
-                        </select>
-                      </td>
-                      <td className="py-2 px-2 text-right">
-                        <button
-                          type="button"
-                          onClick={() => setEditingResults(editingResults.filter((_, idx) => idx !== pIdx))}
-                          className="text-rose-400 hover:text-rose-300 px-1 font-bold"
-                        >
-                          ✕
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            <div className="flex justify-end">
-              <Button
-                size="sm"
-                variant="outline"
-                leftIcon={<Plus className="w-3.5 h-3.5" />}
-                onClick={() => setEditingResults([
-                  ...editingResults,
-                  { parameterName: 'New Test Parameter', observedValue: '0.0', unit: 'mg/dL', referenceRange: '0 - 100', flag: 'normal' }
-                ])}
-              >
-                + Add Parameter Row
-              </Button>
-            </div>
-
-            {/* Pathologist Impression & Notes */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-slate-800">
-              <div className="space-y-1">
-                <label className="text-slate-300 font-bold block">Pathologist Impression / Comments:</label>
-                <textarea
-                  rows={2}
-                  value={pathologistNotesInput}
-                  onChange={(e) => setPathologistNotesInput(e.target.value)}
-                  className="w-full p-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-slate-300 font-bold block">Verifying Pathologist Name:</label>
-                <Input
-                  value={pathologistNameInput}
-                  onChange={(e) => setPathologistNameInput(e.target.value)}
-                />
-              </div>
-            </div>
-
-            {/* Modal Bottom Actions */}
-            <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-slate-800">
-              <div className="flex items-center gap-2 text-xs text-slate-400">
-                <ShieldCheck className="w-4 h-4 text-emerald-400" />
-                <span>Diagnostic Quality Control Standards</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <Button variant="outline" size="sm" onClick={() => setSelectedBookingForResults(null)}>
-                  Cancel
-                </Button>
-                <Button
-                  variant="primary"
-                  size="sm"
-                  className="bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-black shadow-lg"
-                  leftIcon={<CheckCircle2 className="w-4 h-4" />}
-                  onClick={handleSaveTestResults}
-                >
-                  ✓ Verify & Authorize Report (Final)
-                </Button>
-              </div>
-            </div>
-          </div>
-        </Modal>
+          booking={selectedBookingForResults}
+          order={selectedBookingForResults}
+          onResultsSaved={() => {
+            refreshLabData();
+            const updated = PortalService.getLabBookings().find(b => b.id === selectedBookingForResults.id) || null;
+            setSelectedBookingForResults(null);
+            if (updated) {
+              setSelectedBookingForReport(updated);
+            }
+          }}
+        />
       )}
 
       {/* 15. NEW WALK-IN LAB BOOKING & BILLING MODAL */}
@@ -3292,6 +3705,252 @@ export const TestMasterPage: React.FC = () => {
           onClose={() => setSelectedBookingForReport(null)}
           booking={selectedBookingForReport}
         />
+      )}
+
+      {/* 17. ADD / EDIT PANEL MASTER MODAL */}
+      {isAddPanelOpen && (
+        <Modal
+          isOpen={isAddPanelOpen}
+          onClose={() => setIsAddPanelOpen(false)}
+          title={editingPanel ? `Panel Master Studio — Edit ${editingPanel.name}` : 'Panel Master Studio — Configure Diagnostic Panel / Package'}
+          maxWidth="6xl"
+        >
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (!canManage) {
+                showToast('error', 'Access Denied', 'Permission required to manage panels.');
+                return;
+              }
+              if (!panelForm.name.trim()) {
+                showToast('error', 'Panel Name Required', 'Please enter a valid panel name.');
+                return;
+              }
+
+              if (editingPanel) {
+                CatalogService.updatePanel(editingPanel.id, {
+                  code: panelForm.code,
+                  name: panelForm.name,
+                  category: panelForm.category,
+                  department: panelForm.department,
+                  specimen: panelForm.specimen,
+                  type: panelForm.type,
+                  tag: panelForm.tag,
+                  description: panelForm.description,
+                  individualTestIds: panelForm.individualTestIds,
+                  mrp: panelForm.mrp,
+                  offerPrice: panelForm.offerPrice,
+                  fastingRequired: panelForm.fastingRequired,
+                  tatHours: panelForm.tatHours,
+                  popular: panelForm.popular,
+                  status: panelForm.status
+                });
+                showToast('success', 'Panel Updated', `Updated panel ${panelForm.name}`);
+              } else {
+                CatalogService.addPanel({
+                  code: panelForm.code || `PNL-${Math.floor(100 + Math.random() * 900)}`,
+                  name: panelForm.name,
+                  category: panelForm.category,
+                  department: panelForm.department,
+                  specimen: panelForm.specimen,
+                  type: panelForm.type,
+                  tag: panelForm.tag,
+                  description: panelForm.description,
+                  individualTestIds: panelForm.individualTestIds,
+                  mrp: panelForm.mrp,
+                  offerPrice: panelForm.offerPrice,
+                  fastingRequired: panelForm.fastingRequired,
+                  tatHours: panelForm.tatHours,
+                  popular: panelForm.popular,
+                  status: panelForm.status
+                });
+                showToast('success', 'Panel Created', `Configured new panel ${panelForm.name}`);
+              }
+
+              setPanels(CatalogService.getPanels());
+              setIsAddPanelOpen(false);
+              setEditingPanel(null);
+            }}
+            className="space-y-4 text-xs"
+          >
+            {/* Panel Basics */}
+            <div className="p-3.5 rounded-2xl bg-slate-900 border border-slate-800 space-y-3">
+              <span className="text-[11px] font-bold text-cyan-400 uppercase tracking-wider block">
+                1. General Panel Configuration
+              </span>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <Input
+                  label="Panel Code / ID *"
+                  value={panelForm.code}
+                  onChange={(e) => setPanelForm({ ...panelForm, code: e.target.value.toUpperCase() })}
+                  placeholder="e.g. PNL-LPD-01"
+                  required
+                />
+                <div className="sm:col-span-2">
+                  <Input
+                    label="Panel Name *"
+                    value={panelForm.name}
+                    onChange={(e) => setPanelForm({ ...panelForm, name: e.target.value })}
+                    placeholder="e.g. Lipid Profile Comprehensive Panel"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <Select
+                  label="Department"
+                  value={panelForm.department}
+                  onChange={(e) => setPanelForm({ ...panelForm, department: e.target.value })}
+                  options={[
+                    { value: 'Clinical Biochemistry', label: 'Clinical Biochemistry' },
+                    { value: 'Clinical Pathology & Hematology', label: 'Clinical Pathology & Hematology' },
+                    { value: 'Immunoassay / Hormones', label: 'Immunoassay / Hormones' },
+                    { value: 'Microbiology & Serology', label: 'Microbiology & Serology' }
+                  ]}
+                />
+                <Input
+                  label="Specimen Container / Tube Type *"
+                  value={panelForm.specimen}
+                  onChange={(e) => setPanelForm({ ...panelForm, specimen: e.target.value })}
+                  placeholder="e.g. Serum (2ml Red Cap) or EDTA (Lavender)"
+                  required
+                />
+                <Select
+                  label="Category"
+                  value={panelForm.category}
+                  onChange={(e) => setPanelForm({ ...panelForm, category: e.target.value })}
+                  options={[
+                    { value: 'Biochemistry', label: 'Biochemistry' },
+                    { value: 'Hematology', label: 'Hematology' },
+                    { value: 'Endocrinology', label: 'Endocrinology' },
+                    { value: 'Diabetes', label: 'Diabetes' },
+                    { value: 'Full Body', label: 'Full Body' }
+                  ]}
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                <Input
+                  label="Standard Individual Sum MRP (₹)"
+                  type="number"
+                  value={panelForm.mrp}
+                  onChange={(e) => setPanelForm({ ...panelForm, mrp: parseFloat(e.target.value) || 0 })}
+                />
+                <Input
+                  label="Package Offer Price (₹) *"
+                  type="number"
+                  value={panelForm.offerPrice}
+                  onChange={(e) => setPanelForm({ ...panelForm, offerPrice: parseFloat(e.target.value) || 0 })}
+                  required
+                />
+                <Input
+                  label="Turnaround Time (Hours)"
+                  type="number"
+                  value={panelForm.tatHours}
+                  onChange={(e) => setPanelForm({ ...panelForm, tatHours: parseInt(e.target.value, 10) || 4 })}
+                />
+                <div className="flex items-center gap-3 pt-4">
+                  <label className="flex items-center gap-2 text-white font-bold cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={panelForm.fastingRequired}
+                      onChange={(e) => setPanelForm({ ...panelForm, fastingRequired: e.target.checked })}
+                      className="rounded text-cyan-600"
+                    />
+                    <span>Fasting Req</span>
+                  </label>
+                  <label className="flex items-center gap-2 text-white font-bold cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={panelForm.popular}
+                      onChange={(e) => setPanelForm({ ...panelForm, popular: e.target.checked })}
+                      className="rounded text-amber-500"
+                    />
+                    <span>⭐ Popular</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            {/* Referenced Individual Tests Selector (Requirement 4 & 18: No Duplicate Tests) */}
+            <div className="p-3.5 rounded-2xl bg-slate-900 border border-slate-800 space-y-3">
+              <div>
+                <span className="text-[11px] font-bold text-cyan-400 uppercase tracking-wider block">
+                  2. Referenced Individual Tests ({panelForm.individualTestIds.length} Selected)
+                </span>
+                <span className="text-[10px] text-slate-400">
+                  Select constituent investigations already configured in the Individual Test Master. Zero duplicate test definitions are created.
+                </span>
+              </div>
+
+              <div className="relative">
+                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
+                <input
+                  type="text"
+                  placeholder="Filter available individual tests to include in this panel..."
+                  value={panelSearchQuery}
+                  onChange={(e) => setPanelSearchQuery(e.target.value)}
+                  className="w-full pl-9 pr-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white focus:outline-none focus:border-cyan-500"
+                />
+              </div>
+
+              <div className="max-h-52 overflow-y-auto divide-y divide-slate-800 border border-slate-800 rounded-2xl bg-slate-950 pr-1">
+                {tests
+                  .filter(t => !panelSearchQuery || t.name.toLowerCase().includes(panelSearchQuery.toLowerCase()) || t.code.toLowerCase().includes(panelSearchQuery.toLowerCase()))
+                  .slice(0, 30)
+                  .map(t => {
+                    const isChecked = panelForm.individualTestIds.includes(t.id);
+                    return (
+                      <label
+                        key={t.id}
+                        className={`p-2 hover:bg-slate-900 flex items-center justify-between cursor-pointer transition ${
+                          isChecked ? 'bg-cyan-950/40 border-l-2 border-cyan-400' : ''
+                        }`}
+                      >
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={() => {
+                              setPanelForm(prev => {
+                                const exists = prev.individualTestIds.includes(t.id);
+                                const updatedIds = exists
+                                  ? prev.individualTestIds.filter(id => id !== t.id)
+                                  : [...prev.individualTestIds, t.id];
+                                return { ...prev, individualTestIds: updatedIds };
+                              });
+                            }}
+                            className="rounded text-cyan-600"
+                          />
+                          <div>
+                            <strong className="text-white text-xs block">{t.name}</strong>
+                            <span className="text-[10px] text-slate-400 font-mono">{t.code} • {t.department}</span>
+                          </div>
+                        </div>
+                        <span className="font-mono text-cyan-400 font-bold text-xs">{formatCurrency(t.mrp)}</span>
+                      </label>
+                    );
+                  })}
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
+              <Button variant="outline" size="sm" onClick={() => setIsAddPanelOpen(false)}>
+                Cancel
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
+                type="submit"
+                className="bg-gradient-to-r from-cyan-600 to-blue-600 text-white font-black shadow-lg"
+              >
+                {editingPanel ? 'Save Panel Configuration' : 'Create Diagnostic Panel'}
+              </Button>
+            </div>
+          </form>
+        </Modal>
       )}
     </div>
   );

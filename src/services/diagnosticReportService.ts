@@ -73,6 +73,9 @@ export class DiagnosticReportService {
       existing.parameters = booking.testResults || existing.parameters;
       existing.testName = booking.testName || existing.testName;
       existing.testCategory = booking.category || existing.testCategory;
+      if (booking.bookedTests && booking.bookedTests.length > 0) {
+        existing.bookedTests = booking.bookedTests;
+      }
       existing.sampleBarcode = booking.sampleBarcode || existing.sampleBarcode;
       existing.sampleTubeType = booking.sampleTubeType || existing.sampleTubeType;
       existing.sampleCollectedAt = booking.sampleCollectedAt || existing.sampleCollectedAt;
@@ -128,6 +131,7 @@ export class DiagnosticReportService {
       testName: booking.testName,
       testCategory: booking.category || 'Biochemistry',
       department: 'Central Clinical Pathology & Diagnostic Biochemistry',
+      bookedTests: booking.bookedTests,
       parameters: booking.testResults || [],
       clinicalImpression: booking.pathologistNotes || 'Analytical values correlated clinically with internal quality control.',
       technicianId: technician?.id,

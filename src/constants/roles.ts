@@ -35,6 +35,7 @@ export const ROLE_CONFIGS: Record<Role, RoleConfig> = {
       'appointment_manage', 'appointment_view', 'appointment_create', 'appointment_reschedule', 'appointment_cancel', 'appointment_checkin',
       'lab_order_create', 'lab_order_view', 'lab_order_manage', 'specimen_collect', 'specimen_receive', 'specimen_process', 'result_enter', 'result_draft_save', 'result_submit_verification', 'result_verify', 'report_finalize', 'report_amend', 'barcode_print', 'report_download', 'report_share',
       'pharmacy_dispense', 'prescription_view', 'medicine_dispense', 'pharmacy_sale_create', 'pharmacy_stock_manage', 'pharmacy_bill_print',
+      'pharmacy_purchase_manage', 'pharmacy_supplier_manage', 'pharmacy_batch_manage', 'pharmacy_return_process', 'pharmacy_adjust_stock', 'pharmacy_reports_view',
       'permissions_manage'
     ]
   },
@@ -65,7 +66,8 @@ export const ROLE_CONFIGS: Record<Role, RoleConfig> = {
       'membership_manage', 'family_manage', 'family_member_add', 'family_view', 'audit_view', 'reports_view', 'catalog_manage', 'package_manage',
       'doctor_view', 'test_view', 'bill_create', 'bill_view', 'bill_view_own', 'bill_view_all', 'bill_print', 'bill_view_due', 'payment_collect', 'finance_view',
       'card_transactions_view', 'card_transactions_view_own', 'card_transactions_view_all', 'transactions_view_own', 'transactions_view_all', 'transactions_manage',
-      'appointment_view', 'appointment_manage', 'lab_order_create', 'lab_order_view', 'lab_order_manage', 'pharmacy_dispense'
+      'appointment_view', 'appointment_manage', 'lab_order_create', 'lab_order_view', 'lab_order_manage', 'pharmacy_dispense',
+      'pharmacy_sale_create', 'pharmacy_stock_manage', 'pharmacy_purchase_manage', 'pharmacy_supplier_manage', 'pharmacy_batch_manage', 'pharmacy_return_process', 'pharmacy_adjust_stock', 'pharmacy_reports_view'
     ]
   },
   reception: {
@@ -124,6 +126,7 @@ export const ROLE_CONFIGS: Record<Role, RoleConfig> = {
     permissions: [
       'patient_read', 'card_read', 'wallet_read',
       'prescription_view', 'medicine_dispense', 'pharmacy_dispense', 'pharmacy_sale_create', 'pharmacy_stock_manage', 'pharmacy_bill_print',
+      'pharmacy_purchase_manage', 'pharmacy_supplier_manage', 'pharmacy_batch_manage', 'pharmacy_return_process', 'pharmacy_adjust_stock', 'pharmacy_reports_view',
       'bill_create', 'bill_view_own'
     ]
   },

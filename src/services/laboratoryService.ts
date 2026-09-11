@@ -11,7 +11,9 @@ import {
   SpecimenStatus,
   SpecimenRejectionReason,
   LaboratorySettings,
-  PrinterLabelFormat
+  PrinterLabelFormat,
+  BookedTestConfig,
+  MasterTestParameter
 } from '../types';
 import { StorageService } from './storage';
 import { ApiSyncService } from './apiSyncService';
@@ -19,6 +21,8 @@ import { AuditService } from './auditService';
 import { BillService } from './billService';
 import { DoctorMasterService } from './doctorMasterService';
 import { CardBenefitService } from './cardBenefitService';
+import { CatalogService } from './catalogService';
+import { TestMasterService } from './testMasterService';
 import { generateUuid, generateLabOrderId, generateSampleBarcode } from '../utils/idGenerator';
 
 export const LAB_ORDERS_KEY = 'labmedix_portal_lab_bookings_v1';
@@ -28,7 +32,10 @@ export const LAB_SETTINGS_KEY = 'labmedix_lab_settings_v1';
 export interface CreateLabOrderInput {
   patientId: string;
   testId?: string;
-  testName: string;
+  testName?: string;
+  testIds?: string[];
+  testNames?: string[];
+  bookedTests?: BookedTestConfig[];
   department?: string;
   category?: string;
   priority?: 'routine' | 'urgent' | 'stat';
@@ -201,133 +208,57 @@ export class LaboratoryService {
 
   // ── PARAMETER TEMPLATES & REFERENCE RANGE ENGINE ─────────────
 
-  public static getParameterTemplates(testName: string): { name: string; unit: string; referenceRange: string; criticalLow?: number; criticalHigh?: number }[] {
-    const lower = (testName || '').toLowerCase();
+  public static getParameterTemplates(
+    testName: string,
+    patientAge?: number,
+    patientGender?: string
+  ): { name: string; unit: string; referenceRange: string; criticalLow?: number; criticalHigh?: number; resultType?: any; qualitativeOptions?: string[] }[] {
+    const test = TestMasterService.getTestByNameOrCode(testName);
+    const params = test?.parameters && test.parameters.length > 0
+      ? test.parameters
+      : (TestMasterService.getBlueprintForTest(testName) || [
+          {
+            id: 'def_param',
+            parameterName: testName || 'Diagnostic Investigation',
+            resultType: 'numeric' as const,
+            unit: 'mg/dL',
+            defaultReferenceRange: 'Normal',
+            displayOrder: 1,
+            reportOrder: 1
+          }
+        ]);
 
-    if (lower.includes('cbc') || lower.includes('complete blood count') || lower.includes('hemogram')) {
-      return [
-        { name: 'Hemoglobin (Hb)', unit: 'g/dL', referenceRange: '13.0 - 17.0', criticalLow: 6.0, criticalHigh: 20.0 },
-        { name: 'Total Leukocyte Count (TLC / WBC)', unit: 'cells/mcL', referenceRange: '4000 - 11000', criticalLow: 1500, criticalHigh: 30000 },
-        { name: 'RBC Count', unit: 'million/mcL', referenceRange: '4.5 - 5.5' },
-        { name: 'Platelet Count', unit: 'lakh/mcL', referenceRange: '1.5 - 4.5', criticalLow: 0.2, criticalHigh: 10.0 },
-        { name: 'Packed Cell Volume (PCV / Hematocrit)', unit: '%', referenceRange: '40 - 50', criticalLow: 20, criticalHigh: 60 },
-        { name: 'Mean Corpuscular Volume (MCV)', unit: 'fL', referenceRange: '80 - 100' },
-        { name: 'Neutrophils', unit: '%', referenceRange: '40 - 70' },
-        { name: 'Lymphocytes', unit: '%', referenceRange: '20 - 45' },
-        { name: 'Eosinophils', unit: '%', referenceRange: '1 - 6' },
-        { name: 'Monocytes', unit: '%', referenceRange: '2 - 8' },
-        { name: 'Basophils', unit: '%', referenceRange: '0 - 1' },
-        { name: 'ESR (Westergren)', unit: 'mm/1st hr', referenceRange: '0 - 15' }
-      ];
-    }
-
-    if (lower.includes('lft') || lower.includes('liver')) {
-      return [
-        { name: 'Bilirubin - Total', unit: 'mg/dL', referenceRange: '0.2 - 1.2', criticalHigh: 15.0 },
-        { name: 'Bilirubin - Direct (Conjugated)', unit: 'mg/dL', referenceRange: '0.0 - 0.3' },
-        { name: 'Bilirubin - Indirect', unit: 'mg/dL', referenceRange: '0.2 - 0.8' },
-        { name: 'SGOT / AST', unit: 'U/L', referenceRange: '10 - 40', criticalHigh: 500 },
-        { name: 'SGPT / ALT', unit: 'U/L', referenceRange: '7 - 56', criticalHigh: 500 },
-        { name: 'Alkaline Phosphatase (ALP)', unit: 'U/L', referenceRange: '44 - 147' },
-        { name: 'Total Protein', unit: 'g/dL', referenceRange: '6.0 - 8.3' },
-        { name: 'Albumin', unit: 'g/dL', referenceRange: '3.5 - 5.5', criticalLow: 1.8 },
-        { name: 'Globulin', unit: 'g/dL', referenceRange: '2.0 - 3.5' },
-        { name: 'A/G Ratio', unit: '', referenceRange: '1.2 - 2.2' }
-      ];
-    }
-
-    if (lower.includes('kft') || lower.includes('rft') || lower.includes('kidney') || lower.includes('renal')) {
-      return [
-        { name: 'Blood Urea', unit: 'mg/dL', referenceRange: '15 - 45', criticalHigh: 120 },
-        { name: 'Blood Urea Nitrogen (BUN)', unit: 'mg/dL', referenceRange: '7 - 20', criticalHigh: 60 },
-        { name: 'Serum Creatinine', unit: 'mg/dL', referenceRange: '0.7 - 1.3', criticalHigh: 5.0 },
-        { name: 'Serum Uric Acid', unit: 'mg/dL', referenceRange: '3.5 - 7.2' },
-        { name: 'Serum Sodium (Na+)', unit: 'mEq/L', referenceRange: '135 - 145', criticalLow: 120, criticalHigh: 160 },
-        { name: 'Serum Potassium (K+)', unit: 'mEq/L', referenceRange: '3.5 - 5.1', criticalLow: 2.8, criticalHigh: 6.5 },
-        { name: 'Serum Chloride (Cl-)', unit: 'mEq/L', referenceRange: '96 - 106' },
-        { name: 'Serum Calcium', unit: 'mg/dL', referenceRange: '8.5 - 10.5', criticalLow: 6.5, criticalHigh: 13.0 }
-      ];
-    }
-
-    if (lower.includes('lipid')) {
-      return [
-        { name: 'Total Cholesterol', unit: 'mg/dL', referenceRange: '125 - 200' },
-        { name: 'Triglycerides', unit: 'mg/dL', referenceRange: '50 - 150', criticalHigh: 500 },
-        { name: 'HDL Cholesterol (Good)', unit: 'mg/dL', referenceRange: '40 - 60' },
-        { name: 'LDL Cholesterol (Bad)', unit: 'mg/dL', referenceRange: '60 - 100' },
-        { name: 'VLDL Cholesterol', unit: 'mg/dL', referenceRange: '10 - 30' },
-        { name: 'Cholesterol / HDL Ratio', unit: '', referenceRange: '3.0 - 5.0' }
-      ];
-    }
-
-    if (lower.includes('thyroid') || lower.includes('tft')) {
-      return [
-        { name: 'T3 - Total Triiodothyronine', unit: 'ng/dL', referenceRange: '80 - 200' },
-        { name: 'T4 - Total Thyroxine', unit: 'mcg/dL', referenceRange: '4.5 - 12.0' },
-        { name: 'TSH - Thyroid Stimulating Hormone', unit: 'uIU/mL', referenceRange: '0.4 - 4.5' }
-      ];
-    }
-
-    if (lower.includes('sugar') || lower.includes('glucose') || lower.includes('fasting') || lower.includes('rbs') || lower.includes('ppbs')) {
-      return [
-        { name: 'Blood Glucose', unit: 'mg/dL', referenceRange: '70 - 100', criticalLow: 45, criticalHigh: 450 }
-      ];
-    }
-
-    if (lower.includes('hba1c') || lower.includes('glycated')) {
-      return [
-        { name: 'HbA1c (Glycosylated Hemoglobin)', unit: '%', referenceRange: '4.0 - 5.6', criticalHigh: 12.0 },
-        { name: 'Estimated Average Glucose (eAG)', unit: 'mg/dL', referenceRange: '70 - 115' }
-      ];
-    }
-
-    if (lower.includes('urine')) {
-      return [
-        { name: 'Color & Appearance', unit: '', referenceRange: 'Pale Yellow, Clear' },
-        { name: 'Specific Gravity', unit: '', referenceRange: '1.005 - 1.030' },
-        { name: 'pH', unit: '', referenceRange: '5.0 - 8.0' },
-        { name: 'Albumin / Protein', unit: '', referenceRange: 'Nil' },
-        { name: 'Sugar / Glucose', unit: '', referenceRange: 'Nil' },
-        { name: 'Pus Cells (WBC)', unit: '/HPF', referenceRange: '0 - 5' },
-        { name: 'Epithelial Cells', unit: '/HPF', referenceRange: '0 - 3' },
-        { name: 'RBCs', unit: '/HPF', referenceRange: 'Nil' }
-      ];
-    }
-
-    return [
-      { name: testName, unit: 'mg/dL', referenceRange: 'Normal' }
-    ];
+    return params.map(p => {
+      const resolved = TestMasterService.resolveReferenceRange(p, patientAge, patientGender);
+      return {
+        name: p.parameterName,
+        unit: p.unit,
+        referenceRange: resolved.referenceRange,
+        criticalLow: resolved.criticalLow,
+        criticalHigh: resolved.criticalHigh,
+        resultType: p.resultType,
+        qualitativeOptions: p.qualitativeOptions
+      };
+    });
   }
 
   /**
-   * Helper to determine flag (normal, low, high, critical)
+   * Helper to determine flag (normal, low, high, critical) using Test Master evaluation engine
    */
-  public static evaluateFlag(observedStr: string, referenceRange: string): LabParameterFlag {
-    if (!observedStr || !observedStr.trim()) return 'normal';
-    const lowerVal = observedStr.toLowerCase().trim();
-
-    // Check qualitative values
-    if (lowerVal === 'positive' || lowerVal === 'reactive') return 'high';
-    if (lowerVal === 'negative' || lowerVal === 'non-reactive' || lowerVal === 'normal' || lowerVal === 'nil') return 'normal';
-
-    const observed = parseFloat(observedStr);
-    if (isNaN(observed)) return 'normal';
-
-    const rangeMatch = referenceRange.match(/([\d.]+)\s*-\s*([\d.]+)/);
-    if (!rangeMatch) return 'normal';
-
-    const min = parseFloat(rangeMatch[1]);
-    const max = parseFloat(rangeMatch[2]);
-
-    if (observed < min) {
-      if (observed < min * 0.65) return 'critical';
-      return 'low';
-    }
-    if (observed > max) {
-      if (observed > max * 1.35) return 'critical';
-      return 'high';
-    }
-    return 'normal';
+  public static evaluateFlag(observedStr: string, referenceRange: string, paramMeta?: any): LabParameterFlag {
+    const res = TestMasterService.evaluateAbnormalFlag(
+      {
+        referenceRange,
+        minVal: paramMeta?.minVal,
+        maxVal: paramMeta?.maxVal,
+        criticalLow: paramMeta?.criticalLow,
+        criticalHigh: paramMeta?.criticalHigh,
+        resultType: paramMeta?.resultType,
+        parameterName: paramMeta?.parameterName
+      },
+      observedStr
+    );
+    return res.flag;
   }
 
   public static isCriticalValue(paramName: string, observedStr: string): boolean {
@@ -385,26 +316,119 @@ export class LaboratoryService {
     const barcode = this.generateSampleBarcode();
     const specimenId = this.generateSpecimenId();
 
-    const templateParams = this.getParameterTemplates(input.testName);
-    const initialParameters: LabParameterResult[] = templateParams.map(t => ({
-      id: `prm_${generateUuid().slice(0, 6)}`,
-      parameterName: t.name,
-      observedValue: '',
-      unit: t.unit,
-      referenceRange: t.referenceRange,
-      flag: 'normal'
-    }));
+    // Build authoritative bookedTests snapshot from Test Master
+    let finalBookedTests: BookedTestConfig[] = [];
+    if (input.bookedTests && input.bookedTests.length > 0) {
+      finalBookedTests = input.bookedTests;
+    } else {
+      const requestedTestIds = input.testIds && input.testIds.length > 0
+        ? input.testIds
+        : (input.testId ? [input.testId] : []);
 
-    // Auto-detect container & tube type
-    const testNameLower = input.testName.toLowerCase();
+      const requestedTestNames = input.testNames && input.testNames.length > 0
+        ? input.testNames
+        : (input.testName ? [input.testName] : []);
+
+      if (requestedTestIds.length > 0) {
+        for (const tid of requestedTestIds) {
+          // Check if this is a Panel ID first (Requirement 5)
+          const panel = CatalogService.getPanelById(tid);
+          if (panel) {
+            const expanded = TestMasterService.expandPanelToBookedTests(panel, patient.age, patient.gender);
+            finalBookedTests.push(...expanded);
+            continue;
+          }
+
+          const t = TestMasterService.getTestById(tid) || TestMasterService.getTestByNameOrCode(tid);
+          if (t) {
+            finalBookedTests.push(TestMasterService.createBookedTestConfig(t, patient.age, patient.gender));
+          }
+        }
+      } else if (requestedTestNames.length > 0) {
+        for (const tname of requestedTestNames) {
+          // Check if name is a Panel
+          const cleanName = tname.replace(/^\[Panel\]\s*/i, '').trim();
+          const panel = CatalogService.getPanelById(cleanName);
+          if (panel) {
+            const expanded = TestMasterService.expandPanelToBookedTests(panel, patient.age, patient.gender);
+            finalBookedTests.push(...expanded);
+            continue;
+          }
+
+          const t = TestMasterService.getTestByNameOrCode(cleanName);
+          if (t) {
+            finalBookedTests.push(TestMasterService.createBookedTestConfig(t, patient.age, patient.gender));
+          } else {
+            finalBookedTests.push({
+              testId: `t_custom_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
+              testCode: 'LAB-CUST',
+              testName: tname,
+              department: input.department || 'Clinical Pathology',
+              specimen: 'Standard Specimen',
+              parameters: [
+                {
+                  id: `p_cust_${Date.now()}`,
+                  parameterName: tname,
+                  resultType: 'numeric',
+                  unit: 'mg/dL',
+                  defaultReferenceRange: 'Normal',
+                  displayOrder: 1,
+                  reportOrder: 1,
+                  required: true
+                }
+              ]
+            });
+          }
+        }
+      }
+    }
+
+    if (finalBookedTests.length === 0) {
+      const defaultName = input.testName || 'Diagnostic Investigation';
+      const t = TestMasterService.getTestByNameOrCode(defaultName);
+      if (t) {
+        finalBookedTests.push(TestMasterService.createBookedTestConfig(t, patient.age, patient.gender));
+      } else {
+        finalBookedTests.push({
+          testId: input.testId || `t_gen_${Date.now()}`,
+          testCode: 'LAB-GEN',
+          testName: defaultName,
+          department: input.department || 'Clinical Pathology',
+          specimen: 'Standard Specimen',
+          parameters: [
+            {
+              id: `p_gen_1`,
+              parameterName: defaultName,
+              resultType: 'numeric',
+              unit: 'mg/dL',
+              defaultReferenceRange: 'Normal',
+              displayOrder: 1,
+              reportOrder: 1,
+              required: true
+            }
+          ]
+        });
+      }
+    }
+
+    // Automatically build clean partitioned parameter entry structure
+    const initialParameters: LabParameterResult[] = TestMasterService.buildInitialResultsFromBookedTests(finalBookedTests);
+
+    const primaryTest = finalBookedTests[0];
+    const combinedTestName = finalBookedTests.map(t => t.testName).join(' + ');
+    const combinedTestNames = finalBookedTests.map(t => t.testName);
+    const combinedTestIds = finalBookedTests.map(t => t.testId);
+
+    // Auto-detect container & tube type across all booked investigations
+    const combinedLower = combinedTestName.toLowerCase();
     let detectedTube = TUBE_TYPES[1]; // Plain by default
-    if (testNameLower.includes('cbc') || testNameLower.includes('hba1c') || testNameLower.includes('esr')) {
+    if (combinedLower.includes('cbc') || combinedLower.includes('hba1c') || combinedLower.includes('esr')) {
       detectedTube = TUBE_TYPES[0]; // EDTA
-    } else if (testNameLower.includes('sugar') || testNameLower.includes('glucose')) {
+    } else if (combinedLower.includes('sugar') || combinedLower.includes('glucose') || combinedLower.includes('fbs') || combinedLower.includes('ppbs')) {
       detectedTube = TUBE_TYPES[3]; // Fluoride
-    } else if (testNameLower.includes('urine')) {
+    } else if (combinedLower.includes('urine')) {
       detectedTube = TUBE_TYPES[6]; // Sterile cup
-    } else if (testNameLower.includes('pt') || testNameLower.includes('inr') || testNameLower.includes('coagulation')) {
+    } else if (combinedLower.includes('pt') || combinedLower.includes('inr') || combinedLower.includes('coagulation')) {
       detectedTube = TUBE_TYPES[5]; // Citrate
     }
 
@@ -439,16 +463,23 @@ export class LaboratoryService {
         name: input.currentUser?.fullName || 'Diagnostic Desk',
         role: input.currentUser?.role || 'lab_staff'
       },
-      notes: `Lab Requisition for ${input.testName} (${orderNumber})`,
+      notes: `Lab Requisition for ${combinedTestName} (${orderNumber})`,
       billCategory: 'lab_diagnostics',
-      items: [
-        {
-          description: input.testName,
-          quantity: 1,
-          unitPrice: input.mrp,
-          total: input.mrp
-        }
-      ],
+      items: finalBookedTests.length > 1
+        ? finalBookedTests.map(bt => ({
+            description: bt.testName,
+            quantity: 1,
+            unitPrice: Math.round(input.mrp / finalBookedTests.length),
+            total: Math.round(input.mrp / finalBookedTests.length)
+          }))
+        : [
+            {
+              description: combinedTestName,
+              quantity: 1,
+              unitPrice: input.mrp,
+              total: input.mrp
+            }
+          ],
       createdAt: now
     };
 
@@ -471,11 +502,14 @@ export class LaboratoryService {
       cardNo: card?.cardNumber,
       cardTier: membership?.name || card?.membershipId,
       membershipTier: membership?.name,
-      testId: input.testId,
-      testName: input.testName,
-      department: input.department || 'Clinical Pathology',
+      testId: primaryTest.testId,
+      testName: combinedTestName,
+      testNames: combinedTestNames,
+      bookedTestIds: combinedTestIds,
+      bookedTests: finalBookedTests,
+      department: input.department || primaryTest.department,
       category: input.category || 'Biochemistry',
-      specimenType: detectedTube.sampleType,
+      specimenType: primaryTest.specimen || detectedTube.sampleType,
       sampleTubeType: detectedTube.label,
       sampleBarcode: barcode,
       priority: input.priority || 'routine',
@@ -499,8 +533,8 @@ export class LaboratoryService {
       collectionType: input.collectionType || 'lab_visit',
       scheduledDate: input.scheduledDate || now.split('T')[0],
       scheduledTime: input.scheduledTime || 'Immediate Walk-in',
-      tatHours: 4,
-      tatTargetTime: new Date(Date.now() + 4 * 60 * 60 * 1000).toISOString(),
+      tatHours: primaryTest.tatHours || 4,
+      tatTargetTime: new Date(Date.now() + (primaryTest.tatHours || 4) * 60 * 60 * 1000).toISOString(),
       createdAt: now,
       updatedAt: now,
       createdByStaffId: input.currentUser?.id,
@@ -524,8 +558,8 @@ export class LaboratoryService {
       patientPhone: patient.mobile,
       patientAge: patient.age,
       patientGender: patient.gender,
-      testId: input.testId,
-      testName: input.testName,
+      testId: primaryTest.testId,
+      testName: combinedTestName,
       department: newOrder.department,
       sampleType: detectedTube.sampleType,
       tubeType: detectedTube.label,

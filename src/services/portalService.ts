@@ -7,27 +7,47 @@ import { PatientService } from './patientService';
 import { FamilyService } from './familyService';
 import { AuditService } from './auditService';
 import { ApiSyncService } from './apiSyncService';
-import { PatientAppointment, CardApplicationRequest, CardApplicationHistoryItem } from '../types';
+import { PatientAppointment, CardApplicationRequest, CardApplicationHistoryItem, BookedTestConfig, TestResultType } from '../types';
 import { generateUuid, generateLabOrderId, generateSampleBarcode } from '../utils/idGenerator';
 import { BillService } from './billService';
 import { DoctorMasterService } from './doctorMasterService';
+import { TestMasterService } from './testMasterService';
 
 export interface BloodTestBookingItem {
+  testId?: string;
+  code?: string;
   testName: string;
   category: string;
   grossPrice: number;
   discountAmount: number;
   netPrice: number;
   fastingRequired: boolean;
+  department?: string;
+  specimen?: string;
 }
 
 export interface LabTestResultParameter {
+  id?: string;
+  testId?: string;
+  testName?: string;
+  parameterId?: string;
+  parameterCode?: string;
   parameterName: string;
   observedValue: string;
   unit: string;
   referenceRange: string;
   flag: 'normal' | 'low' | 'high' | 'critical';
   critical?: boolean;
+  resultType?: TestResultType;
+  displayOrder?: number;
+  reportOrder?: number;
+  required?: boolean;
+  qualitativeOptions?: string[];
+  method?: string;
+  notes?: string;
+  isCalculated?: boolean;
+  calculationFormula?: string;
+  calculationDependencies?: string[];
 }
 
 export interface BloodTestBooking {
@@ -36,10 +56,16 @@ export interface BloodTestBooking {
   patientId: string;
   patientName: string;
   patientPhone?: string;
+  patientAge?: number;
+  patientGender?: 'male' | 'female' | 'other';
   cardNo?: string;
   cardTier?: string;
+  testId?: string;
   testName: string;
   category: string;
+  department?: string;
+  bookedTestIds?: string[];
+  bookedTests?: BookedTestConfig[];
   items?: BloodTestBookingItem[];
   collectionType: 'home_collection' | 'lab_visit';
   scheduledDate: string;
@@ -177,11 +203,95 @@ export class PortalService {
     const existingOrders = all.map(b => b.bookingNo);
     const bookingNo = generateLabOrderId(existingOrders);
 
+    // Resolve authoritative bookedTests snapshot from Test Master
+    let bookedTestsSnapshot: BookedTestConfig[] = booking.bookedTests || [];
+    if (bookedTestsSnapshot.length === 0) {
+      if (booking.items && booking.items.length > 0) {
+        for (const item of booking.items) {
+          const t = (item.testId && TestMasterService.getTestById(item.testId)) || TestMasterService.getTestByNameOrCode(item.testName);
+          if (t) {
+            bookedTestsSnapshot.push(TestMasterService.createBookedTestConfig(t, booking.patientAge, booking.patientGender));
+          } else {
+            bookedTestsSnapshot.push({
+              testId: item.testId || `t_cust_${Date.now()}`,
+              testCode: item.code || 'LAB-CUST',
+              testName: item.testName,
+              department: item.department || booking.department || 'Clinical Pathology',
+              specimen: item.specimen || 'Standard Specimen',
+              parameters: [
+                {
+                  id: `p_cust_${Date.now()}`,
+                  parameterName: item.testName,
+                  resultType: 'numeric',
+                  unit: 'mg/dL',
+                  defaultReferenceRange: 'Normal',
+                  displayOrder: 1,
+                  reportOrder: 1,
+                  required: true
+                }
+              ]
+            });
+          }
+        }
+      } else {
+        const t = (booking.testId && TestMasterService.getTestById(booking.testId)) || TestMasterService.getTestByNameOrCode(booking.testName);
+        if (t) {
+          bookedTestsSnapshot.push(TestMasterService.createBookedTestConfig(t, booking.patientAge, booking.patientGender));
+        } else {
+          bookedTestsSnapshot.push({
+            testId: booking.testId || `t_def_${Date.now()}`,
+            testCode: 'LAB-DEF',
+            testName: booking.testName || 'Diagnostic Investigation',
+            department: booking.department || 'Clinical Pathology',
+            specimen: 'Standard Specimen',
+            parameters: [
+              {
+                id: `p_def_${Date.now()}`,
+                parameterName: booking.testName || 'Diagnostic Investigation',
+                resultType: 'numeric',
+                unit: 'mg/dL',
+                defaultReferenceRange: 'Normal',
+                displayOrder: 1,
+                reportOrder: 1,
+                required: true
+              }
+            ]
+          });
+        }
+      }
+    }
+
+    const initialResults = booking.testResults && booking.testResults.length > 0
+      ? booking.testResults
+      : TestMasterService.buildInitialResultsFromBookedTests(bookedTestsSnapshot).map(p => ({
+          id: p.id,
+          testId: p.testId,
+          testName: p.testName,
+          parameterId: p.parameterId,
+          parameterCode: p.parameterCode,
+          parameterName: p.parameterName,
+          observedValue: p.observedValue || '',
+          unit: p.unit,
+          referenceRange: p.referenceRange,
+          flag: p.flag as 'normal' | 'low' | 'high' | 'critical',
+          critical: p.critical,
+          resultType: p.resultType,
+          displayOrder: p.displayOrder,
+          reportOrder: p.reportOrder,
+          required: p.required,
+          qualitativeOptions: p.qualitativeOptions,
+          method: p.method,
+          notes: p.notes
+        }));
+
     const newBooking: BloodTestBooking = {
       ...booking,
       cardNo: booking.cardNo || patientCard?.cardNumber,
       id: `lab_bk_${generateUuid().slice(0, 8)}`,
       bookingNo,
+      bookedTests: bookedTestsSnapshot,
+      bookedTestIds: bookedTestsSnapshot.map(b => b.testId),
+      testResults: initialResults,
       createdAt: new Date().toISOString()
     };
 

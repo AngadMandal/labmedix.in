@@ -2,8 +2,22 @@ import { StorageService } from './storage';
 import { ApiSyncService } from './apiSyncService';
 import { BillService, HospitalBill } from './billService';
 import { AuditService } from './auditService';
-import { CatalogService } from './catalogService';
+import { EMRService } from './emrService';
+import {
+  MedicineMasterItem,
+  MedicineBatchItem,
+  PharmacySupplier,
+  PharmacyPurchase,
+  PharmacyPurchaseItem,
+  PharmacyPurchaseReturn,
+  PharmacySale,
+  PharmacySaleItem,
+  PharmacySalesReturn,
+  PharmacyStockAdjustment,
+  PharmacyTransaction
+} from '../types';
 
+// Backward-compatible interface for legacy callers
 export interface PharmacyInventoryItem {
   id: string;
   code: string;
@@ -32,7 +46,7 @@ export interface StockMovement {
   medicineId: string;
   medicineName: string;
   batchNumber: string;
-  type: 'STOCK_IN' | 'STOCK_OUT_DISPENSED' | 'STOCK_OUT_EXPIRED' | 'STOCK_OUT_DAMAGED' | 'ADJUSTMENT';
+  type: 'STOCK_IN' | 'STOCK_OUT_DISPENSED' | 'STOCK_OUT_EXPIRED' | 'STOCK_OUT_DAMAGED' | 'STOCK_OUT_RETURN' | 'ADJUSTMENT';
   quantity: number;
   previousStock: number;
   newStock: number;
@@ -44,8 +58,9 @@ export interface StockMovement {
 
 export interface DispenseItem {
   medicineId: string;
+  batchId?: string;
   quantity: number;
-  unitPrice: number;
+  unitPrice?: number;
   discountPercent?: number;
 }
 
@@ -60,56 +75,1711 @@ export interface DispenseRequest {
   notes?: string;
   performedBy: string;
   cardNo?: string;
+  saleType?: 'walkin' | 'patient_linked' | 'prescription';
 }
 
-const PHARMACY_INVENTORY_KEY = 'labmedix_pharmacy_inventory_v1';
-const PHARMACY_MOVEMENTS_KEY = 'labmedix_pharmacy_stock_movements_v1';
+export interface PharmacyDashboardMetrics {
+  todaySalesAmount: number;
+  todaySalesCount: number;
+  todayPurchasesAmount: number;
+  todayPurchasesCount: number;
+  totalMedicinesCount: number;
+  totalBatchesCount: number;
+  totalStockUnits: number;
+  stockValuationPurchase: number;
+  stockValuationMrp: number;
+  lowStockCount: number;
+  outOfStockCount: number;
+  expiredBatchesCount: number;
+  nearExpiry30DaysCount: number;
+  nearExpiry60DaysCount: number;
+  nearExpiry90DaysCount: number;
+  pendingPrescriptionsCount: number;
+  todayDiscountsTotal: number;
+  todayReturnsTotal: number;
+  cashCollectedToday: number;
+  digitalCollectedToday: number;
+}
+
+// Storage Keys
+const PHARMACY_MEDICINES_KEY = 'labmedix_pharmacy_medicines_v2';
+const PHARMACY_BATCHES_KEY = 'labmedix_pharmacy_batches_v2';
+const PHARMACY_SUPPLIERS_KEY = 'labmedix_pharmacy_suppliers_v2';
+const PHARMACY_PURCHASES_KEY = 'labmedix_pharmacy_purchases_v2';
+const PHARMACY_PURCHASE_RETURNS_KEY = 'labmedix_pharmacy_purchase_returns_v2';
+const PHARMACY_SALES_KEY = 'labmedix_pharmacy_sales_v2';
+const PHARMACY_SALES_RETURNS_KEY = 'labmedix_pharmacy_sales_returns_v2';
+const PHARMACY_ADJUSTMENTS_KEY = 'labmedix_pharmacy_stock_adjustments_v2';
+const PHARMACY_TRANSACTIONS_KEY = 'labmedix_pharmacy_transactions_v2';
+
+// Legacy keys for backward-compatibility
+const LEGACY_INVENTORY_KEY = 'labmedix_pharmacy_inventory_v1';
+const LEGACY_MOVEMENTS_KEY = 'labmedix_pharmacy_stock_movements_v1';
 
 export class PharmacyService {
-  private static getInitialInventory(): PharmacyInventoryItem[] {
-    const catalogMeds = CatalogService.getPharmacyMedicines();
+  /* =======================================================================
+     1. INITIAL SEED DATA FOR PRODUCTION READINESS
+     ======================================================================= */
+  private static getInitialSuppliers(): PharmacySupplier[] {
+    const now = new Date().toISOString();
+    return [
+      {
+        id: 'sup_001',
+        supplierCode: 'SUP-001',
+        name: 'MedLife Distributing Corp',
+        contactPerson: 'Rajesh Sharma',
+        phone: '+91 98310 12345',
+        email: 'orders@medlifecorp.in',
+        address: 'Plot 45, Sector V, Salt Lake, Kolkata, WB 700091',
+        gstNumber: '19AAECM4421P1Z4',
+        drugLicenseNo: 'WB-KOL-20B-184920',
+        paymentTerms: 'Net 30 Days',
+        outstandingAmount: 24500,
+        status: 'active',
+        createdAt: now,
+        updatedAt: now
+      },
+      {
+        id: 'sup_002',
+        supplierCode: 'SUP-002',
+        name: 'Abbott Healthcare Logistics',
+        contactPerson: 'Priyanka Mukherjee',
+        phone: '+91 98301 67890',
+        email: 'kolkata.depot@abbott.com',
+        address: 'Central Logistics Park, NH-6, Howrah, WB 711302',
+        gstNumber: '19AAACA0124P1ZT',
+        drugLicenseNo: 'WB-HWH-20B-998231',
+        paymentTerms: 'Immediate / 15 Days',
+        outstandingAmount: 0,
+        status: 'active',
+        createdAt: now,
+        updatedAt: now
+      },
+      {
+        id: 'sup_003',
+        supplierCode: 'SUP-003',
+        name: 'Cipla Depot & Distribution',
+        contactPerson: 'Amitabha Sengupta',
+        phone: '+91 98315 54321',
+        email: 'east.supply@cipla.com',
+        address: 'Park Circus Industrial Hub, Kolkata, WB 700017',
+        gstNumber: '19AABCC4091K1ZX',
+        drugLicenseNo: 'WB-KOL-21B-443912',
+        paymentTerms: 'Net 45 Days',
+        outstandingAmount: 18200,
+        status: 'active',
+        createdAt: now,
+        updatedAt: now
+      }
+    ];
+  }
+
+  private static getInitialMedicines(): MedicineMasterItem[] {
+    const now = new Date().toISOString();
+    return [
+      {
+        id: 'med_001',
+        code: 'MED-001',
+        barcode: '8901088012015',
+        name: 'Telma 40mg Tablet',
+        genericName: 'Telmisartan 40mg',
+        brandName: 'Telma',
+        manufacturer: 'Glenmark Pharmaceuticals Ltd',
+        category: 'Cardiovascular & Hypertension',
+        dosageForm: 'Tablet',
+        strength: '40mg',
+        packSize: '15 Tablets / Strip',
+        unit: 'Tablets',
+        hsnSac: '30049079',
+        taxGstRate: 12,
+        mrp: 145,
+        purchasePrice: 95,
+        sellingPrice: 145,
+        discountRules: { maxDiscountPercent: 15 },
+        reorderLevel: 30,
+        minStock: 20,
+        maxStock: 300,
+        prescriptionRequired: true,
+        status: 'active',
+        description: 'Antihypertensive Angiotensin II receptor antagonist for essential hypertension management.',
+        rackLocation: 'Rack A-1',
+        createdAt: now,
+        updatedAt: now
+      },
+      {
+        id: 'med_002',
+        code: 'MED-002',
+        barcode: '8901117002011',
+        name: 'Augmentin 625 Duo Tablet',
+        genericName: 'Amoxicillin 500mg + Potassium Clavulanate 125mg',
+        brandName: 'Augmentin',
+        manufacturer: 'GlaxoSmithKline Pharmaceuticals Ltd',
+        category: 'Antibiotics & Anti-Infectives',
+        dosageForm: 'Tablet',
+        strength: '625mg',
+        packSize: '10 Tablets / Strip',
+        unit: 'Tablets',
+        hsnSac: '30041010',
+        taxGstRate: 12,
+        mrp: 204,
+        purchasePrice: 138,
+        sellingPrice: 204,
+        discountRules: { maxDiscountPercent: 10 },
+        reorderLevel: 25,
+        minStock: 15,
+        maxStock: 200,
+        prescriptionRequired: true,
+        status: 'active',
+        description: 'Broad-spectrum beta-lactam antibacterial for respiratory, ENT and urinary tract infections.',
+        rackLocation: 'Rack B-2',
+        createdAt: now,
+        updatedAt: now
+      },
+      {
+        id: 'med_003',
+        code: 'MED-003',
+        barcode: '8901234003017',
+        name: 'Glycomet GP 1 Tablet',
+        genericName: 'Glimepiride 1mg + Metformin Hydrochloride 500mg',
+        brandName: 'Glycomet GP',
+        manufacturer: 'USV Private Limited',
+        category: 'Anti-Diabetic & Endocrine',
+        dosageForm: 'Tablet',
+        strength: '1mg + 500mg',
+        packSize: '15 Tablets / Strip',
+        unit: 'Tablets',
+        hsnSac: '30049099',
+        taxGstRate: 12,
+        mrp: 110,
+        purchasePrice: 72,
+        sellingPrice: 110,
+        discountRules: { maxDiscountPercent: 15 },
+        reorderLevel: 30,
+        minStock: 15,
+        maxStock: 250,
+        prescriptionRequired: true,
+        status: 'active',
+        description: 'Combination oral hypoglycemic agent for Type 2 Diabetes Mellitus glycemic control.',
+        rackLocation: 'Rack A-3',
+        createdAt: now,
+        updatedAt: now
+      },
+      {
+        id: 'med_004',
+        code: 'MED-004',
+        barcode: '8901456004013',
+        name: 'Pan-D Capsule',
+        genericName: 'Pantoprazole Gastro-resistant 40mg + Domperidone Prolonged-release 30mg',
+        brandName: 'Pan-D',
+        manufacturer: 'Alkem Laboratories Ltd',
+        category: 'Gastroenterology & Antacids',
+        dosageForm: 'Capsule',
+        strength: '40mg + 30mg',
+        packSize: '15 Capsules / Strip',
+        unit: 'Capsules',
+        hsnSac: '30049099',
+        taxGstRate: 12,
+        mrp: 199,
+        purchasePrice: 128,
+        sellingPrice: 199,
+        discountRules: { maxDiscountPercent: 15 },
+        reorderLevel: 30,
+        minStock: 20,
+        maxStock: 300,
+        prescriptionRequired: true,
+        status: 'active',
+        description: 'Proton pump inhibitor + prokinetic for GERD, acid reflux, peptic ulcers and dyspepsia.',
+        rackLocation: 'Rack C-1',
+        createdAt: now,
+        updatedAt: now
+      },
+      {
+        id: 'med_005',
+        code: 'MED-005',
+        barcode: '8901678005019',
+        name: 'Thyronorm 50mcg Tablet',
+        genericName: 'Thyroxine Sodium 50mcg',
+        brandName: 'Thyronorm',
+        manufacturer: 'Abbott India Ltd',
+        category: 'Hormones & Thyroid',
+        dosageForm: 'Tablet',
+        strength: '50mcg',
+        packSize: '120 Tablets / Bottle',
+        unit: 'Bottles',
+        hsnSac: '30043912',
+        taxGstRate: 12,
+        mrp: 180,
+        purchasePrice: 118,
+        sellingPrice: 180,
+        discountRules: { maxDiscountPercent: 10 },
+        reorderLevel: 15,
+        minStock: 10,
+        maxStock: 150,
+        prescriptionRequired: true,
+        status: 'active',
+        description: 'Synthetic levothyroxine replacement therapy for clinical hypothyroidism.',
+        rackLocation: 'Rack D-2',
+        createdAt: now,
+        updatedAt: now
+      },
+      {
+        id: 'med_006',
+        code: 'MED-006',
+        barcode: '8901890006015',
+        name: 'Rosuvas 10mg Tablet',
+        genericName: 'Rosuvastatin Calcium 10mg',
+        brandName: 'Rosuvas',
+        manufacturer: 'Sun Pharmaceutical Industries Ltd',
+        category: 'Cardiovascular & Lipid Regulators',
+        dosageForm: 'Tablet',
+        strength: '10mg',
+        packSize: '15 Tablets / Strip',
+        unit: 'Tablets',
+        hsnSac: '30049079',
+        taxGstRate: 12,
+        mrp: 235,
+        purchasePrice: 152,
+        sellingPrice: 235,
+        discountRules: { maxDiscountPercent: 15 },
+        reorderLevel: 20,
+        minStock: 12,
+        maxStock: 200,
+        prescriptionRequired: true,
+        status: 'active',
+        description: 'HMG-CoA reductase inhibitor for hypercholesterolemia and cardiovascular prevention.',
+        rackLocation: 'Rack A-2',
+        createdAt: now,
+        updatedAt: now
+      },
+      {
+        id: 'med_007',
+        code: 'MED-007',
+        barcode: '8902012007011',
+        name: 'Calpol 650mg Tablet',
+        genericName: 'Paracetamol 650mg',
+        brandName: 'Calpol',
+        manufacturer: 'GlaxoSmithKline Pharmaceuticals Ltd',
+        category: 'Analgesics & Antipyretics',
+        dosageForm: 'Tablet',
+        strength: '650mg',
+        packSize: '15 Tablets / Strip',
+        unit: 'Tablets',
+        hsnSac: '30049060',
+        taxGstRate: 12,
+        mrp: 32,
+        purchasePrice: 19,
+        sellingPrice: 32,
+        discountRules: { maxDiscountPercent: 10 },
+        reorderLevel: 40,
+        minStock: 25,
+        maxStock: 500,
+        prescriptionRequired: false,
+        status: 'active',
+        description: 'First-line antipyretic and analgesic for pain relief and acute pyrexia.',
+        rackLocation: 'Rack E-1',
+        createdAt: now,
+        updatedAt: now
+      },
+      {
+        id: 'med_008',
+        code: 'MED-008',
+        barcode: '8902234008017',
+        name: 'Montair LC Tablet',
+        genericName: 'Montelukast Sodium 10mg + Levocetirizine Dihydrochloride 5mg',
+        brandName: 'Montair LC',
+        manufacturer: 'Cipla Ltd',
+        category: 'Respiratory & Anti-Allergics',
+        dosageForm: 'Tablet',
+        strength: '10mg + 5mg',
+        packSize: '10 Tablets / Strip',
+        unit: 'Tablets',
+        hsnSac: '30049099',
+        taxGstRate: 12,
+        mrp: 185,
+        purchasePrice: 120,
+        sellingPrice: 185,
+        discountRules: { maxDiscountPercent: 15 },
+        reorderLevel: 25,
+        minStock: 15,
+        maxStock: 250,
+        prescriptionRequired: true,
+        status: 'active',
+        description: 'Leukotriene receptor antagonist + H1 antihistamine for allergic rhinitis and asthma prophylaxis.',
+        rackLocation: 'Rack B-1',
+        createdAt: now,
+        updatedAt: now
+      }
+    ];
+  }
+
+  private static getInitialBatches(): MedicineBatchItem[] {
     const now = new Date();
-    const futureExpiry = new Date(now.getFullYear() + 1, now.getMonth() + 4, 15).toISOString().split('T')[0];
-    const nearExpiry = new Date(now.getFullYear(), now.getMonth() + 1, 20).toISOString().split('T')[0];
+    const curYear = now.getFullYear();
+    const curMonth = now.getMonth();
 
-    return catalogMeds.map((med, idx) => ({
-      id: med.id,
-      code: `MED-${String(idx + 1).padStart(3, '0')}`,
-      name: med.name,
-      genericComposition: med.genericComposition,
-      brand: med.brand,
-      category: med.category,
-      dosageForm: med.dosageForm,
-      strength: med.strength,
-      packaging: med.packaging,
-      batchNumber: `BAT-${now.getFullYear()}-${1000 + idx}`,
-      expiryDate: idx === 1 ? nearExpiry : futureExpiry,
-      purchasePrice: Math.round(med.mrp * 0.7),
-      sellingPrice: med.mrp,
-      stockQuantity: idx === 2 ? 8 : (idx + 2) * 25, // One low stock item for realistic alerts
-      minStockLevel: 15,
-      rackLocation: `Rack ${String.fromCharCode(65 + (idx % 6))}-${(idx % 4) + 1}`,
-      prescriptionRequired: med.prescriptionRequired,
-      supplier: 'MedLife Distributing Corp',
-      createdAt: now.toISOString(),
-      updatedAt: now.toISOString()
-    }));
+    // Helper for formatting YYYY-MM-DD
+    const dateStr = (y: number, m: number, d: number) =>
+      `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+
+    // Near expiry: within 25 days
+    const nearExp = dateStr(curYear, curMonth, 28);
+    // 60 days expiry
+    const exp60 = dateStr(curYear, curMonth + 2, 15);
+    // Safe expiry: 1.5 years later
+    const safeExp1 = dateStr(curYear + 1, curMonth + 6, 20);
+    const safeExp2 = dateStr(curYear + 1, curMonth + 10, 10);
+    const pastMfg = dateStr(curYear - 1, curMonth, 10);
+    const recMfg = dateStr(curYear, curMonth - 2, 5);
+
+    return [
+      // Telma 40mg - 2 batches (FEFO: Batch 101 expires earlier)
+      {
+        id: 'bat_001',
+        medicineId: 'med_001',
+        medicineName: 'Telma 40mg Tablet',
+        batchNumber: `TEL-${curYear}-881`,
+        mfgDate: pastMfg,
+        expiryDate: exp60,
+        purchaseQty: 60,
+        freeQty: 0,
+        availableQty: 24,
+        purchasePrice: 95,
+        mrp: 145,
+        sellingPrice: 145,
+        supplierId: 'sup_001',
+        supplierName: 'MedLife Distributing Corp',
+        invoiceNumber: 'INV-ML-2026-091',
+        purchaseDate: pastMfg,
+        status: 'active',
+        createdAt: now.toISOString(),
+        updatedAt: now.toISOString()
+      },
+      {
+        id: 'bat_002',
+        medicineId: 'med_001',
+        medicineName: 'Telma 40mg Tablet',
+        batchNumber: `TEL-${curYear}-944`,
+        mfgDate: recMfg,
+        expiryDate: safeExp1,
+        purchaseQty: 100,
+        freeQty: 10,
+        availableQty: 85,
+        purchasePrice: 95,
+        mrp: 145,
+        sellingPrice: 145,
+        supplierId: 'sup_001',
+        supplierName: 'MedLife Distributing Corp',
+        invoiceNumber: 'INV-ML-2026-140',
+        purchaseDate: recMfg,
+        status: 'active',
+        createdAt: now.toISOString(),
+        updatedAt: now.toISOString()
+      },
+
+      // Augmentin 625 - Near Expiry Batch (< 30 days) to demonstrate live alerts
+      {
+        id: 'bat_003',
+        medicineId: 'med_002',
+        medicineName: 'Augmentin 625 Duo Tablet',
+        batchNumber: `AUG-${curYear}-112`,
+        mfgDate: dateStr(curYear - 1, curMonth - 6, 1),
+        expiryDate: nearExp,
+        purchaseQty: 50,
+        freeQty: 0,
+        availableQty: 12,
+        purchasePrice: 138,
+        mrp: 204,
+        sellingPrice: 204,
+        supplierId: 'sup_002',
+        supplierName: 'Abbott Healthcare Logistics',
+        invoiceNumber: 'INV-AB-2026-042',
+        purchaseDate: dateStr(curYear - 1, curMonth - 5, 10),
+        status: 'active',
+        createdAt: now.toISOString(),
+        updatedAt: now.toISOString()
+      },
+      {
+        id: 'bat_004',
+        medicineId: 'med_002',
+        medicineName: 'Augmentin 625 Duo Tablet',
+        batchNumber: `AUG-${curYear}-490`,
+        mfgDate: recMfg,
+        expiryDate: safeExp2,
+        purchaseQty: 100,
+        freeQty: 5,
+        availableQty: 90,
+        purchasePrice: 138,
+        mrp: 204,
+        sellingPrice: 204,
+        supplierId: 'sup_002',
+        supplierName: 'Abbott Healthcare Logistics',
+        invoiceNumber: 'INV-AB-2026-105',
+        purchaseDate: recMfg,
+        status: 'active',
+        createdAt: now.toISOString(),
+        updatedAt: now.toISOString()
+      },
+
+      // Glycomet GP 1 - Low stock (only 8 available)
+      {
+        id: 'bat_005',
+        medicineId: 'med_003',
+        medicineName: 'Glycomet GP 1 Tablet',
+        batchNumber: `GLY-${curYear}-330`,
+        mfgDate: recMfg,
+        expiryDate: safeExp1,
+        purchaseQty: 40,
+        freeQty: 0,
+        availableQty: 8,
+        purchasePrice: 72,
+        mrp: 110,
+        sellingPrice: 110,
+        supplierId: 'sup_003',
+        supplierName: 'Cipla Depot & Distribution',
+        invoiceNumber: 'INV-CIP-2026-088',
+        purchaseDate: recMfg,
+        status: 'active',
+        createdAt: now.toISOString(),
+        updatedAt: now.toISOString()
+      },
+
+      // Pan-D Capsule
+      {
+        id: 'bat_006',
+        medicineId: 'med_004',
+        medicineName: 'Pan-D Capsule',
+        batchNumber: `PAND-${curYear}-721`,
+        mfgDate: recMfg,
+        expiryDate: safeExp2,
+        purchaseQty: 120,
+        freeQty: 10,
+        availableQty: 110,
+        purchasePrice: 128,
+        mrp: 199,
+        sellingPrice: 199,
+        supplierId: 'sup_001',
+        supplierName: 'MedLife Distributing Corp',
+        invoiceNumber: 'INV-ML-2026-201',
+        purchaseDate: recMfg,
+        status: 'active',
+        createdAt: now.toISOString(),
+        updatedAt: now.toISOString()
+      },
+
+      // Thyronorm 50
+      {
+        id: 'bat_007',
+        medicineId: 'med_005',
+        medicineName: 'Thyronorm 50mcg Tablet',
+        batchNumber: `THY-${curYear}-409`,
+        mfgDate: recMfg,
+        expiryDate: safeExp1,
+        purchaseQty: 50,
+        freeQty: 0,
+        availableQty: 45,
+        purchasePrice: 118,
+        mrp: 180,
+        sellingPrice: 180,
+        supplierId: 'sup_002',
+        supplierName: 'Abbott Healthcare Logistics',
+        invoiceNumber: 'INV-AB-2026-302',
+        purchaseDate: recMfg,
+        status: 'active',
+        createdAt: now.toISOString(),
+        updatedAt: now.toISOString()
+      },
+
+      // Rosuvas 10mg
+      {
+        id: 'bat_008',
+        medicineId: 'med_006',
+        medicineName: 'Rosuvas 10mg Tablet',
+        batchNumber: `ROS-${curYear}-615`,
+        mfgDate: recMfg,
+        expiryDate: safeExp2,
+        purchaseQty: 80,
+        freeQty: 0,
+        availableQty: 62,
+        purchasePrice: 152,
+        mrp: 235,
+        sellingPrice: 235,
+        supplierId: 'sup_003',
+        supplierName: 'Cipla Depot & Distribution',
+        invoiceNumber: 'INV-CIP-2026-140',
+        purchaseDate: recMfg,
+        status: 'active',
+        createdAt: now.toISOString(),
+        updatedAt: now.toISOString()
+      },
+
+      // Calpol 650mg
+      {
+        id: 'bat_009',
+        medicineId: 'med_007',
+        medicineName: 'Calpol 650mg Tablet',
+        batchNumber: `CAL-${curYear}-221`,
+        mfgDate: recMfg,
+        expiryDate: safeExp1,
+        purchaseQty: 250,
+        freeQty: 25,
+        availableQty: 210,
+        purchasePrice: 19,
+        mrp: 32,
+        sellingPrice: 32,
+        supplierId: 'sup_001',
+        supplierName: 'MedLife Distributing Corp',
+        invoiceNumber: 'INV-ML-2026-098',
+        purchaseDate: recMfg,
+        status: 'active',
+        createdAt: now.toISOString(),
+        updatedAt: now.toISOString()
+      },
+
+      // Montair LC
+      {
+        id: 'bat_010',
+        medicineId: 'med_008',
+        medicineName: 'Montair LC Tablet',
+        batchNumber: `MON-${curYear}-990`,
+        mfgDate: recMfg,
+        expiryDate: safeExp2,
+        purchaseQty: 75,
+        freeQty: 0,
+        availableQty: 58,
+        purchasePrice: 120,
+        mrp: 185,
+        sellingPrice: 185,
+        supplierId: 'sup_003',
+        supplierName: 'Cipla Depot & Distribution',
+        invoiceNumber: 'INV-CIP-2026-199',
+        purchaseDate: recMfg,
+        status: 'active',
+        createdAt: now.toISOString(),
+        updatedAt: now.toISOString()
+      }
+    ];
   }
 
-  public static getInventory(): PharmacyInventoryItem[] {
-    const items = StorageService.getItem<PharmacyInventoryItem[]>(
-      PHARMACY_INVENTORY_KEY,
-      this.getInitialInventory()
+  /* =======================================================================
+     2. MEDICINE MASTER CRUD & DUPLICATE PROTECTION
+     ======================================================================= */
+  public static getMedicines(): MedicineMasterItem[] {
+    return StorageService.getItem<MedicineMasterItem[]>(PHARMACY_MEDICINES_KEY, this.getInitialMedicines());
+  }
+
+  public static saveMedicinesList(items: MedicineMasterItem[]): void {
+    StorageService.setItem(PHARMACY_MEDICINES_KEY, items);
+    this.syncLegacyInventory();
+  }
+
+  public static async saveMedicine(
+    item: Partial<MedicineMasterItem> & { name: string; sellingPrice: number }
+  ): Promise<MedicineMasterItem> {
+    const list = this.getMedicines();
+    const nowIso = new Date().toISOString();
+
+    // Duplicate protection: prevent duplicate medicine name or code
+    const normalizedName = item.name.trim().toLowerCase();
+    const duplicate = list.find(m => {
+      if (item.id && m.id === item.id) return false;
+      return m.name.trim().toLowerCase() === normalizedName || (item.code && m.code.toLowerCase() === item.code.toLowerCase());
+    });
+
+    if (duplicate) {
+      throw new Error(`A medicine with name "${duplicate.name}" or code "${duplicate.code}" already exists in Medicine Master.`);
+    }
+
+    let savedItem: MedicineMasterItem;
+    if (item.id) {
+      const idx = list.findIndex(m => m.id === item.id);
+      if (idx >= 0) {
+        savedItem = {
+          ...list[idx],
+          ...item,
+          updatedAt: nowIso
+        };
+        list[idx] = savedItem;
+      } else {
+        savedItem = {
+          ...item,
+          id: item.id,
+          code: item.code || `MED-${String(list.length + 1).padStart(3, '0')}`,
+          barcode: item.barcode || `890${Math.floor(1000000000 + Math.random() * 9000000000)}`,
+          genericName: item.genericName || '',
+          brandName: item.brandName || item.name,
+          manufacturer: item.manufacturer || 'Standard Labs',
+          category: item.category || 'General',
+          dosageForm: item.dosageForm || 'Tablet',
+          strength: item.strength || '',
+          packSize: item.packSize || 'Strip of 10',
+          unit: item.unit || 'Tablets',
+          taxGstRate: item.taxGstRate !== undefined ? item.taxGstRate : 12,
+          mrp: Number(item.mrp) || Number(item.sellingPrice),
+          purchasePrice: Number(item.purchasePrice) || Math.round(Number(item.sellingPrice) * 0.7),
+          sellingPrice: Number(item.sellingPrice),
+          reorderLevel: Number(item.reorderLevel) || 20,
+          minStock: Number(item.minStock) || 10,
+          maxStock: Number(item.maxStock) || 200,
+          prescriptionRequired: !!item.prescriptionRequired,
+          status: item.status || 'active',
+          createdAt: nowIso,
+          updatedAt: nowIso
+        };
+        list.push(savedItem);
+      }
+    } else {
+      const newId = `med_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+      savedItem = {
+        id: newId,
+        code: item.code || `MED-${String(list.length + 1).padStart(3, '0')}`,
+        barcode: item.barcode || `890${Math.floor(1000000000 + Math.random() * 9000000000)}`,
+        name: item.name.trim(),
+        genericName: item.genericName || '',
+        brandName: item.brandName || item.name,
+        manufacturer: item.manufacturer || 'Standard Labs',
+        category: item.category || 'General',
+        dosageForm: item.dosageForm || 'Tablet',
+        strength: item.strength || '',
+        packSize: item.packSize || 'Strip of 10',
+        unit: item.unit || 'Tablets',
+        hsnSac: item.hsnSac || '30049099',
+        taxGstRate: item.taxGstRate !== undefined ? item.taxGstRate : 12,
+        mrp: Number(item.mrp) || Number(item.sellingPrice),
+        purchasePrice: Number(item.purchasePrice) || Math.round(Number(item.sellingPrice) * 0.7),
+        sellingPrice: Number(item.sellingPrice),
+        reorderLevel: Number(item.reorderLevel) || 20,
+        minStock: Number(item.minStock) || 10,
+        maxStock: Number(item.maxStock) || 200,
+        prescriptionRequired: !!item.prescriptionRequired,
+        status: item.status || 'active',
+        rackLocation: item.rackLocation || 'Rack A-1',
+        createdAt: nowIso,
+        updatedAt: nowIso
+      };
+      list.push(savedItem);
+    }
+
+    this.saveMedicinesList(list);
+    await ApiSyncService.saveDocument('pharmacyMedicines', savedItem.id, savedItem);
+    AuditService.log('MEDICINE_SAVED', 'pharmacy', `Medicine Master updated: ${savedItem.name} (${savedItem.code})`, savedItem.id);
+
+    return savedItem;
+  }
+
+  public static async deleteMedicine(id: string): Promise<boolean> {
+    const list = this.getMedicines();
+    const target = list.find(m => m.id === id);
+    if (!target) return false;
+
+    // Check if batches with available stock exist
+    const batches = this.getBatchesForMedicine(id);
+    const hasStock = batches.some(b => b.availableQty > 0);
+    if (hasStock) {
+      throw new Error(`Cannot delete medicine "${target.name}". Active stock exists in ${batches.length} batch(es). Please adjust stock to 0 first.`);
+    }
+
+    const filtered = list.filter(m => m.id !== id);
+    this.saveMedicinesList(filtered);
+    await ApiSyncService.deleteDocument('pharmacyMedicines', id);
+    AuditService.log('MEDICINE_DELETED', 'pharmacy', `Deleted medicine from master: ${target.name} (${target.code})`, id);
+    return true;
+  }
+
+  /* =======================================================================
+     3. BATCH-WISE INVENTORY & FEFO CONTROL
+     ======================================================================= */
+  public static getBatches(): MedicineBatchItem[] {
+    return StorageService.getItem<MedicineBatchItem[]>(PHARMACY_BATCHES_KEY, this.getInitialBatches());
+  }
+
+  public static saveBatchesList(batches: MedicineBatchItem[]): void {
+    StorageService.setItem(PHARMACY_BATCHES_KEY, batches);
+    this.syncLegacyInventory();
+  }
+
+  public static getBatchesForMedicine(medicineId: string): MedicineBatchItem[] {
+    return this.getBatches().filter(b => b.medicineId === medicineId);
+  }
+
+  /**
+   * FEFO: First Expiry, First Out.
+   * Returns active, unexpired batches sorted in ascending order of expiryDate.
+   */
+  public static getFefoRecommendedBatches(medicineId: string): MedicineBatchItem[] {
+    const today = new Date().toISOString().split('T')[0];
+    const batches = this.getBatchesForMedicine(medicineId);
+
+    return batches
+      .filter(b => b.status === 'active' && b.availableQty > 0 && b.expiryDate >= today)
+      .sort((a, b) => a.expiryDate.localeCompare(b.expiryDate));
+  }
+
+  public static async saveBatch(batch: MedicineBatchItem): Promise<MedicineBatchItem> {
+    const list = this.getBatches();
+    const idx = list.findIndex(b => b.id === batch.id);
+    if (idx >= 0) {
+      list[idx] = { ...batch, updatedAt: new Date().toISOString() };
+    } else {
+      list.push(batch);
+    }
+    this.saveBatchesList(list);
+    await ApiSyncService.saveDocument('pharmacyBatches', batch.id, batch);
+    return batch;
+  }
+
+  public static async quarantineBatch(batchId: string, reason: string, user: string): Promise<MedicineBatchItem> {
+    const list = this.getBatches();
+    const idx = list.findIndex(b => b.id === batchId);
+    if (idx < 0) throw new Error(`Batch ID ${batchId} not found.`);
+
+    const updated: MedicineBatchItem = {
+      ...list[idx],
+      status: 'quarantine',
+      updatedAt: new Date().toISOString()
+    };
+    list[idx] = updated;
+    this.saveBatchesList(list);
+    await ApiSyncService.saveDocument('pharmacyBatches', updated.id, updated);
+
+    AuditService.log('BATCH_QUARANTINED', 'pharmacy', `Batch ${updated.batchNumber} (${updated.medicineName}) quarantined by ${user}. Reason: ${reason}`, batchId);
+    return updated;
+  }
+
+  /* =======================================================================
+     4. SUPPLIER MASTER
+     ======================================================================= */
+  public static getSuppliers(): PharmacySupplier[] {
+    return StorageService.getItem<PharmacySupplier[]>(PHARMACY_SUPPLIERS_KEY, this.getInitialSuppliers());
+  }
+
+  public static saveSuppliersList(suppliers: PharmacySupplier[]): void {
+    StorageService.setItem(PHARMACY_SUPPLIERS_KEY, suppliers);
+  }
+
+  public static async saveSupplier(
+    supplier: Partial<PharmacySupplier> & { name: string; phone: string }
+  ): Promise<PharmacySupplier> {
+    const list = this.getSuppliers();
+    const nowIso = new Date().toISOString();
+
+    let saved: PharmacySupplier;
+    if (supplier.id) {
+      const idx = list.findIndex(s => s.id === supplier.id);
+      if (idx >= 0) {
+        saved = { ...list[idx], ...supplier, updatedAt: nowIso };
+        list[idx] = saved;
+      } else {
+        saved = {
+          ...supplier,
+          id: supplier.id,
+          supplierCode: supplier.supplierCode || `SUP-${String(list.length + 1).padStart(3, '0')}`,
+          contactPerson: supplier.contactPerson || '',
+          email: supplier.email || '',
+          address: supplier.address || '',
+          gstNumber: supplier.gstNumber || '',
+          drugLicenseNo: supplier.drugLicenseNo || '',
+          paymentTerms: supplier.paymentTerms || 'Net 30 Days',
+          outstandingAmount: Number(supplier.outstandingAmount) || 0,
+          status: supplier.status || 'active',
+          createdAt: nowIso,
+          updatedAt: nowIso
+        };
+        list.push(saved);
+      }
+    } else {
+      const newId = `sup_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+      saved = {
+        id: newId,
+        supplierCode: supplier.supplierCode || `SUP-${String(list.length + 1).padStart(3, '0')}`,
+        name: supplier.name.trim(),
+        contactPerson: supplier.contactPerson || '',
+        phone: supplier.phone.trim(),
+        email: supplier.email || '',
+        address: supplier.address || '',
+        gstNumber: supplier.gstNumber || '',
+        drugLicenseNo: supplier.drugLicenseNo || '',
+        paymentTerms: supplier.paymentTerms || 'Net 30 Days',
+        outstandingAmount: Number(supplier.outstandingAmount) || 0,
+        status: supplier.status || 'active',
+        createdAt: nowIso,
+        updatedAt: nowIso
+      };
+      list.push(saved);
+    }
+
+    this.saveSuppliersList(list);
+    await ApiSyncService.saveDocument('pharmacySuppliers', saved.id, saved);
+    AuditService.log('SUPPLIER_SAVED', 'pharmacy', `Supplier saved: ${saved.name} (${saved.supplierCode})`, saved.id);
+    return saved;
+  }
+
+  /* =======================================================================
+     5. PURCHASE MANAGEMENT (INWARD GOODS & BATCH CREATION)
+     ======================================================================= */
+  public static getPurchases(): PharmacyPurchase[] {
+    return StorageService.getItem<PharmacyPurchase[]>(PHARMACY_PURCHASES_KEY, []);
+  }
+
+  public static savePurchasesList(purchases: PharmacyPurchase[]): void {
+    StorageService.setItem(PHARMACY_PURCHASES_KEY, purchases);
+  }
+
+  public static async recordPurchase(params: {
+    purchaseInvoiceNo: string;
+    supplierId: string;
+    invoiceDate: string;
+    receivedDate?: string;
+    items: Array<{
+      medicineId: string;
+      batchNumber: string;
+      mfgDate: string;
+      expiryDate: string;
+      quantity: number;
+      freeQuantity?: number;
+      purchaseRate: number;
+      mrp: number;
+      sellingPrice?: number;
+      taxGstPercent?: number;
+    }>;
+    paidAmount?: number;
+    paymentMethod?: string;
+    notes?: string;
+    performedBy: string;
+  }): Promise<{ purchase: PharmacyPurchase; batchesCreated: MedicineBatchItem[] }> {
+    if (!params.items || params.items.length === 0) {
+      throw new Error('Purchase must contain at least one medicine line item.');
+    }
+
+    const suppliers = this.getSuppliers();
+    const supplier = suppliers.find(s => s.id === params.supplierId);
+    if (!supplier) throw new Error(`Supplier ID ${params.supplierId} not found.`);
+
+    const medicines = this.getMedicines();
+    const batches = this.getBatches();
+    const nowIso = new Date().toISOString();
+
+    const purchaseItems: PharmacyPurchaseItem[] = [];
+    const createdOrUpdatedBatches: MedicineBatchItem[] = [];
+
+    for (const item of params.items) {
+      const med = medicines.find(m => m.id === item.medicineId);
+      if (!med) throw new Error(`Medicine ID ${item.medicineId} not found in Medicine Master.`);
+
+      const qty = Math.max(1, Math.floor(item.quantity));
+      const freeQty = Math.max(0, Math.floor(item.freeQuantity || 0));
+      const totalQty = qty + freeQty;
+      const rate = Number(item.purchaseRate) || med.purchasePrice;
+      const mrp = Number(item.mrp) || med.mrp;
+      const sellingRate = Number(item.sellingPrice) || mrp;
+      const gstPercent = item.taxGstPercent !== undefined ? item.taxGstPercent : med.taxGstRate;
+      const subtotalItem = qty * rate;
+      const taxItem = Math.round((subtotalItem * gstPercent) / 100 * 100) / 100;
+      const totalItem = subtotalItem + taxItem;
+
+      const pItem: PharmacyPurchaseItem = {
+        id: `pitem_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+        medicineId: med.id,
+        medicineName: med.name,
+        batchNumber: item.batchNumber.trim().toUpperCase(),
+        mfgDate: item.mfgDate,
+        expiryDate: item.expiryDate,
+        quantity: qty,
+        freeQuantity: freeQty,
+        purchaseRate: rate,
+        mrp,
+        sellingPrice: sellingRate,
+        taxGstPercent: gstPercent,
+        taxAmount: taxItem,
+        totalAmount: totalItem
+      };
+      purchaseItems.push(pItem);
+
+      // Check if batch exists or create new
+      const existingBatch = batches.find(
+        b => b.medicineId === med.id && b.batchNumber.toLowerCase() === pItem.batchNumber.toLowerCase()
+      );
+
+      let targetBatch: MedicineBatchItem;
+      if (existingBatch) {
+        const prevAvail = existingBatch.availableQty;
+        targetBatch = {
+          ...existingBatch,
+          availableQty: prevAvail + totalQty,
+          purchaseQty: existingBatch.purchaseQty + qty,
+          freeQty: existingBatch.freeQty + freeQty,
+          purchasePrice: rate,
+          mrp,
+          sellingPrice: sellingRate,
+          expiryDate: item.expiryDate || existingBatch.expiryDate,
+          mfgDate: item.mfgDate || existingBatch.mfgDate,
+          status: 'active',
+          updatedAt: nowIso
+        };
+        const bIdx = batches.findIndex(b => b.id === existingBatch.id);
+        batches[bIdx] = targetBatch;
+      } else {
+        targetBatch = {
+          id: `bat_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+          medicineId: med.id,
+          medicineName: med.name,
+          batchNumber: pItem.batchNumber,
+          mfgDate: item.mfgDate,
+          expiryDate: item.expiryDate,
+          purchaseQty: qty,
+          freeQty,
+          availableQty: totalQty,
+          purchasePrice: rate,
+          mrp,
+          sellingPrice: sellingRate,
+          supplierId: supplier.id,
+          supplierName: supplier.name,
+          invoiceNumber: params.purchaseInvoiceNo,
+          purchaseDate: params.invoiceDate,
+          status: 'active',
+          createdAt: nowIso,
+          updatedAt: nowIso
+        };
+        batches.push(targetBatch);
+      }
+      createdOrUpdatedBatches.push(targetBatch);
+
+      // Log stock movement
+      this.recordMovement({
+        medicineId: med.id,
+        medicineName: med.name,
+        batchNumber: targetBatch.batchNumber,
+        type: 'STOCK_IN',
+        quantity: totalQty,
+        previousStock: targetBatch.availableQty - totalQty,
+        newStock: targetBatch.availableQty,
+        referenceId: params.purchaseInvoiceNo,
+        notes: `Purchase Inward from ${supplier.name} (${params.purchaseInvoiceNo})`,
+        performedBy: params.performedBy
+      });
+    }
+
+    // Save updated batches
+    this.saveBatchesList(batches);
+
+    // Purchase calculations
+    const subtotal = purchaseItems.reduce((acc, curr) => acc + (curr.quantity * curr.purchaseRate), 0);
+    const taxTotal = purchaseItems.reduce((acc, curr) => acc + curr.taxAmount, 0);
+    const netTotal = Math.round((subtotal + taxTotal) * 100) / 100;
+    const paidAmount = params.paidAmount !== undefined ? params.paidAmount : 0;
+    const unpaidBalance = Math.max(0, netTotal - paidAmount);
+
+    const purchase: PharmacyPurchase = {
+      id: `pch_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      purchaseInvoiceNo: params.purchaseInvoiceNo,
+      supplierId: supplier.id,
+      supplierName: supplier.name,
+      supplierGst: supplier.gstNumber,
+      invoiceDate: params.invoiceDate,
+      receivedDate: params.receivedDate || nowIso.split('T')[0],
+      items: purchaseItems,
+      subtotal,
+      taxTotal,
+      discountTotal: 0,
+      netTotal,
+      paidAmount,
+      paymentStatus: unpaidBalance === 0 ? 'paid' : paidAmount > 0 ? 'partial' : 'unpaid',
+      paymentMethod: params.paymentMethod || 'Bank Transfer',
+      receivedBy: params.performedBy,
+      notes: params.notes,
+      status: 'received',
+      createdAt: nowIso,
+      updatedAt: nowIso
+    };
+
+    const purchases = this.getPurchases();
+    purchases.unshift(purchase);
+    this.savePurchasesList(purchases);
+
+    // Update supplier outstanding amount if unpaid balance
+    if (unpaidBalance > 0) {
+      supplier.outstandingAmount = (supplier.outstandingAmount || 0) + unpaidBalance;
+      this.saveSuppliersList(suppliers);
+    }
+
+    // Record Financial Transaction
+    this.recordPharmacyTransaction({
+      type: 'purchase',
+      referenceId: purchase.purchaseInvoiceNo,
+      entityName: supplier.name,
+      amount: netTotal,
+      flow: 'outflow',
+      paymentMethod: purchase.paymentMethod,
+      performedBy: params.performedBy,
+      notes: `Purchase Inward Bill ${purchase.purchaseInvoiceNo} (${purchaseItems.length} SKUs)`
+    });
+
+    await ApiSyncService.saveDocument('pharmacyPurchases', purchase.id, purchase);
+    AuditService.log('PURCHASE_RECORDED', 'pharmacy', `Inward purchase ${purchase.purchaseInvoiceNo} recorded from ${supplier.name} for ₹${netTotal}`, purchase.id);
+
+    return { purchase, batchesCreated: createdOrUpdatedBatches };
+  }
+
+  /* =======================================================================
+     6. PURCHASE RETURN
+     ======================================================================= */
+  public static getPurchaseReturns(): PharmacyPurchaseReturn[] {
+    return StorageService.getItem<PharmacyPurchaseReturn[]>(PHARMACY_PURCHASE_RETURNS_KEY, []);
+  }
+
+  public static async recordPurchaseReturn(params: {
+    supplierId: string;
+    purchaseInvoiceNo: string;
+    medicineId: string;
+    batchNumber: string;
+    quantity: number;
+    returnRate: number;
+    reason: string;
+    authorizedBy: string;
+  }): Promise<PharmacyPurchaseReturn> {
+    const batches = this.getBatches();
+    const batch = batches.find(
+      b => b.medicineId === params.medicineId && b.batchNumber.toLowerCase() === params.batchNumber.toLowerCase()
     );
-    return items;
+
+    if (!batch) {
+      throw new Error(`Batch ${params.batchNumber} for medicine ID ${params.medicineId} not found.`);
+    }
+
+    const qty = Math.max(1, Math.floor(params.quantity));
+    if (batch.availableQty < qty) {
+      throw new Error(`Cannot return ${qty} units. Only ${batch.availableQty} available in Batch ${batch.batchNumber}.`);
+    }
+
+    const prevStock = batch.availableQty;
+    batch.availableQty -= qty;
+    batch.updatedAt = new Date().toISOString();
+    this.saveBatchesList(batches);
+
+    const returnAmount = Math.round(qty * params.returnRate * 100) / 100;
+    const suppliers = this.getSuppliers();
+    const supplier = suppliers.find(s => s.id === params.supplierId);
+    if (supplier) {
+      supplier.outstandingAmount = Math.max(0, (supplier.outstandingAmount || 0) - returnAmount);
+      this.saveSuppliersList(suppliers);
+    }
+
+    const pReturn: PharmacyPurchaseReturn = {
+      id: `pret_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      returnNumber: `PR-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`,
+      supplierId: params.supplierId,
+      supplierName: supplier ? supplier.name : 'Supplier',
+      purchaseInvoiceNo: params.purchaseInvoiceNo,
+      medicineId: params.medicineId,
+      medicineName: batch.medicineName,
+      batchNumber: batch.batchNumber,
+      quantity: qty,
+      returnRate: params.returnRate,
+      returnAmount,
+      reason: params.reason,
+      authorizedBy: params.authorizedBy,
+      returnDate: new Date().toISOString().split('T')[0],
+      status: 'completed',
+      createdAt: new Date().toISOString()
+    };
+
+    const pReturns = this.getPurchaseReturns();
+    pReturns.unshift(pReturn);
+    StorageService.setItem(PHARMACY_PURCHASE_RETURNS_KEY, pReturns);
+
+    this.recordMovement({
+      medicineId: batch.medicineId,
+      medicineName: batch.medicineName,
+      batchNumber: batch.batchNumber,
+      type: 'STOCK_OUT_RETURN',
+      quantity: qty,
+      previousStock: prevStock,
+      newStock: batch.availableQty,
+      referenceId: pReturn.returnNumber,
+      notes: `Purchase Return to ${supplier?.name || 'Vendor'} (${params.reason})`,
+      performedBy: params.authorizedBy
+    });
+
+    this.recordPharmacyTransaction({
+      type: 'purchase_return',
+      referenceId: pReturn.returnNumber,
+      entityName: supplier ? supplier.name : 'Supplier',
+      amount: returnAmount,
+      flow: 'inflow',
+      paymentMethod: 'Credit Note / Adjustment',
+      performedBy: params.authorizedBy,
+      notes: `Purchase return ${pReturn.returnNumber} for ${batch.medicineName} (${qty} units)`
+    });
+
+    await ApiSyncService.saveDocument('pharmacyPurchaseReturns', pReturn.id, pReturn);
+    AuditService.log('PURCHASE_RETURN', 'pharmacy', `Purchase return ${pReturn.returnNumber} processed to ${pReturn.supplierName}`, pReturn.id);
+
+    return pReturn;
   }
 
-  public static saveInventoryList(items: PharmacyInventoryItem[]): void {
-    StorageService.setItem(PHARMACY_INVENTORY_KEY, items);
+  /* =======================================================================
+     7. SALES / POS COUNTER & FEFO DISPENSING
+     ======================================================================= */
+  public static getSales(): PharmacySale[] {
+    return StorageService.getItem<PharmacySale[]>(PHARMACY_SALES_KEY, []);
   }
 
+  public static saveSalesList(sales: PharmacySale[]): void {
+    StorageService.setItem(PHARMACY_SALES_KEY, sales);
+  }
+
+  public static async dispenseSale(request: DispenseRequest): Promise<{
+    sale: PharmacySale;
+    bill: HospitalBill;
+    items: PharmacySaleItem[];
+  }> {
+    if (!request.items || request.items.length === 0) {
+      throw new Error('Dispense request must contain at least one item.');
+    }
+
+    const medicines = this.getMedicines();
+    const batches = this.getBatches();
+    const today = new Date().toISOString().split('T')[0];
+
+    const saleItems: PharmacySaleItem[] = [];
+    const updatedBatches: MedicineBatchItem[] = [];
+    const stockMovementsToRecord: Array<Omit<StockMovement, 'id' | 'timestamp'>> = [];
+
+    // Step 1: Validate stock & resolve batch via FEFO
+    for (const reqItem of request.items) {
+      const med = medicines.find(m => m.id === reqItem.medicineId);
+      if (!med) throw new Error(`Medicine ID "${reqItem.medicineId}" not found in master catalog.`);
+
+      let targetBatch: MedicineBatchItem | undefined;
+
+      if (reqItem.batchId) {
+        targetBatch = batches.find(b => b.id === reqItem.batchId);
+        if (!targetBatch) throw new Error(`Selected batch ID "${reqItem.batchId}" not found.`);
+      } else {
+        // Automatic FEFO Allocation
+        const fefoCandidates = this.getFefoRecommendedBatches(med.id);
+        if (fefoCandidates.length === 0) {
+          throw new Error(`No active unexpired batches available for "${med.name}". Zero negative-stock enforced.`);
+        }
+        targetBatch = fefoCandidates[0];
+      }
+
+      // STRICT SAFETY VALIDATION
+      if (targetBatch.status === 'quarantine' || targetBatch.status === 'recalled') {
+        throw new Error(`Batch "${targetBatch.batchNumber}" for "${med.name}" is ${targetBatch.status.toUpperCase()} and cannot be dispensed.`);
+      }
+      if (targetBatch.expiryDate < today) {
+        throw new Error(
+          `CRITICAL SAFETY ALERT: Batch "${targetBatch.batchNumber}" for "${med.name}" expired on ${targetBatch.expiryDate}. Dispensing expired medication is prohibited.`
+        );
+      }
+      if (targetBatch.availableQty < reqItem.quantity) {
+        throw new Error(
+          `Insufficient stock in Batch "${targetBatch.batchNumber}" for "${med.name}". Available: ${targetBatch.availableQty}, Requested: ${reqItem.quantity}.`
+        );
+      }
+
+      const unitPrice = reqItem.unitPrice !== undefined ? reqItem.unitPrice : targetBatch.sellingPrice;
+      const discountPercent = reqItem.discountPercent || 0;
+      const gross = reqItem.quantity * unitPrice;
+      const discountAmount = Math.round((gross * discountPercent) / 100 * 100) / 100;
+      const net = gross - discountAmount;
+      const gstPercent = med.taxGstRate || 12;
+      const taxAmount = Math.round((net * gstPercent) / (100 + gstPercent) * 100) / 100;
+
+      const saleItem: PharmacySaleItem = {
+        medicineId: med.id,
+        medicineName: med.name,
+        batchId: targetBatch.id,
+        batchNumber: targetBatch.batchNumber,
+        expiryDate: targetBatch.expiryDate,
+        quantity: reqItem.quantity,
+        mrp: targetBatch.mrp,
+        unitPrice,
+        discountPercent,
+        discountAmount,
+        taxGstPercent: gstPercent,
+        taxAmount,
+        totalAmount: net
+      };
+      saleItems.push(saleItem);
+
+      // Decrement batch availableQty
+      const prevStock = targetBatch.availableQty;
+      targetBatch.availableQty -= reqItem.quantity;
+      targetBatch.updatedAt = new Date().toISOString();
+      updatedBatches.push(targetBatch);
+
+      stockMovementsToRecord.push({
+        medicineId: med.id,
+        medicineName: med.name,
+        batchNumber: targetBatch.batchNumber,
+        type: 'STOCK_OUT_DISPENSED',
+        quantity: reqItem.quantity,
+        previousStock: prevStock,
+        newStock: targetBatch.availableQty,
+        performedBy: request.performedBy
+      });
+    }
+
+    // Step 2: Calculate financial totals
+    const subtotal = saleItems.reduce((acc, curr) => acc + (curr.quantity * curr.unitPrice), 0);
+    const discountTotal = saleItems.reduce((acc, curr) => acc + curr.discountAmount, 0);
+    const taxTotal = saleItems.reduce((acc, curr) => acc + curr.taxAmount, 0);
+    const netTotal = Math.max(0, Math.round((subtotal - discountTotal) * 100) / 100);
+    const paidAmount = request.paidAmount !== undefined ? request.paidAmount : netTotal;
+    const dueAmount = Math.max(0, netTotal - paidAmount);
+
+    const invoiceNumber = `PHARM-INV-${new Date().getFullYear()}-${Math.floor(100000 + Math.random() * 900000)}`;
+
+    const sale: PharmacySale = {
+      id: `sale_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      invoiceNumber,
+      saleDate: new Date().toISOString(),
+      saleType: request.saleType || (request.patientId ? 'patient_linked' : 'walkin'),
+      patientId: request.patientId,
+      patientName: request.patientName,
+      patientPhone: request.patientPhone,
+      patientCardNo: request.cardNo,
+      prescribingDoctor: request.doctorName,
+      items: saleItems,
+      subtotal,
+      discountAmount: discountTotal,
+      healthCardDiscount: request.cardNo ? discountTotal : 0,
+      taxAmount: taxTotal,
+      netTotal,
+      paidAmount,
+      dueAmount,
+      paymentMethod: request.paymentMode,
+      dispensedBy: request.performedBy,
+      status: 'dispensed',
+      notes: request.notes,
+      createdAt: new Date().toISOString()
+    };
+
+    // Step 3: Create Hospital Bill for central ledger alignment
+    const paymentMethodMap: Record<string, 'cash' | 'upi' | 'card' | 'wallet' | 'netbanking'> = {
+      'Cash': 'cash',
+      'UPI': 'upi',
+      'Card': 'card',
+      'Health Wallet': 'wallet'
+    };
+
+    const bill = BillService.createHospitalBill({
+      patientId: request.patientId || 'walkin_patient',
+      patientName: request.patientName,
+      patientMobile: request.patientPhone,
+      healthCardNumber: request.cardNo,
+      billCategory: 'pharmacy_dispensing',
+      items: saleItems.map(i => ({
+        description: `${i.medicineName} (Batch: ${i.batchNumber})`,
+        quantity: i.quantity,
+        unitPrice: i.unitPrice,
+        total: i.totalAmount
+      })),
+      discountAmount: discountTotal,
+      paidAmount,
+      paymentMethod: paymentMethodMap[request.paymentMode] || 'cash',
+      notes: `Pharmacy POS Dispensed [Invoice: ${invoiceNumber}] by ${request.performedBy}`
+    });
+
+    // Step 4: Persist batches & stock movements
+    this.saveBatchesList(batches);
+
+    for (const mov of stockMovementsToRecord) {
+      this.recordMovement({
+        ...mov,
+        referenceId: invoiceNumber,
+        notes: `Dispensed to ${request.patientName} (${invoiceNumber})`
+      });
+    }
+
+    // Step 5: Save Sale record & Financial Transaction
+    const sales = this.getSales();
+    sales.unshift(sale);
+    this.saveSalesList(sales);
+
+    this.recordPharmacyTransaction({
+      type: 'sale',
+      referenceId: sale.invoiceNumber,
+      entityName: sale.patientName,
+      amount: netTotal,
+      flow: 'inflow',
+      paymentMethod: sale.paymentMethod,
+      performedBy: request.performedBy,
+      notes: `Pharmacy Dispensed Invoice ${sale.invoiceNumber} (${saleItems.length} items)`
+    });
+
+    await ApiSyncService.saveDocument('pharmacySales', sale.id, sale);
+    AuditService.log('PHARMACY_SALE', 'pharmacy', `Dispensed invoice ${sale.invoiceNumber} to ${sale.patientName} for ₹${netTotal}`, sale.id);
+
+    return { sale, bill, items: saleItems };
+  }
+
+  /* =======================================================================
+     8. SALES RETURN / MEDICINE RETURN
+     ======================================================================= */
+  public static getSalesReturns(): PharmacySalesReturn[] {
+    return StorageService.getItem<PharmacySalesReturn[]>(PHARMACY_SALES_RETURNS_KEY, []);
+  }
+
+  public static async recordSalesReturn(params: {
+    originalInvoiceNo: string;
+    medicineId: string;
+    batchNumber: string;
+    quantity: number;
+    refundRate: number;
+    returnReason: string;
+    stockAction: 'return_to_active' | 'quarantine_damaged' | 'discard_expired';
+    authorizedBy: string;
+  }): Promise<PharmacySalesReturn> {
+    const sales = this.getSales();
+    const originalSale = sales.find(s => s.invoiceNumber === params.originalInvoiceNo);
+    const patientName = originalSale ? originalSale.patientName : 'Customer';
+
+    const batches = this.getBatches();
+    const batch = batches.find(
+      b => b.medicineId === params.medicineId && b.batchNumber.toLowerCase() === params.batchNumber.toLowerCase()
+    );
+
+    const qty = Math.max(1, Math.floor(params.quantity));
+    const refundAmount = Math.round(qty * params.refundRate * 100) / 100;
+
+    if (batch && params.stockAction === 'return_to_active') {
+      const prevStock = batch.availableQty;
+      batch.availableQty += qty;
+      batch.updatedAt = new Date().toISOString();
+      this.saveBatchesList(batches);
+
+      this.recordMovement({
+        medicineId: batch.medicineId,
+        medicineName: batch.medicineName,
+        batchNumber: batch.batchNumber,
+        type: 'STOCK_IN',
+        quantity: qty,
+        previousStock: prevStock,
+        newStock: batch.availableQty,
+        referenceId: params.originalInvoiceNo,
+        notes: `Sales Return Restocked from ${patientName} (${params.returnReason})`,
+        performedBy: params.authorizedBy
+      });
+    }
+
+    const sReturn: PharmacySalesReturn = {
+      id: `sret_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      returnNumber: `SR-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`,
+      originalInvoiceNo: params.originalInvoiceNo,
+      saleId: originalSale ? originalSale.id : '',
+      patientName,
+      medicineId: params.medicineId,
+      medicineName: batch ? batch.medicineName : 'Medicine',
+      batchId: batch ? batch.id : '',
+      batchNumber: params.batchNumber,
+      quantity: qty,
+      refundRate: params.refundRate,
+      refundAmount,
+      returnReason: params.returnReason,
+      stockAction: params.stockAction,
+      authorizedBy: params.authorizedBy,
+      returnDate: new Date().toISOString().split('T')[0],
+      createdAt: new Date().toISOString()
+    };
+
+    const sReturns = this.getSalesReturns();
+    sReturns.unshift(sReturn);
+    StorageService.setItem(PHARMACY_SALES_RETURNS_KEY, sReturns);
+
+    this.recordPharmacyTransaction({
+      type: 'sales_return',
+      referenceId: sReturn.returnNumber,
+      entityName: patientName,
+      amount: refundAmount,
+      flow: 'outflow',
+      paymentMethod: 'Cash / Refund',
+      performedBy: params.authorizedBy,
+      notes: `Sales return ${sReturn.returnNumber} against ${params.originalInvoiceNo}`
+    });
+
+    await ApiSyncService.saveDocument('pharmacySalesReturns', sReturn.id, sReturn);
+    AuditService.log('SALES_RETURN', 'pharmacy', `Sales return ${sReturn.returnNumber} for ₹${refundAmount} authorized by ${params.authorizedBy}`, sReturn.id);
+
+    return sReturn;
+  }
+
+  /* =======================================================================
+     9. STOCK ADJUSTMENTS & AUDIT TRAIL
+     ======================================================================= */
+  public static getStockAdjustments(): PharmacyStockAdjustment[] {
+    return StorageService.getItem<PharmacyStockAdjustment[]>(PHARMACY_ADJUSTMENTS_KEY, []);
+  }
+
+  public static async recordStockAdjustment(params: {
+    medicineId: string;
+    batchId: string;
+    adjustmentType: 'stock_increase' | 'stock_decrease' | 'damaged' | 'expired' | 'audit_reconciliation' | 'correction';
+    adjustedQty: number; // positive or negative
+    reason: string;
+    performedBy: string;
+  }): Promise<PharmacyStockAdjustment> {
+    if (!params.reason.trim()) {
+      throw new Error('Stock adjustment requires an explicit, auditable reason.');
+    }
+
+    const batches = this.getBatches();
+    const batchIdx = batches.findIndex(b => b.id === params.batchId);
+    if (batchIdx < 0) throw new Error(`Batch ID ${params.batchId} not found.`);
+
+    const batch = batches[batchIdx];
+    const prevQty = batch.availableQty;
+    const newQty = prevQty + params.adjustedQty;
+
+    if (newQty < 0) {
+      throw new Error(`Cannot adjust stock below 0. Current available: ${prevQty}, Adjustment: ${params.adjustedQty}`);
+    }
+
+    batch.availableQty = newQty;
+    batch.updatedAt = new Date().toISOString();
+    batches[batchIdx] = batch;
+    this.saveBatchesList(batches);
+
+    const adjustment: PharmacyStockAdjustment = {
+      id: `adj_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      adjustmentNumber: `ADJ-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`,
+      medicineId: batch.medicineId,
+      medicineName: batch.medicineName,
+      batchId: batch.id,
+      batchNumber: batch.batchNumber,
+      adjustmentType: params.adjustmentType,
+      previousQty: prevQty,
+      adjustedQty: params.adjustedQty,
+      newQty,
+      reason: params.reason.trim(),
+      performedBy: params.performedBy,
+      timestamp: new Date().toISOString()
+    };
+
+    const adjustments = this.getStockAdjustments();
+    adjustments.unshift(adjustment);
+    StorageService.setItem(PHARMACY_ADJUSTMENTS_KEY, adjustments);
+
+    this.recordMovement({
+      medicineId: batch.medicineId,
+      medicineName: batch.medicineName,
+      batchNumber: batch.batchNumber,
+      type: 'ADJUSTMENT',
+      quantity: Math.abs(params.adjustedQty),
+      previousStock: prevQty,
+      newStock: newQty,
+      referenceId: adjustment.adjustmentNumber,
+      notes: `Adjustment: ${params.adjustmentType} (${params.reason})`,
+      performedBy: params.performedBy
+    });
+
+    this.recordPharmacyTransaction({
+      type: 'adjustment',
+      referenceId: adjustment.adjustmentNumber,
+      entityName: batch.medicineName,
+      amount: 0,
+      flow: 'non_monetary',
+      paymentMethod: 'N/A',
+      performedBy: params.performedBy,
+      notes: `Stock adjusted from ${prevQty} to ${newQty} for Batch ${batch.batchNumber}: ${params.reason}`
+    });
+
+    await ApiSyncService.saveDocument('pharmacyAdjustments', adjustment.id, adjustment);
+    AuditService.log('STOCK_ADJUSTMENT', 'pharmacy', `Stock adjustment ${adjustment.adjustmentNumber} (${prevQty} → ${newQty}) by ${params.performedBy}. Reason: ${params.reason}`, adjustment.id);
+
+    return adjustment;
+  }
+
+  /* =======================================================================
+     10. UNIFIED PHARMACY FINANCIAL & TRANSACTION LEDGER
+     ======================================================================= */
+  public static getPharmacyTransactions(): PharmacyTransaction[] {
+    return StorageService.getItem<PharmacyTransaction[]>(PHARMACY_TRANSACTIONS_KEY, []);
+  }
+
+  public static recordPharmacyTransaction(
+    tx: Omit<PharmacyTransaction, 'id' | 'transactionId' | 'timestamp'>
+  ): PharmacyTransaction {
+    const txs = this.getPharmacyTransactions();
+    const newTx: PharmacyTransaction = {
+      ...tx,
+      id: `ptx_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      transactionId: `PTX-${new Date().getFullYear()}-${Math.floor(10000 + Math.random() * 90000)}`,
+      timestamp: new Date().toISOString()
+    };
+    txs.unshift(newTx);
+    StorageService.setItem(PHARMACY_TRANSACTIONS_KEY, txs.slice(0, 1000));
+    ApiSyncService.saveDocument('pharmacyTransactions', newTx.id, newTx).catch(() => {});
+    return newTx;
+  }
+
+  /* =======================================================================
+     11. DOCTOR PRESCRIPTION PROCESSING INTEGRATION
+     ======================================================================= */
+  public static getDoctorPrescriptions(): Array<{
+    encounterId: string;
+    encounterNo: string;
+    patientId: string;
+    patientName: string;
+    cardNo?: string;
+    doctorId: string;
+    doctorName: string;
+    doctorSpeciality: string;
+    date: string;
+    diagnoses: string[];
+    medications: Array<{
+      id: string;
+      name: string;
+      composition?: string;
+      dosage: string;
+      frequency: string;
+      timing: string;
+      duration: string;
+      instructions?: string;
+    }>;
+  }> {
+    const encounters = EMRService.getAllEncounters();
+    return encounters
+      .filter(e => e.medications && e.medications.length > 0)
+      .map(e => ({
+        encounterId: e.id,
+        encounterNo: e.encounterNo,
+        patientId: e.patientId,
+        patientName: e.patientName,
+        cardNo: e.cardNo,
+        doctorId: e.doctorId,
+        doctorName: e.doctorName,
+        doctorSpeciality: e.doctorSpeciality,
+        date: e.date || e.createdAt,
+        diagnoses: e.diagnoses || [],
+        medications: e.medications
+      }));
+  }
+
+  /* =======================================================================
+     12. LIVE DASHBOARD METRICS & KPI ENGINE
+     ======================================================================= */
+  public static getDashboardMetrics(): PharmacyDashboardMetrics {
+    const medicines = this.getMedicines();
+    const batches = this.getBatches();
+    const sales = this.getSales();
+    const purchases = this.getPurchases();
+    const sReturns = this.getSalesReturns();
+    const prescriptions = this.getDoctorPrescriptions();
+
+    const todayStr = new Date().toISOString().split('T')[0];
+    const nowTime = new Date().getTime();
+
+    // Today's Sales
+    const todaySales = sales.filter(s => s.saleDate.startsWith(todayStr));
+    const todaySalesAmount = todaySales.reduce((acc, s) => acc + s.netTotal, 0);
+    const todaySalesCount = todaySales.length;
+
+    // Today's Purchases
+    const todayPurchases = purchases.filter(p => p.createdAt.startsWith(todayStr) || p.invoiceDate === todayStr);
+    const todayPurchasesAmount = todayPurchases.reduce((acc, p) => acc + p.netTotal, 0);
+    const todayPurchasesCount = todayPurchases.length;
+
+    // Stock Valuations
+    let stockValuationPurchase = 0;
+    let stockValuationMrp = 0;
+    let totalStockUnits = 0;
+
+    for (const b of batches) {
+      if (b.availableQty > 0) {
+        totalStockUnits += b.availableQty;
+        stockValuationPurchase += b.availableQty * b.purchasePrice;
+        stockValuationMrp += b.availableQty * b.mrp;
+      }
+    }
+
+    // Low stock & Out of stock
+    let lowStockCount = 0;
+    let outOfStockCount = 0;
+
+    for (const m of medicines) {
+      const medBatches = batches.filter(b => b.medicineId === m.id);
+      const totalAvailable = medBatches.reduce((acc, b) => acc + b.availableQty, 0);
+      if (totalAvailable === 0) {
+        outOfStockCount++;
+      } else if (totalAvailable <= m.minStock) {
+        lowStockCount++;
+      }
+    }
+
+    // Expiry counts
+    let expiredBatchesCount = 0;
+    let nearExpiry30DaysCount = 0;
+    let nearExpiry60DaysCount = 0;
+    let nearExpiry90DaysCount = 0;
+
+    const ms30 = 30 * 86400000;
+    const ms60 = 60 * 86400000;
+    const ms90 = 90 * 86400000;
+
+    for (const b of batches) {
+      if (b.availableQty <= 0) continue;
+      const expTime = new Date(b.expiryDate).getTime();
+      const diff = expTime - nowTime;
+
+      if (diff < 0) {
+        expiredBatchesCount++;
+      } else if (diff <= ms30) {
+        nearExpiry30DaysCount++;
+      } else if (diff <= ms60) {
+        nearExpiry60DaysCount++;
+      } else if (diff <= ms90) {
+        nearExpiry90DaysCount++;
+      }
+    }
+
+    // Discounts & Returns
+    const todayDiscountsTotal = todaySales.reduce((acc, s) => acc + s.discountAmount, 0);
+    const todayReturns = sReturns.filter(r => r.returnDate === todayStr);
+    const todayReturnsTotal = todayReturns.reduce((acc, r) => acc + r.refundAmount, 0);
+
+    // Cash vs Digital breakdown
+    let cashCollectedToday = 0;
+    let digitalCollectedToday = 0;
+
+    for (const s of todaySales) {
+      if (s.paymentMethod === 'Cash') {
+        cashCollectedToday += s.paidAmount;
+      } else {
+        digitalCollectedToday += s.paidAmount;
+      }
+    }
+
+    return {
+      todaySalesAmount,
+      todaySalesCount,
+      todayPurchasesAmount,
+      todayPurchasesCount,
+      totalMedicinesCount: medicines.length,
+      totalBatchesCount: batches.length,
+      totalStockUnits,
+      stockValuationPurchase: Math.round(stockValuationPurchase),
+      stockValuationMrp: Math.round(stockValuationMrp),
+      lowStockCount,
+      outOfStockCount,
+      expiredBatchesCount,
+      nearExpiry30DaysCount,
+      nearExpiry60DaysCount,
+      nearExpiry90DaysCount,
+      pendingPrescriptionsCount: prescriptions.length,
+      todayDiscountsTotal,
+      todayReturnsTotal,
+      cashCollectedToday,
+      digitalCollectedToday
+    };
+  }
+
+  /* =======================================================================
+     13. BACKWARD COMPATIBILITY ADAPTERS
+     ======================================================================= */
   public static getStockMovements(): StockMovement[] {
-    return StorageService.getItem<StockMovement[]>(PHARMACY_MOVEMENTS_KEY, []);
+    return StorageService.getItem<StockMovement[]>(LEGACY_MOVEMENTS_KEY, []);
   }
 
   public static recordMovement(movement: Omit<StockMovement, 'id' | 'timestamp'>): StockMovement {
@@ -120,89 +1790,52 @@ export class PharmacyService {
       timestamp: new Date().toISOString()
     };
     movements.unshift(newMovement);
-    StorageService.setItem(PHARMACY_MOVEMENTS_KEY, movements.slice(0, 500));
+    StorageService.setItem(LEGACY_MOVEMENTS_KEY, movements.slice(0, 500));
     ApiSyncService.saveDocument('stockMovements', newMovement.id, newMovement).catch(() => {});
     return newMovement;
   }
 
-  public static async saveMedicine(
-    item: Partial<PharmacyInventoryItem> & { name: string; sellingPrice: number }
-  ): Promise<PharmacyInventoryItem> {
-    const items = this.getInventory();
-    const nowIso = new Date().toISOString();
+  public static getInventory(): PharmacyInventoryItem[] {
+    const medicines = this.getMedicines();
+    const batches = this.getBatches();
 
-    let targetItem: PharmacyInventoryItem;
-    if (item.id) {
-      const idx = items.findIndex(m => m.id === item.id);
-      if (idx >= 0) {
-        targetItem = {
-          ...items[idx],
-          ...item,
-          updatedAt: nowIso
-        };
-        items[idx] = targetItem;
-      } else {
-        targetItem = {
-          id: item.id,
-          code: item.code || `MED-${items.length + 1}`,
-          name: item.name,
-          genericComposition: item.genericComposition || '',
-          brand: item.brand || 'Generic',
-          category: item.category || 'General',
-          dosageForm: item.dosageForm || 'Tablet',
-          strength: item.strength || '',
-          packaging: item.packaging || 'Standard Box',
-          batchNumber: item.batchNumber || `BAT-${Date.now().toString().slice(-4)}`,
-          expiryDate: item.expiryDate || new Date(Date.now() + 365 * 86400000).toISOString().split('T')[0],
-          purchasePrice: Number(item.purchasePrice) || Math.round(Number(item.sellingPrice) * 0.7),
-          sellingPrice: Number(item.sellingPrice),
-          stockQuantity: Number(item.stockQuantity) || 0,
-          minStockLevel: Number(item.minStockLevel) || 10,
-          rackLocation: item.rackLocation || 'Rack A-1',
-          prescriptionRequired: !!item.prescriptionRequired,
-          supplier: item.supplier || 'Standard Vendor',
-          createdAt: nowIso,
-          updatedAt: nowIso
-        };
-        items.push(targetItem);
-      }
-    } else {
-      const newId = `med_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-      targetItem = {
-        id: newId,
-        code: item.code || `MED-${String(items.length + 1).padStart(3, '0')}`,
-        name: item.name,
-        genericComposition: item.genericComposition || '',
-        brand: item.brand || 'Generic',
-        category: item.category || 'General',
-        dosageForm: item.dosageForm || 'Tablet',
-        strength: item.strength || '',
-        packaging: item.packaging || 'Standard Box',
-        batchNumber: item.batchNumber || `BAT-${Date.now().toString().slice(-4)}`,
-        expiryDate: item.expiryDate || new Date(Date.now() + 365 * 86400000).toISOString().split('T')[0],
-        purchasePrice: Number(item.purchasePrice) || Math.round(Number(item.sellingPrice) * 0.7),
-        sellingPrice: Number(item.sellingPrice),
-        stockQuantity: Number(item.stockQuantity) || 0,
-        minStockLevel: Number(item.minStockLevel) || 10,
-        rackLocation: item.rackLocation || 'Rack A-1',
-        prescriptionRequired: !!item.prescriptionRequired,
-        supplier: item.supplier || 'Standard Vendor',
-        createdAt: nowIso,
-        updatedAt: nowIso
+    return medicines.map(m => {
+      const medBatches = batches.filter(b => b.medicineId === m.id);
+      const totalStock = medBatches.reduce((acc, b) => acc + b.availableQty, 0);
+      const activeBatch = medBatches.find(b => b.availableQty > 0) || medBatches[0];
+
+      return {
+        id: m.id,
+        code: m.code,
+        name: m.name,
+        genericComposition: m.genericName,
+        brand: m.brandName,
+        category: m.category,
+        dosageForm: m.dosageForm,
+        strength: m.strength,
+        packaging: m.packSize,
+        batchNumber: activeBatch ? activeBatch.batchNumber : 'N/A',
+        expiryDate: activeBatch ? activeBatch.expiryDate : new Date().toISOString().split('T')[0],
+        purchasePrice: m.purchasePrice,
+        sellingPrice: m.sellingPrice,
+        stockQuantity: totalStock,
+        minStockLevel: m.minStock,
+        rackLocation: m.rackLocation || 'Rack A-1',
+        prescriptionRequired: m.prescriptionRequired,
+        supplier: activeBatch ? activeBatch.supplierName : 'Distributor',
+        createdAt: m.createdAt,
+        updatedAt: m.updatedAt
       };
-      items.push(targetItem);
-    }
+    });
+  }
 
-    this.saveInventoryList(items);
-    await ApiSyncService.saveDocument('pharmacyInventory', targetItem.id, targetItem);
-    AuditService.log(
-      item.id ? 'MEDICINE_UPDATED' : 'MEDICINE_CREATED',
-      'pharmacy',
-      `Medicine record saved: ${targetItem.name} (${targetItem.code}), Stock: ${targetItem.stockQuantity}`,
-      targetItem.id
-    );
+  public static saveInventoryList(items: PharmacyInventoryItem[]): void {
+    StorageService.setItem(LEGACY_INVENTORY_KEY, items);
+  }
 
-    return targetItem;
+  private static syncLegacyInventory(): void {
+    const legacyItems = this.getInventory();
+    this.saveInventoryList(legacyItems);
   }
 
   public static async stockIn(params: {
@@ -216,52 +1849,59 @@ export class PharmacyService {
     notes?: string;
     performedBy: string;
   }): Promise<PharmacyInventoryItem> {
-    const items = this.getInventory();
-    const idx = items.findIndex(m => m.id === params.medicineId);
-    if (idx < 0) {
-      throw new Error(`Medicine with ID ${params.medicineId} not found in inventory.`);
+    const medicines = this.getMedicines();
+    const med = medicines.find(m => m.id === params.medicineId);
+    if (!med) throw new Error(`Medicine with ID ${params.medicineId} not found.`);
+
+    const now = new Date();
+    const batchNum = params.batchNumber || `BAT-${now.getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
+    const expDate = params.expiryDate || new Date(Date.now() + 365 * 86400000).toISOString().split('T')[0];
+
+    const batches = this.getBatches();
+    const existing = batches.find(b => b.medicineId === med.id && b.batchNumber === batchNum);
+
+    if (existing) {
+      existing.availableQty += params.quantity;
+      existing.purchaseQty += params.quantity;
+      existing.updatedAt = now.toISOString();
+    } else {
+      batches.push({
+        id: `bat_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+        medicineId: med.id,
+        medicineName: med.name,
+        batchNumber: batchNum,
+        mfgDate: now.toISOString().split('T')[0],
+        expiryDate: expDate,
+        purchaseQty: params.quantity,
+        freeQty: 0,
+        availableQty: params.quantity,
+        purchasePrice: params.purchasePrice || med.purchasePrice,
+        mrp: med.mrp,
+        sellingPrice: params.sellingPrice || med.sellingPrice,
+        supplierId: 'sup_001',
+        supplierName: params.supplier || 'Standard Supplier',
+        invoiceNumber: `STK-${Date.now().toString().slice(-5)}`,
+        purchaseDate: now.toISOString().split('T')[0],
+        status: 'active',
+        createdAt: now.toISOString(),
+        updatedAt: now.toISOString()
+      });
     }
 
-    const prev = items[idx];
-    const prevStock = prev.stockQuantity;
-    const addedQty = Math.max(1, Math.floor(params.quantity));
-    const newStock = prevStock + addedQty;
-
-    const updatedItem: PharmacyInventoryItem = {
-      ...prev,
-      stockQuantity: newStock,
-      batchNumber: params.batchNumber || prev.batchNumber,
-      expiryDate: params.expiryDate || prev.expiryDate,
-      purchasePrice: params.purchasePrice !== undefined ? Number(params.purchasePrice) : prev.purchasePrice,
-      sellingPrice: params.sellingPrice !== undefined ? Number(params.sellingPrice) : prev.sellingPrice,
-      supplier: params.supplier || prev.supplier,
-      updatedAt: new Date().toISOString()
-    };
-
-    items[idx] = updatedItem;
-    this.saveInventoryList(items);
-    await ApiSyncService.saveDocument('pharmacyInventory', updatedItem.id, updatedItem);
-
+    this.saveBatchesList(batches);
     this.recordMovement({
-      medicineId: updatedItem.id,
-      medicineName: updatedItem.name,
-      batchNumber: updatedItem.batchNumber,
+      medicineId: med.id,
+      medicineName: med.name,
+      batchNumber: batchNum,
       type: 'STOCK_IN',
-      quantity: addedQty,
-      previousStock: prevStock,
-      newStock,
-      notes: params.notes || `Stock-in restocking (+${addedQty})`,
+      quantity: params.quantity,
+      previousStock: 0,
+      newStock: params.quantity,
+      notes: params.notes || `Stock In (+${params.quantity})`,
       performedBy: params.performedBy
     });
 
-    AuditService.log(
-      'STOCK_IN',
-      'pharmacy',
-      `Stock-in (+${addedQty}) for ${updatedItem.name}. New Stock: ${newStock}`,
-      updatedItem.id
-    );
-
-    return updatedItem;
+    return this.getInventory().find(i => i.id === med.id)!;
   }
 
   public static async stockOut(params: {
@@ -271,57 +1911,19 @@ export class PharmacyService {
     notes?: string;
     performedBy: string;
   }): Promise<PharmacyInventoryItem> {
-    const items = this.getInventory();
-    const idx = items.findIndex(m => m.id === params.medicineId);
-    if (idx < 0) {
-      throw new Error(`Medicine with ID ${params.medicineId} not found.`);
-    }
+    const batches = this.getBatchesForMedicine(params.medicineId);
+    const available = batches.filter(b => b.availableQty > 0);
+    if (available.length === 0) throw new Error('No batches with stock available.');
 
-    const prev = items[idx];
-    const prevStock = prev.stockQuantity;
-    const deduction = Math.max(1, Math.floor(params.quantity));
-
-    if (prevStock < deduction) {
-      throw new Error(`Cannot stock out ${deduction} units. Available stock is only ${prevStock}.`);
-    }
-
-    const newStock = prevStock - deduction;
-    const updatedItem: PharmacyInventoryItem = {
-      ...prev,
-      stockQuantity: newStock,
-      updatedAt: new Date().toISOString()
-    };
-
-    items[idx] = updatedItem;
-    this.saveInventoryList(items);
-    await ApiSyncService.saveDocument('pharmacyInventory', updatedItem.id, updatedItem);
-
-    const movementType = params.reason === 'EXPIRED' 
-      ? 'STOCK_OUT_EXPIRED' 
-      : params.reason === 'DAMAGED' 
-        ? 'STOCK_OUT_DAMAGED' 
-        : 'ADJUSTMENT';
-
-    this.recordMovement({
-      medicineId: updatedItem.id,
-      medicineName: updatedItem.name,
-      batchNumber: updatedItem.batchNumber,
-      type: movementType,
-      quantity: deduction,
-      previousStock: prevStock,
-      newStock,
-      notes: params.notes || `Stock-out: ${params.reason} (-${deduction})`,
+    const target = available[0];
+    return this.recordStockAdjustment({
+      medicineId: params.medicineId,
+      batchId: target.id,
+      adjustmentType: params.reason === 'EXPIRED' ? 'expired' : params.reason === 'DAMAGED' ? 'damaged' : 'correction',
+      adjustedQty: -params.quantity,
+      reason: params.notes || `Stock out: ${params.reason}`,
       performedBy: params.performedBy
-    });
-
-    AuditService.log(
-      'STOCK_OUT',
-      'pharmacy',
-      `Stock-out (-${deduction}, reason: ${params.reason}) for ${updatedItem.name}. New Stock: ${newStock}`,
-      updatedItem.id
-    );
-
-    return updatedItem;
+    }).then(() => this.getInventory().find(i => i.id === params.medicineId)!);
   }
 
   public static async dispense(request: DispenseRequest): Promise<{
@@ -329,118 +1931,17 @@ export class PharmacyService {
     items: PharmacyInventoryItem[];
     movements: StockMovement[];
   }> {
-    if (!request.items || request.items.length === 0) {
-      throw new Error('Dispense request must contain at least one item.');
-    }
-
-    const inventory = this.getInventory();
-    const validatedItems: { med: PharmacyInventoryItem; reqItem: DispenseItem }[] = [];
-
-    // Step 1: Validate stock for all items
-    for (const reqItem of request.items) {
-      const med = inventory.find(m => m.id === reqItem.medicineId);
-      if (!med) {
-        throw new Error(`Medicine ID "${reqItem.medicineId}" does not exist in inventory.`);
-      }
-      if (med.stockQuantity < reqItem.quantity) {
-        throw new Error(
-          `Insufficient stock for "${med.name}". Requested: ${reqItem.quantity}, Available: ${med.stockQuantity}. Negative inventory is prevented.`
-        );
-      }
-      validatedItems.push({ med, reqItem });
-    }
-
-    // Step 2: Prepare bill line items
-    const lineItems = validatedItems.map(({ med, reqItem }) => {
-      const unitPrice = reqItem.unitPrice || med.sellingPrice;
-      const discount = reqItem.discountPercent || 0;
-      const total = unitPrice * reqItem.quantity * (1 - discount / 100);
-      return {
-        description: `${med.name} [Batch: ${med.batchNumber}]`,
-        quantity: reqItem.quantity,
-        unitPrice,
-        total: Math.round(total * 100) / 100
-      };
-    });
-
-    const subtotal = lineItems.reduce((acc, curr) => acc + curr.quantity * curr.unitPrice, 0);
-    const itemTotal = lineItems.reduce((acc, curr) => acc + curr.total, 0);
-    const overallDiscount = Math.max(0, subtotal - itemTotal);
-
-    const paymentMethodMap: Record<string, 'cash' | 'upi' | 'card' | 'wallet' | 'netbanking'> = {
-      'Cash': 'cash',
-      'UPI': 'upi',
-      'Card': 'card',
-      'Health Wallet': 'wallet'
-    };
-    const mappedPaymentMethod = paymentMethodMap[request.paymentMode] || 'cash';
-
-    // Step 3: Create Hospital Bill & sync to Ledger
-    const bill = BillService.createHospitalBill({
-      patientId: request.patientId || 'walkin_patient',
-      patientName: request.patientName,
-      patientMobile: request.patientPhone,
-      healthCardNumber: request.cardNo,
-      billCategory: 'pharmacy_dispensing',
-      items: lineItems,
-      discountAmount: overallDiscount,
-      paidAmount: request.paidAmount !== undefined ? request.paidAmount : itemTotal,
-      paymentMethod: mappedPaymentMethod,
-      notes: request.notes || `Counter POS Dispensing by ${request.performedBy}`
-    });
-
-    // Step 4: Atomic Stock Deduction & Movement Tracking
-    const updatedInventoryList: PharmacyInventoryItem[] = [...inventory];
-    const generatedMovements: StockMovement[] = [];
-
-    for (const { med, reqItem } of validatedItems) {
-      const idx = updatedInventoryList.findIndex(m => m.id === med.id);
-      const prevStock = updatedInventoryList[idx].stockQuantity;
-      const newStock = prevStock - reqItem.quantity;
-
-      const updatedMed: PharmacyInventoryItem = {
-        ...updatedInventoryList[idx],
-        stockQuantity: newStock,
-        updatedAt: new Date().toISOString()
-      };
-
-      updatedInventoryList[idx] = updatedMed;
-      await ApiSyncService.saveDocument('pharmacyInventory', updatedMed.id, updatedMed);
-
-      const mov = this.recordMovement({
-        medicineId: updatedMed.id,
-        medicineName: updatedMed.name,
-        batchNumber: updatedMed.batchNumber,
-        type: 'STOCK_OUT_DISPENSED',
-        quantity: reqItem.quantity,
-        previousStock: prevStock,
-        newStock,
-        referenceId: bill.billNumber,
-        notes: `POS Dispensed to ${request.patientName} (${bill.billNumber})`,
-        performedBy: request.performedBy
-      });
-      generatedMovements.push(mov);
-    }
-
-    this.saveInventoryList(updatedInventoryList);
-
-    AuditService.log(
-      'MEDICINES_DISPENSED',
-      'pharmacy',
-      `POS Dispensed ${lineItems.length} medicines to ${request.patientName}. Bill: ${bill.billNumber}`,
-      bill.id
-    );
-
+    const result = await this.dispenseSale(request);
     return {
-      bill,
-      items: updatedInventoryList,
-      movements: generatedMovements
+      bill: result.bill,
+      items: this.getInventory(),
+      movements: this.getStockMovements()
     };
   }
 
   public static getLowStockAlerts(threshold?: number): PharmacyInventoryItem[] {
-    const items = this.getInventory();
-    return items.filter(item => {
+    const inv = this.getInventory();
+    return inv.filter(item => {
       const min = threshold !== undefined ? threshold : item.minStockLevel;
       return item.stockQuantity <= min;
     });
@@ -450,21 +1951,26 @@ export class PharmacyService {
     expired: PharmacyInventoryItem[];
     expiringSoon: PharmacyInventoryItem[];
   } {
-    const items = this.getInventory();
+    const batches = this.getBatches();
+    const inv = this.getInventory();
     const now = new Date();
     const thresholdDate = new Date(now.getTime() + daysThreshold * 86400000);
 
-    const expired: PharmacyInventoryItem[] = [];
-    const expiringSoon: PharmacyInventoryItem[] = [];
+    const expiredIds = new Set<string>();
+    const expiringSoonIds = new Set<string>();
 
-    for (const item of items) {
-      const exp = new Date(item.expiryDate);
+    for (const b of batches) {
+      if (b.availableQty <= 0) continue;
+      const exp = new Date(b.expiryDate);
       if (exp < now) {
-        expired.push(item);
+        expiredIds.add(b.medicineId);
       } else if (exp <= thresholdDate) {
-        expiringSoon.push(item);
+        expiringSoonIds.add(b.medicineId);
       }
     }
+
+    const expired = inv.filter(i => expiredIds.has(i.id));
+    const expiringSoon = inv.filter(i => expiringSoonIds.has(i.id));
 
     return { expired, expiringSoon };
   }
