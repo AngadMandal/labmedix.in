@@ -20,6 +20,8 @@ import {
   PharmacyPurchaseReturn,
   PharmacyStockAdjustment,
   PharmacyTransaction,
+  PharmacyHeldBill,
+  PharmacyShiftClosing,
   Patient,
   HealthCard,
   Membership,
@@ -29,6 +31,9 @@ import { formatCurrency, formatDate, formatDateTime } from '../../utils/formatte
 import { Modal } from '../../components/common/Modal';
 import { DirectMedicineOrderModal } from '../../components/portal/DirectMedicineOrderModal';
 import { PharmacyBillPrintModal } from '../../components/pharmacy/PharmacyBillPrintModal';
+import { RetailPosHoldBillsModal } from '../../components/pharmacy/RetailPosHoldBillsModal';
+import { PharmacyShiftClosingModal } from '../../components/pharmacy/PharmacyShiftClosingModal';
+import { PharmacyBillCancelModal } from '../../components/pharmacy/PharmacyBillCancelModal';
 import {
   Pill,
   Search,
@@ -67,7 +72,8 @@ import {
   History,
   QrCode,
   TrendingUp,
-  Percent
+  Percent,
+  Calculator
 } from 'lucide-react';
 
 type PharmacyHubTab =
@@ -138,10 +144,26 @@ export const PharmacyPage: React.FC = () => {
   const [posSearchTerm, setPosSearchTerm] = useState('');
   const [posCategoryFilter, setPosCategoryFilter] = useState('all');
   const [posCart, setPosCart] = useState<POSCartLine[]>([]);
-  const [posPaymentMode, setPosPaymentMode] = useState<'Cash' | 'Card' | 'UPI' | 'Health Wallet'>('Cash');
+  const [posPaymentMode, setPosPaymentMode] = useState<'Cash' | 'Card' | 'UPI' | 'Health Wallet' | 'Bank Transfer'>('Cash');
   const [posPaidAmountInput, setPosPaidAmountInput] = useState<string>('');
+  const [posCashReceivedInput, setPosCashReceivedInput] = useState<string>('');
+  const [posManualDiscountPercent, setPosManualDiscountPercent] = useState<number>(0);
+  const [posManualDiscountReason, setPosManualDiscountReason] = useState<string>('');
+  const [isManualDiscountOpen, setIsManualDiscountOpen] = useState<boolean>(false);
+  const [patientSearchQuery, setPatientSearchQuery] = useState<string>('');
   const [isDispensing, setIsDispensing] = useState(false);
   const [printedSale, setPrintedSale] = useState<PharmacySale | null>(null);
+
+  // Hold Bills, Shift Closing & Cancellation State
+  const [heldBills, setHeldBills] = useState<PharmacyHeldBill[]>(() => PharmacyService.getHeldBills());
+  const [isHoldBillsModalOpen, setIsHoldBillsModalOpen] = useState(false);
+  const [isShiftClosingModalOpen, setIsShiftClosingModalOpen] = useState(false);
+  const [cancellingSale, setCancellingSale] = useState<PharmacySale | null>(null);
+  const [isCancelModalOpen, setIsCancelModalOpen] = useState(false);
+
+  // Retail Bills History Filter
+  const [posBillSearchTerm, setPosBillSearchTerm] = useState('');
+  const [posBillStatusFilter, setPosBillStatusFilter] = useState<'all' | 'dispensed' | 'cancelled' | 'returned'>('all');
 
   // Patient / Health Card Resolver
   const selectedPatientObj = useMemo(() => {
@@ -245,20 +267,67 @@ export const PharmacyPage: React.FC = () => {
     );
   };
 
+  // Batch switcher in cart
+  const handleSwitchCartBatch = (currentBatchId: string, targetBatchId: string) => {
+    const targetBatch = batches.find(b => b.id === targetBatchId);
+    if (!targetBatch) return;
+    setPosCart(prev =>
+      prev.map(line => {
+        if (line.batch.id === currentBatchId) {
+          return {
+            ...line,
+            batch: targetBatch,
+            unitPrice: targetBatch.sellingPrice || line.medicine.sellingPrice,
+            quantity: Math.min(line.quantity, targetBatch.availableQty)
+          };
+        }
+        return line;
+      })
+    );
+  };
+
   // Cart Calculations
   const cartSubtotal = useMemo(() => {
-    return posCart.reduce((acc, line) => acc + line.unitPrice * line.quantity, 0);
+    return Math.round(posCart.reduce((acc, line) => acc + line.unitPrice * line.quantity, 0) * 100) / 100;
   }, [posCart]);
 
-  const cartDiscount = useMemo(() => {
-    return posCart.reduce((acc, line) => {
+  const cartItemDiscount = useMemo(() => {
+    return Math.round(posCart.reduce((acc, line) => {
       return acc + (line.unitPrice * line.quantity * line.discountPercent) / 100;
-    }, 0);
+    }, 0) * 100) / 100;
   }, [posCart]);
+
+  const cartManualDiscount = useMemo(() => {
+    if (posManualDiscountPercent <= 0) return 0;
+    const remaining = cartSubtotal - cartItemDiscount;
+    return Math.round((remaining * (posManualDiscountPercent / 100)) * 100) / 100;
+  }, [cartSubtotal, cartItemDiscount, posManualDiscountPercent]);
+
+  const cartTotalDiscount = useMemo(() => {
+    return Math.round((cartItemDiscount + cartManualDiscount) * 100) / 100;
+  }, [cartItemDiscount, cartManualDiscount]);
+
+  const cartTax = useMemo(() => {
+    return Math.round(posCart.reduce((acc, line) => {
+      const lineGross = line.unitPrice * line.quantity;
+      const lineDisc = (lineGross * line.discountPercent) / 100;
+      const lineNet = lineGross - lineDisc;
+      const gst = line.medicine.taxGstRate || 12;
+      return acc + (lineNet * gst) / (100 + gst);
+    }, 0) * 100) / 100;
+  }, [posCart]);
+
+  const cartUnroundedNet = useMemo(() => {
+    return Math.max(0, cartSubtotal - cartTotalDiscount);
+  }, [cartSubtotal, cartTotalDiscount]);
 
   const cartNetTotal = useMemo(() => {
-    return Math.max(0, Math.round((cartSubtotal - cartDiscount) * 100) / 100);
-  }, [cartSubtotal, cartDiscount]);
+    return Math.round(cartUnroundedNet); // Round-off to nearest rupee
+  }, [cartUnroundedNet]);
+
+  const cartRoundOff = useMemo(() => {
+    return Math.round((cartNetTotal - cartUnroundedNet) * 100) / 100;
+  }, [cartNetTotal, cartUnroundedNet]);
 
   const posPaidAmount = useMemo(() => {
     if (posPaidAmountInput === '') return cartNetTotal;
@@ -269,6 +338,157 @@ export const PharmacyPage: React.FC = () => {
   const posDueAmount = useMemo(() => {
     return Math.max(0, Math.round((cartNetTotal - posPaidAmount) * 100) / 100);
   }, [cartNetTotal, posPaidAmount]);
+
+  const posCashReceived = useMemo(() => {
+    if (posCashReceivedInput === '') return posPaidAmount;
+    const val = parseFloat(posCashReceivedInput);
+    return isNaN(val) ? 0 : val;
+  }, [posCashReceivedInput, posPaidAmount]);
+
+  const posChangeGiven = useMemo(() => {
+    if (posPaymentMode !== 'Cash' || posCashReceived <= posPaidAmount) return 0;
+    return Math.round((posCashReceived - posPaidAmount) * 100) / 100;
+  }, [posPaymentMode, posCashReceived, posPaidAmount]);
+
+  // Direct Barcode Scanner Key Handler (Enter to Add)
+  const handleBarcodeScanEnter = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter' && posSearchTerm.trim()) {
+      const q = posSearchTerm.trim().toLowerCase();
+      const matchedMed = medicines.find(m => 
+        (m.barcode && m.barcode.toLowerCase() === q) || 
+        m.code.toLowerCase() === q ||
+        m.name.toLowerCase() === q
+      );
+      if (matchedMed) {
+        handleAddToCart(matchedMed);
+        setPosSearchTerm('');
+        showToast('success', 'Barcode Scanned', `${matchedMed.name} added to cart via barcode.`);
+      }
+    }
+  };
+
+  // Hold Current Bill
+  const handleHoldCurrentBill = async () => {
+    if (posCart.length === 0) {
+      showToast('error', 'Cart Empty', 'Please add items before placing bill on hold.');
+      return;
+    }
+    try {
+      const patientName = selectedPatientObj
+        ? selectedPatientObj.fullName
+        : walkinName.trim() || 'Walk-in Customer';
+      const patientPhone = selectedPatientObj ? selectedPatientObj.mobile : walkinPhone.trim() || undefined;
+
+      const held = await PharmacyService.holdBill({
+        customerType: activePatientCard ? 'card_holder' : selectedPatientObj ? 'registered' : 'walkin',
+        patientName,
+        patientPhone,
+        patientId: selectedPatientObj ? selectedPatientObj.id : undefined,
+        patientCardNo: activePatientCard ? activePatientCard.cardNumber : undefined,
+        cardTier: activePatientCard ? (activePatientCard.tier || (activePatientCard as any).membershipTier) : undefined,
+        items: posCart.map(line => {
+          const gross = line.unitPrice * line.quantity;
+          const disc = Math.round((gross * line.discountPercent / 100) * 100) / 100;
+          return {
+            medicineId: line.medicine.id,
+            medicineName: line.medicine.name,
+            batchId: line.batch.id,
+            batchNumber: line.batch.batchNumber,
+            expiryDate: line.batch.expiryDate,
+            quantity: line.quantity,
+            mrp: line.batch.mrp,
+            unitPrice: line.unitPrice,
+            discountPercent: line.discountPercent,
+            discountAmount: disc,
+            taxGstPercent: line.medicine.taxGstRate || 12,
+            taxAmount: 0,
+            totalAmount: gross - disc
+          };
+        }),
+        subtotal: cartSubtotal,
+        discountAmount: cartTotalDiscount,
+        manualDiscountPercent: posManualDiscountPercent > 0 ? posManualDiscountPercent : undefined,
+        manualDiscountReason: posManualDiscountReason ? posManualDiscountReason : undefined,
+        healthCardDiscount: activePatientCard ? cartItemDiscount : 0,
+        taxAmount: cartTax,
+        netTotal: cartNetTotal,
+        paymentMode: posPaymentMode,
+        heldBy: currentUser?.fullName || 'Counter Cashier'
+      });
+
+      setHeldBills(PharmacyService.getHeldBills());
+      setPosCart([]);
+      setWalkinName('');
+      setWalkinPhone('');
+      setPosPaidAmountInput('');
+      setPosCashReceivedInput('');
+      setPosManualDiscountPercent(0);
+      setPosManualDiscountReason('');
+      showToast('info', 'Bill Placed on Hold', `Bill ${held.holdNumber} saved to queue. You can resume it anytime.`);
+    } catch (err: any) {
+      showToast('error', 'Hold Failed', err?.message || 'Could not hold bill.');
+    }
+  };
+
+  // Resume Held Bill into POS Cart
+  const handleResumeHeldBill = (bill: PharmacyHeldBill) => {
+    const medsMaster = PharmacyService.getMedicines();
+    const allBatches = PharmacyService.getBatches();
+    const restoredCart: POSCartLine[] = [];
+
+    for (const it of bill.items) {
+      const med = medsMaster.find(m => m.id === it.medicineId);
+      let batch = allBatches.find(b => b.id === it.batchId);
+      if (!batch && med) {
+        const candidates = PharmacyService.getFefoRecommendedBatches(med.id);
+        batch = candidates[0];
+      }
+      if (med && batch) {
+        restoredCart.push({
+          medicine: med,
+          batch,
+          quantity: it.quantity,
+          unitPrice: it.unitPrice,
+          discountPercent: it.discountPercent
+        });
+      }
+    }
+
+    setPosCart(restoredCart);
+    if (bill.patientId) {
+      setPosMode('patient');
+      setSelectedPatientId(bill.patientId);
+    } else {
+      setPosMode('walkin');
+      setWalkinName(bill.patientName || '');
+      setWalkinPhone(bill.patientPhone || '');
+    }
+    if (bill.manualDiscountPercent) setPosManualDiscountPercent(bill.manualDiscountPercent);
+    if (bill.manualDiscountReason) setPosManualDiscountReason(bill.manualDiscountReason);
+    if (bill.paymentMode) setPosPaymentMode(bill.paymentMode as any);
+
+    PharmacyService.deleteHeldBill(bill.id);
+    setHeldBills(PharmacyService.getHeldBills());
+    showToast('success', 'Bill Resumed', `Restored ${restoredCart.length} items from ${bill.holdNumber} into POS cart.`);
+  };
+
+  // Reprint Sale Action
+  const handleReprintSale = async (sale: PharmacySale) => {
+    try {
+      const updated = await PharmacyService.reprintSale(sale.id, currentUser?.fullName || 'Counter Cashier');
+      setSales(PharmacyService.getSales());
+      setPrintedSale(updated);
+      showToast('info', 'Reprint Triggered', `Reprint #${updated.reprintCount || 1} generated for ${updated.invoiceNumber}.`);
+    } catch (err: any) {
+      showToast('error', 'Reprint Failed', err?.message || 'Could not reprint invoice.');
+    }
+  };
+
+  // Open Cancel Modal
+  const handleOpenCancelModal = (sale: PharmacySale) => {
+    setCancellingSale(sale);
+    setIsCancelModalOpen(true);
+  };
 
   // Dispense & Bill Execution (Retail OTC Workflow)
   const handleExecuteDispense = async () => {
@@ -289,8 +509,15 @@ export const PharmacyPage: React.FC = () => {
         patientName,
         patientPhone,
         cardNo: activePatientCard ? activePatientCard.cardNumber : undefined,
+        cardTier: activePatientCard ? (activePatientCard.tier || (activePatientCard as any).membershipTier) : undefined,
+        customerType: activePatientCard ? 'card_holder' : selectedPatientObj ? 'registered' : 'walkin',
         paymentMode: posPaymentMode,
         paidAmount: posPaidAmount,
+        cashReceived: posPaymentMode === 'Cash' ? posCashReceived : undefined,
+        manualDiscountPercent: posManualDiscountPercent > 0 ? posManualDiscountPercent : undefined,
+        manualDiscountAmount: cartManualDiscount > 0 ? cartManualDiscount : undefined,
+        manualDiscountReason: posManualDiscountReason || undefined,
+        manualDiscountApprovedBy: posManualDiscountPercent > 0 ? (currentUser?.fullName || 'Authorized Supervisor') : undefined,
         notes: `Retail Counter OTC Sale: ${posCart.length} item(s)`,
         performedBy: currentUser?.fullName || 'Retail Pharmacist',
         items: posCart.map(line => ({
@@ -315,11 +542,14 @@ export const PharmacyPage: React.FC = () => {
       // Reset cart
       setPosCart([]);
       setPosPaidAmountInput('');
+      setPosCashReceivedInput('');
       setWalkinName('');
       setWalkinPhone('');
       setPrescribingDocName('');
+      setPosManualDiscountPercent(0);
+      setPosManualDiscountReason('');
 
-      showToast('success', 'Retail Sale Completed', `Tax Invoice #${result.sale.invoiceNumber} generated.`);
+      showToast('success', 'Retail Sale Completed', `Official A4 Half-Page Tax Invoice #${result.sale.invoiceNumber} generated.`);
     } catch (err: any) {
       showToast('error', 'Dispense Failed', err?.message || 'Could not complete dispensing.');
     } finally {
@@ -1794,24 +2024,55 @@ export const PharmacyPage: React.FC = () => {
               <div>
                 <div className="flex items-center gap-2">
                   <h2 className="text-sm font-black uppercase tracking-wider text-white">
-                    Retail Pharmacy Counter
+                    Retail Pharmacy POS & Counter Billing
                   </h2>
                   <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase bg-emerald-500/20 text-emerald-300 border border-emerald-400/30">
                     Direct OTC • No Rx Required
                   </span>
                 </div>
                 <p className="text-[11px] text-slate-400">
-                  Walk-in customers, registered patients & Health Card members • Fast barcode search & instant tax receipt
+                  Fast barcode scanner, FEFO batches, Health Card discounts, cash change calculation & official A4 half-page tax receipts
                 </p>
               </div>
             </div>
-            <div className="flex items-center gap-2 text-xs">
-              <span className="px-3 py-1 rounded-xl bg-slate-800 text-slate-300 border border-slate-700 font-mono text-[11px]">
-                Invoice Series: <strong className="text-emerald-400">PHARM-RET</strong>
+
+            <div className="flex flex-wrap items-center gap-2 text-xs">
+              <span className="px-3 py-1.5 rounded-xl bg-slate-800 text-slate-300 border border-slate-700 font-mono text-[11px]">
+                Invoice Series: <strong className="text-emerald-400">LM-PH-YYYY-XXXXXX</strong>
               </span>
+
+              {/* Held Bills Button */}
+              <button
+                type="button"
+                onClick={() => setIsHoldBillsModalOpen(true)}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition flex items-center gap-1.5 ${
+                  heldBills.length > 0
+                    ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 shadow-sm'
+                    : 'bg-slate-800 text-slate-400 border-slate-700 hover:text-white'
+                }`}
+              >
+                <Clock className="w-3.5 h-3.5" />
+                <span>Held Bills</span>
+                {heldBills.length > 0 && (
+                  <span className="px-1.5 py-0.2 rounded-full bg-amber-500 text-slate-950 font-black text-[10px]">
+                    {heldBills.length}
+                  </span>
+                )}
+              </button>
+
+              {/* Shift Closing Button */}
+              <button
+                type="button"
+                onClick={() => setIsShiftClosingModalOpen(true)}
+                className="px-3 py-1.5 rounded-xl bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 text-xs font-bold border border-purple-500/30 transition flex items-center gap-1.5"
+              >
+                <Calculator className="w-3.5 h-3.5" />
+                <span>Shift / Day Closing</span>
+              </button>
             </div>
           </div>
 
+          {/* POS Workbench Grid */}
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
             {/* Left 7 Columns: Medicine & FEFO Selector */}
             <div className="lg:col-span-7 space-y-4">
@@ -1825,363 +2086,692 @@ export const PharmacyPage: React.FC = () => {
                   </span>
                 </div>
 
-              {/* Search Bar */}
-              <div className="relative">
-                <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input
-                  type="text"
-                  value={posSearchTerm}
-                  onChange={e => setPosSearchTerm(e.target.value)}
-                  placeholder="Scan barcode or search medicine by name, generic composition, or brand..."
-                  className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-800 border border-slate-700 text-xs text-white placeholder-slate-400 focus:outline-none focus:border-emerald-500"
-                />
-              </div>
-
-              {/* Medicine Grid */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-[500px] overflow-y-auto pr-1">
-                {medicines
-                  .filter(m => {
-                    if (!posSearchTerm.trim()) return true;
-                    const q = posSearchTerm.toLowerCase();
-                    return (
-                      m.name.toLowerCase().includes(q) ||
-                      m.genericName.toLowerCase().includes(q) ||
-                      m.brandName.toLowerCase().includes(q) ||
-                      m.code.toLowerCase().includes(q) ||
-                      (m.barcode && m.barcode.includes(q))
-                    );
-                  })
-                  .map(med => {
-                    const fefoBatches = PharmacyService.getFefoRecommendedBatches(med.id);
-                    const totalAvailable = batches
-                      .filter(b => b.medicineId === med.id)
-                      .reduce((acc, b) => acc + b.availableQty, 0);
-
-                    const recommendedBatch = fefoBatches[0];
-                    const isOutOfStock = totalAvailable <= 0;
-
-                    return (
-                      <div
-                        key={med.id}
-                        className={`p-3 rounded-2xl border transition flex flex-col justify-between ${
-                          isOutOfStock
-                            ? 'bg-slate-900/50 border-slate-800 opacity-60'
-                            : 'bg-slate-800/80 border-slate-700 hover:border-emerald-500/50'
-                        }`}
-                      >
-                        <div className="space-y-1">
-                          <div className="flex justify-between items-start">
-                            <div>
-                              <strong className="text-xs text-white block">{med.name}</strong>
-                              <span className="text-[10px] text-slate-400 block">{med.genericName}</span>
-                            </div>
-                            <span className="font-mono text-xs font-black text-emerald-400">
-                              {formatCurrency(med.sellingPrice)}
-                            </span>
-                          </div>
-
-                          {recommendedBatch ? (
-                            <div className="text-[10px] font-mono text-slate-400 bg-slate-900/60 p-1.5 rounded-lg border border-slate-800 flex justify-between items-center">
-                              <span>FEFO: {recommendedBatch.batchNumber}</span>
-                              <span className="text-emerald-400 font-bold">Exp: {recommendedBatch.expiryDate}</span>
-                            </div>
-                          ) : (
-                            <div className="text-[10px] font-mono text-rose-400 bg-rose-950/20 p-1.5 rounded-lg border border-rose-500/20">
-                              No unexpired batches available
-                            </div>
-                          )}
-                        </div>
-
-                        <div className="flex items-center justify-between pt-2 mt-2 border-t border-slate-700/60 text-[11px]">
-                          <span className="font-mono text-slate-400">
-                            Available: <strong className="text-white">{totalAvailable}</strong>
-                          </span>
-
-                          <button
-                            onClick={() => handleAddToCart(med)}
-                            disabled={isOutOfStock || !recommendedBatch}
-                            className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white font-bold text-xs transition shadow-md shadow-emerald-600/30 flex items-center gap-1"
-                          >
-                            <Plus className="w-3.5 h-3.5" />
-                            <span>Add</span>
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })}
-              </div>
-            </div>
-          </div>
-
-          {/* Right 5 Columns: Patient Link, Health Card & Cart Checkout */}
-          <div className="lg:col-span-5 space-y-4">
-            <div className="p-5 rounded-3xl bg-slate-900 border border-slate-800 space-y-4 shadow-xl">
-              {/* Customer Selector Mode */}
-              <div className="flex rounded-xl bg-slate-950 p-1 border border-slate-800">
-                <button
-                  type="button"
-                  onClick={() => setPosMode('walkin')}
-                  className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition ${
-                    posMode === 'walkin'
-                      ? 'bg-emerald-600 text-white shadow-sm'
-                      : 'text-slate-400 hover:text-white'
-                  }`}
-                >
-                  Walk-in Customer
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setPosMode('patient')}
-                  className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition ${
-                    posMode === 'patient'
-                      ? 'bg-emerald-600 text-white shadow-sm'
-                      : 'text-slate-400 hover:text-white'
-                  }`}
-                >
-                  Hospital Patient / Card
-                </button>
-              </div>
-
-              {/* Customer Metadata Inputs */}
-              {posMode === 'walkin' ? (
-                <div className="grid grid-cols-2 gap-2 text-xs">
-                  <div>
-                    <label className="text-[10px] text-slate-400 font-bold block mb-1">Customer Name</label>
-                    <input
-                      type="text"
-                      value={walkinName}
-                      onChange={e => setWalkinName(e.target.value)}
-                      placeholder="e.g. Rahul Sen"
-                      className="w-full px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-white focus:border-emerald-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[10px] text-slate-400 font-bold block mb-1">Contact Mobile</label>
-                    <input
-                      type="text"
-                      value={walkinPhone}
-                      onChange={e => setWalkinPhone(e.target.value)}
-                      placeholder="e.g. 9830012345"
-                      className="w-full px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-white focus:border-emerald-500"
-                    />
-                  </div>
-                </div>
-              ) : (
-                <div className="space-y-2 text-xs">
-                  <label className="text-[10px] text-slate-400 font-bold block">
-                    Select Patient (UHID / Cardholder)
-                  </label>
-                  <select
-                    value={selectedPatientId}
-                    onChange={e => setSelectedPatientId(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-white focus:border-emerald-500 font-medium"
-                  >
-                    <option value="">-- Choose Registered Patient --</option>
-                    {patients.map(p => (
-                      <option key={p.id} value={p.id}>
-                        {p.fullName} ({p.mobile}) • UHID: {p.id}
-                      </option>
-                    ))}
-                  </select>
-
-                  {/* Active Health Card Banner */}
-                  {activePatientCard && (
-                    <div className="p-3 rounded-2xl bg-emerald-950/40 border border-emerald-500/30 flex items-center justify-between text-xs">
-                      <div className="flex items-center gap-2">
-                        <ShieldCheck className="w-5 h-5 text-emerald-400" />
-                        <div>
-                          <div className="font-bold text-white font-mono">
-                            {activePatientCard.cardNumber}
-                          </div>
-                          <div className="text-[10px] text-slate-300">
-                            Tier: <strong className="capitalize">{activePatientCard.tier || (activePatientCard as any).membershipTier || 'Active Member'}</strong>
-                          </div>
-                        </div>
-                      </div>
-                      <span className="px-2 py-1 rounded-lg bg-emerald-600 text-white font-black text-xs font-mono">
-                        {defaultHealthCardDiscount}% OFF
-                      </span>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* OTC Direct Workflow Indicator */}
-              <div className="p-2.5 rounded-xl bg-emerald-950/30 border border-emerald-500/20 text-[11px] text-slate-300 flex items-center justify-between">
-                <div className="flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
-                  <span className="text-emerald-300 font-bold">OTC Direct Sale</span>
-                </div>
-                <span className="text-[10px] text-slate-400">No Doctor Prescription Required</span>
-              </div>
-
-              {/* Cart Items List */}
-              <div className="space-y-2 pt-2 border-t border-slate-800">
-                <div className="flex items-center justify-between text-xs font-bold text-white">
-                  <span>Cart Items ({posCart.length})</span>
-                  {posCart.length > 0 && (
-                    <button
-                      onClick={() => setPosCart([])}
-                      className="text-[10px] text-rose-400 hover:underline font-normal"
-                    >
-                      Clear All
-                    </button>
-                  )}
+                {/* Search & Barcode Scan Bar */}
+                <div className="relative">
+                  <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="text"
+                    value={posSearchTerm}
+                    onChange={e => setPosSearchTerm(e.target.value)}
+                    onKeyDown={handleBarcodeScanEnter}
+                    placeholder="Scan barcode [Press Enter to add] or search by brand, generic, code..."
+                    className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-800 border border-slate-700 text-xs text-white placeholder-slate-400 focus:outline-none focus:border-emerald-500 font-mono"
+                  />
                 </div>
 
-                {posCart.length === 0 ? (
-                  <div className="p-6 rounded-2xl bg-slate-950/60 border border-slate-800 text-center text-slate-500 text-xs">
-                    No medicines selected yet. Click "+ Add" on the left.
-                  </div>
-                ) : (
-                  <div className="space-y-2 max-h-[220px] overflow-y-auto pr-1">
-                    {posCart.map(line => {
-                      const lineTotal =
-                        line.unitPrice * line.quantity * (1 - line.discountPercent / 100);
+                {/* Medicine Grid */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-[500px] overflow-y-auto pr-1">
+                  {medicines
+                    .filter(m => {
+                      if (!posSearchTerm.trim()) return true;
+                      const q = posSearchTerm.toLowerCase();
+                      return (
+                        m.name.toLowerCase().includes(q) ||
+                        m.genericName.toLowerCase().includes(q) ||
+                        m.brandName.toLowerCase().includes(q) ||
+                        m.code.toLowerCase().includes(q) ||
+                        (m.barcode && m.barcode.includes(q))
+                      );
+                    })
+                    .map(med => {
+                      const fefoBatches = PharmacyService.getFefoRecommendedBatches(med.id);
+                      const totalAvailable = batches
+                        .filter(b => b.medicineId === med.id)
+                        .reduce((acc, b) => acc + b.availableQty, 0);
+
+                      const recommendedBatch = fefoBatches[0];
+                      const isOutOfStock = totalAvailable <= 0;
 
                       return (
                         <div
-                          key={line.batch.id}
-                          className="p-3 rounded-2xl bg-slate-800/80 border border-slate-700 space-y-2"
+                          key={med.id}
+                          className={`p-3 rounded-2xl border transition flex flex-col justify-between ${
+                            isOutOfStock
+                              ? 'bg-slate-900/50 border-slate-800 opacity-60'
+                              : 'bg-slate-800/80 border-slate-700 hover:border-emerald-500/50'
+                          }`}
                         >
-                          <div className="flex justify-between items-start">
-                            <div>
-                              <strong className="text-xs text-white block">{line.medicine.name}</strong>
-                              <span className="text-[10px] text-slate-400 font-mono">
-                                Batch: {line.batch.batchNumber} • Exp: {line.batch.expiryDate}
+                          <div className="space-y-1">
+                            <div className="flex justify-between items-start">
+                              <div>
+                                <strong className="text-xs text-white block">{med.name}</strong>
+                                <span className="text-[10px] text-slate-400 block">{med.genericName}</span>
+                              </div>
+                              <span className="font-mono text-xs font-black text-emerald-400">
+                                {formatCurrency(med.sellingPrice)}
                               </span>
                             </div>
-                            <button
-                              onClick={() => handleUpdateCartQty(line.batch.id, 0)}
-                              className="text-slate-500 hover:text-rose-400 p-1"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
+
+                            {recommendedBatch ? (
+                              <div className="text-[10px] font-mono text-slate-400 bg-slate-900/60 p-1.5 rounded-lg border border-slate-800 flex justify-between items-center">
+                                <span>FEFO: {recommendedBatch.batchNumber}</span>
+                                <span className="text-emerald-400 font-bold">Exp: {recommendedBatch.expiryDate}</span>
+                              </div>
+                            ) : (
+                              <div className="text-[10px] font-mono text-rose-400 bg-rose-950/20 p-1.5 rounded-lg border border-rose-500/20">
+                                No unexpired batches available
+                              </div>
+                            )}
                           </div>
 
-                          <div className="flex items-center justify-between gap-2 text-xs">
-                            <div className="flex items-center gap-1.5 bg-slate-900 px-2 py-1 rounded-lg border border-slate-700">
-                              <span className="text-[10px] text-slate-400">Qty:</span>
-                              <input
-                                type="number"
-                                min="1"
-                                max={line.batch.availableQty}
-                                value={line.quantity}
-                                onChange={e =>
-                                  handleUpdateCartQty(line.batch.id, parseInt(e.target.value) || 1)
-                                }
-                                className="w-12 bg-transparent text-white font-mono font-bold text-center focus:outline-none"
-                              />
-                            </div>
-
-                            <div className="flex items-center gap-1 bg-slate-900 px-2 py-1 rounded-lg border border-slate-700">
-                              <span className="text-[10px] text-slate-400">Disc%:</span>
-                              <input
-                                type="number"
-                                min="0"
-                                max="100"
-                                value={line.discountPercent}
-                                onChange={e =>
-                                  handleUpdateCartDiscount(
-                                    line.batch.id,
-                                    parseFloat(e.target.value) || 0
-                                  )
-                                }
-                                className="w-10 bg-transparent text-white font-mono text-center focus:outline-none text-emerald-400"
-                              />
-                            </div>
-
-                            <span className="font-mono font-bold text-white">
-                              {formatCurrency(lineTotal)}
+                          <div className="flex items-center justify-between pt-2 mt-2 border-t border-slate-700/60 text-[11px]">
+                            <span className="font-mono text-slate-400">
+                              Stock: <strong className="text-white">{totalAvailable}</strong>
                             </span>
+
+                            <button
+                              onClick={() => handleAddToCart(med)}
+                              disabled={isOutOfStock || !recommendedBatch}
+                              className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white font-bold text-xs transition shadow-md shadow-emerald-600/30 flex items-center gap-1"
+                            >
+                              <Plus className="w-3.5 h-3.5" />
+                              <span>Add</span>
+                            </button>
                           </div>
                         </div>
                       );
                     })}
-                  </div>
-                )}
+                </div>
               </div>
+            </div>
 
-              {/* Checkout Calculation Box */}
-              {posCart.length > 0 && (
-                <div className="space-y-3 pt-3 border-t border-slate-800 text-xs">
-                  <div className="flex justify-between text-slate-400">
-                    <span>Subtotal:</span>
-                    <span className="font-mono">{formatCurrency(cartSubtotal)}</span>
-                  </div>
-                  {cartDiscount > 0 && (
-                    <div className="flex justify-between text-emerald-400 font-bold">
-                      <span>Discount Savings:</span>
-                      <span className="font-mono">-{formatCurrency(cartDiscount)}</span>
-                    </div>
-                  )}
-                  <div className="flex justify-between text-sm font-black text-white pt-2 border-t border-slate-800">
-                    <span>Net Bill Total:</span>
-                    <span className="font-mono text-emerald-400">{formatCurrency(cartNetTotal)}</span>
-                  </div>
+            {/* Right 5 Columns: Patient Link, Health Card & Smart Cart Checkout */}
+            <div className="lg:col-span-5 space-y-4">
+              <div className="p-5 rounded-3xl bg-slate-900 border border-slate-800 space-y-4 shadow-xl">
+                {/* Customer Selector Mode */}
+                <div className="flex rounded-xl bg-slate-950 p-1 border border-slate-800">
+                  <button
+                    type="button"
+                    onClick={() => setPosMode('walkin')}
+                    className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition ${
+                      posMode === 'walkin'
+                        ? 'bg-emerald-600 text-white shadow-sm'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    Walk-in Customer
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPosMode('patient')}
+                    className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition ${
+                      posMode === 'patient'
+                        ? 'bg-emerald-600 text-white shadow-sm'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    Hospital Patient / Card
+                  </button>
+                </div>
 
-                  {/* Payment Mode */}
-                  <div className="grid grid-cols-4 gap-1.5 pt-1">
-                    {(['Cash', 'Card', 'UPI', 'Health Wallet'] as const).map(mode => (
-                      <button
-                        key={mode}
-                        type="button"
-                        onClick={() => setPosPaymentMode(mode)}
-                        className={`py-1.5 rounded-xl text-[10px] font-bold border transition ${
-                          posPaymentMode === mode
-                            ? 'bg-emerald-600 text-white border-emerald-500'
-                            : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
-                        }`}
-                      >
-                        {mode}
-                      </button>
-                    ))}
-                  </div>
-
-                  {/* Paid & Due */}
-                  <div className="grid grid-cols-2 gap-2">
+                {/* Customer Metadata Inputs */}
+                {posMode === 'walkin' ? (
+                  <div className="grid grid-cols-2 gap-2 text-xs">
                     <div>
-                      <label className="text-[10px] text-slate-400 font-bold block mb-1">Paid (₹)</label>
+                      <label className="text-[10px] text-slate-400 font-bold block mb-1">Customer Name</label>
                       <input
-                        type="number"
-                        placeholder={cartNetTotal.toString()}
-                        value={posPaidAmountInput}
-                        onChange={e => setPosPaidAmountInput(e.target.value)}
-                        className="w-full px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-white font-mono focus:border-emerald-500"
+                        type="text"
+                        value={walkinName}
+                        onChange={e => setWalkinName(e.target.value)}
+                        placeholder="e.g. Rahul Sen"
+                        className="w-full px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-white focus:border-emerald-500"
                       />
                     </div>
                     <div>
-                      <label className="text-[10px] text-slate-400 font-bold block mb-1">Due Balance</label>
-                      <div
-                        className={`px-3 py-2 rounded-xl font-mono text-xs font-bold border ${
-                          posDueAmount > 0
-                            ? 'bg-rose-950/40 text-rose-300 border-rose-500/30'
-                            : 'bg-emerald-950/40 text-emerald-300 border-emerald-500/30'
-                        }`}
-                      >
-                        {formatCurrency(posDueAmount)}
+                      <label className="text-[10px] text-slate-400 font-bold block mb-1">Contact Mobile</label>
+                      <input
+                        type="text"
+                        value={walkinPhone}
+                        onChange={e => setWalkinPhone(e.target.value)}
+                        placeholder="e.g. 9830012345"
+                        className="w-full px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-white focus:border-emerald-500"
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-2 text-xs">
+                    <label className="text-[10px] text-slate-400 font-bold block">
+                      Search & Select Patient (UHID / Name / Mobile)
+                    </label>
+                    <input
+                      type="text"
+                      value={patientSearchQuery}
+                      onChange={e => setPatientSearchQuery(e.target.value)}
+                      placeholder="Type patient name, phone, or UHID to filter..."
+                      className="w-full px-3 py-1.5 rounded-xl bg-slate-800/80 border border-slate-700 text-white text-xs mb-1 focus:border-emerald-500"
+                    />
+                    <select
+                      value={selectedPatientId}
+                      onChange={e => setSelectedPatientId(e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-white focus:border-emerald-500 font-medium"
+                    >
+                      <option value="">-- Choose Registered Patient --</option>
+                      {patients
+                        .filter(p => {
+                          if (!patientSearchQuery.trim()) return true;
+                          const q = patientSearchQuery.toLowerCase();
+                          return (
+                            p.fullName.toLowerCase().includes(q) ||
+                            (p.mobile && p.mobile.includes(q)) ||
+                            p.id.toLowerCase().includes(q)
+                          );
+                        })
+                        .map(p => (
+                          <option key={p.id} value={p.id}>
+                            {p.fullName} ({p.mobile}) • UHID: {p.id}
+                          </option>
+                        ))}
+                    </select>
+
+                    {/* Active Health Card Banner */}
+                    {activePatientCard && (
+                      <div className="p-3 rounded-2xl bg-emerald-950/40 border border-emerald-500/30 flex items-center justify-between text-xs">
+                        <div className="flex items-center gap-2">
+                          <ShieldCheck className="w-5 h-5 text-emerald-400" />
+                          <div>
+                            <div className="font-bold text-white font-mono">
+                              {activePatientCard.cardNumber}
+                            </div>
+                            <div className="text-[10px] text-slate-300">
+                              Tier: <strong className="capitalize">{activePatientCard.tier || (activePatientCard as any).membershipTier || 'Active Member'}</strong>
+                            </div>
+                          </div>
+                        </div>
+                        <span className="px-2 py-1 rounded-lg bg-emerald-600 text-white font-black text-xs font-mono">
+                          {defaultHealthCardDiscount}% OFF
+                        </span>
                       </div>
+                    )}
+                  </div>
+                )}
+
+                {/* OTC Direct Workflow Indicator */}
+                <div className="p-2.5 rounded-xl bg-emerald-950/30 border border-emerald-500/20 text-[11px] text-slate-300 flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+                    <span className="text-emerald-300 font-bold">OTC Direct Sale</span>
+                  </div>
+                  <span className="text-[10px] text-slate-400">No Doctor Prescription Required</span>
+                </div>
+
+                {/* Smart Cart Items List */}
+                <div className="space-y-2 pt-2 border-t border-slate-800">
+                  <div className="flex items-center justify-between text-xs font-bold text-white">
+                    <span>Smart Cart ({posCart.length})</span>
+                    <div className="flex items-center gap-3">
+                      {posCart.length > 0 && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={handleHoldCurrentBill}
+                            className="text-[10px] text-amber-400 hover:text-amber-300 font-medium flex items-center gap-1"
+                            title="Pause cart and save to held queue"
+                          >
+                            <Clock className="w-3 h-3" />
+                            <span>Hold Bill</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setPosCart([])}
+                            className="text-[10px] text-rose-400 hover:underline font-normal"
+                          >
+                            Clear All
+                          </button>
+                        </>
+                      )}
                     </div>
                   </div>
 
-                  {/* Dispense Action Button */}
-                  <button
-                    onClick={handleExecuteDispense}
-                    disabled={isDispensing}
-                    className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-xs transition shadow-lg shadow-emerald-600/30 flex items-center justify-center gap-2 disabled:opacity-50"
-                  >
-                    <CheckCircle2 className="w-4 h-4" />
-                    <span>
-                      {isDispensing
-                        ? 'Dispensing & Generating Tax Invoice...'
-                        : `Dispense & Generate Invoice ${formatCurrency(cartNetTotal)}`}
-                    </span>
-                  </button>
+                  {posCart.length === 0 ? (
+                    <div className="p-6 rounded-2xl bg-slate-950/60 border border-slate-800 text-center text-slate-500 text-xs">
+                      No medicines selected yet. Search or scan barcode on the left.
+                    </div>
+                  ) : (
+                    <div className="space-y-2.5 max-h-[260px] overflow-y-auto pr-1">
+                      {posCart.map(line => {
+                        const lineGross = line.unitPrice * line.quantity;
+                        const lineTotal = lineGross * (1 - line.discountPercent / 100);
+                        const medBatches = batches.filter(b => b.medicineId === line.medicine.id && b.status === 'active' && b.availableQty > 0);
+
+                        return (
+                          <div
+                            key={line.batch.id}
+                            className="p-3 rounded-2xl bg-slate-800/90 border border-slate-700 space-y-2"
+                          >
+                            <div className="flex justify-between items-start gap-2">
+                              <div>
+                                <strong className="text-xs text-white block">{line.medicine.name}</strong>
+                                <span className="text-[10px] text-slate-400 block">{line.medicine.genericName}</span>
+                              </div>
+                              <button
+                                onClick={() => handleUpdateCartQty(line.batch.id, 0)}
+                                className="text-slate-500 hover:text-rose-400 p-1"
+                                title="Remove Item"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+
+                            {/* Batch Switcher Selector */}
+                            <div className="flex items-center gap-1.5 text-[10px] text-slate-400">
+                              <span>Batch:</span>
+                              <select
+                                value={line.batch.id}
+                                onChange={e => handleSwitchCartBatch(line.batch.id, e.target.value)}
+                                className="px-2 py-0.5 rounded-lg bg-slate-900 border border-slate-700 text-slate-200 font-mono text-[10px] focus:outline-none focus:border-emerald-500"
+                              >
+                                {medBatches.map(b => (
+                                  <option key={b.id} value={b.id}>
+                                    {b.batchNumber} (Exp: {b.expiryDate} • Stock: {b.availableQty})
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+
+                            {/* Qty, Discount, and Rate Controls */}
+                            <div className="flex items-center justify-between gap-2 text-xs pt-1 border-t border-slate-700/60">
+                              <div className="flex items-center gap-1 bg-slate-900 px-2 py-1 rounded-lg border border-slate-700">
+                                <button
+                                  type="button"
+                                  onClick={() => handleUpdateCartQty(line.batch.id, line.quantity - 1)}
+                                  className="text-slate-400 hover:text-white px-1 font-bold"
+                                >
+                                  -
+                                </button>
+                                <input
+                                  type="number"
+                                  min="1"
+                                  max={line.batch.availableQty}
+                                  value={line.quantity}
+                                  onChange={e =>
+                                    handleUpdateCartQty(line.batch.id, parseInt(e.target.value) || 1)
+                                  }
+                                  className="w-10 bg-transparent text-white font-mono font-bold text-center focus:outline-none"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => handleUpdateCartQty(line.batch.id, line.quantity + 1)}
+                                  className="text-slate-400 hover:text-white px-1 font-bold"
+                                >
+                                  +
+                                </button>
+                              </div>
+
+                              <div className="flex items-center gap-1 bg-slate-900 px-2 py-1 rounded-lg border border-slate-700">
+                                <span className="text-[10px] text-slate-400">Disc%:</span>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  max="100"
+                                  value={line.discountPercent}
+                                  onChange={e =>
+                                    handleUpdateCartDiscount(
+                                      line.batch.id,
+                                      parseFloat(e.target.value) || 0
+                                    )
+                                  }
+                                  className="w-10 bg-transparent text-white font-mono text-center focus:outline-none text-emerald-400 font-bold"
+                                />
+                              </div>
+
+                              <div className="text-right">
+                                <span className="font-mono font-bold text-white block">
+                                  {formatCurrency(lineTotal)}
+                                </span>
+                                <span className="text-[9px] text-slate-400 font-mono">
+                                  @{formatCurrency(line.unitPrice)}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
-              )}
+
+                {/* Checkout Calculation Box */}
+                {posCart.length > 0 && (
+                  <div className="space-y-3 pt-3 border-t border-slate-800 text-xs">
+                    {/* Subtotal */}
+                    <div className="flex justify-between text-slate-400">
+                      <span>Subtotal (Gross):</span>
+                      <span className="font-mono">{formatCurrency(cartSubtotal)}</span>
+                    </div>
+
+                    {/* Item Discount Savings */}
+                    {cartItemDiscount > 0 && (
+                      <div className="flex justify-between text-emerald-400 font-semibold">
+                        <span>Cart Item Savings:</span>
+                        <span className="font-mono">-{formatCurrency(cartItemDiscount)}</span>
+                      </div>
+                    )}
+
+                    {/* Manual Discount Row */}
+                    <div className="flex items-center justify-between pt-1">
+                      <button
+                        type="button"
+                        onClick={() => setIsManualDiscountOpen(!isManualDiscountOpen)}
+                        className="text-[11px] text-purple-400 hover:underline flex items-center gap-1"
+                      >
+                        <Tag className="w-3 h-3" />
+                        <span>{isManualDiscountOpen ? 'Hide Override Discount' : '+ Manual Override Discount'}</span>
+                      </button>
+                      {cartManualDiscount > 0 && (
+                        <span className="font-mono text-purple-400 font-bold">
+                          -{formatCurrency(cartManualDiscount)}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Manual Discount Form Box */}
+                    {isManualDiscountOpen && (
+                      <div className="p-3 rounded-xl bg-purple-950/30 border border-purple-500/30 space-y-2 text-xs">
+                        <div className="flex items-center gap-2">
+                          <label className="text-[10px] text-purple-300 font-bold">Discount %:</label>
+                          <input
+                            type="number"
+                            min="0"
+                            max="50"
+                            value={posManualDiscountPercent || ''}
+                            onChange={e => setPosManualDiscountPercent(Math.max(0, Math.min(50, parseFloat(e.target.value) || 0)))}
+                            placeholder="0%"
+                            className="w-16 px-2 py-1 rounded bg-slate-900 border border-purple-500/50 text-white font-mono text-center"
+                          />
+                        </div>
+                        <input
+                          type="text"
+                          value={posManualDiscountReason}
+                          onChange={e => setPosManualDiscountReason(e.target.value)}
+                          placeholder="Mandatory reason for discount override..."
+                          className="w-full px-2.5 py-1.5 rounded-lg bg-slate-900 border border-purple-500/50 text-white text-[11px]"
+                        />
+                      </div>
+                    )}
+
+                    {/* Round-off */}
+                    {cartRoundOff !== 0 && (
+                      <div className="flex justify-between text-slate-500 text-[11px]">
+                        <span>Round-Off:</span>
+                        <span className="font-mono">{cartRoundOff > 0 ? `+${cartRoundOff.toFixed(2)}` : cartRoundOff.toFixed(2)}</span>
+                      </div>
+                    )}
+
+                    {/* Grand Total */}
+                    <div className="flex justify-between text-sm font-black text-white pt-2 border-t border-slate-800">
+                      <span>GRAND BILL TOTAL:</span>
+                      <span className="font-mono text-emerald-400 text-base">{formatCurrency(cartNetTotal)}</span>
+                    </div>
+
+                    {/* Payment Mode Selector */}
+                    <div className="grid grid-cols-5 gap-1 pt-1">
+                      {(['Cash', 'Card', 'UPI', 'Health Wallet', 'Bank Transfer'] as const).map(mode => (
+                        <button
+                          key={mode}
+                          type="button"
+                          onClick={() => setPosPaymentMode(mode)}
+                          className={`py-1.5 rounded-xl text-[9.5px] font-bold border transition ${
+                            posPaymentMode === mode
+                              ? 'bg-emerald-600 text-white border-emerald-500 shadow-sm'
+                              : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
+                          }`}
+                        >
+                          {mode}
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Cash Tender & Automatic Change Calculation */}
+                    {posPaymentMode === 'Cash' ? (
+                      <div className="p-3 rounded-2xl bg-slate-950 border border-slate-800 space-y-2">
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="text-[10px] text-slate-400 font-bold block mb-1">
+                              Cash Received (₹)
+                            </label>
+                            <input
+                              type="number"
+                              placeholder={cartNetTotal.toString()}
+                              value={posCashReceivedInput}
+                              onChange={e => setPosCashReceivedInput(e.target.value)}
+                              className="w-full px-3 py-1.5 rounded-xl bg-slate-800 border border-slate-700 text-white font-mono font-bold focus:border-emerald-500"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-[10px] text-emerald-400 font-bold block mb-1">
+                              Automatic Change
+                            </label>
+                            <div className="px-3 py-1.5 rounded-xl bg-emerald-950/60 border border-emerald-500/40 text-emerald-300 font-mono font-black text-sm">
+                              {formatCurrency(posChangeGiven)}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      /* Non-Cash Paid & Due */
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="text-[10px] text-slate-400 font-bold block mb-1">Paid Amount (₹)</label>
+                          <input
+                            type="number"
+                            placeholder={cartNetTotal.toString()}
+                            value={posPaidAmountInput}
+                            onChange={e => setPosPaidAmountInput(e.target.value)}
+                            className="w-full px-3 py-1.5 rounded-xl bg-slate-800 border border-slate-700 text-white font-mono focus:border-emerald-500"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[10px] text-slate-400 font-bold block mb-1">Due Balance</label>
+                          <div
+                            className={`px-3 py-1.5 rounded-xl font-mono text-xs font-bold border ${
+                              posDueAmount > 0
+                                ? 'bg-rose-950/40 text-rose-300 border-rose-500/30'
+                                : 'bg-emerald-950/40 text-emerald-300 border-emerald-500/30'
+                            }`}
+                          >
+                            {formatCurrency(posDueAmount)}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Dispense Action Button */}
+                    <button
+                      onClick={handleExecuteDispense}
+                      disabled={isDispensing}
+                      className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-xs transition shadow-lg shadow-emerald-600/30 flex items-center justify-center gap-2 disabled:opacity-50"
+                    >
+                      <CheckCircle2 className="w-4 h-4" />
+                      <span>
+                        {isDispensing
+                          ? 'Dispensing & Generating A4 Invoice...'
+                          : `Complete & Generate Bill (${formatCurrency(cartNetTotal)})`}
+                      </span>
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
-        </div>
+
+          {/* ===================================================================
+              RECENT RETAIL PHARMACY BILLS & AUDIT HISTORY
+              =================================================================== */}
+          <div className="p-5 rounded-3xl bg-slate-900 border border-slate-800 space-y-4 shadow-xl">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2.5">
+                <span className="p-2 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                  <FileText className="w-4 h-4" />
+                </span>
+                <div>
+                  <h3 className="text-xs font-black uppercase tracking-wider text-white">
+                    Retail Billing History & Invoice Archive
+                  </h3>
+                  <p className="text-[10px] text-slate-400">
+                    Search past retail sales, print official A4 half-page invoices, reprint, or process authorized reversals
+                  </p>
+                </div>
+              </div>
+
+              {/* Status Filters & Search */}
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="relative">
+                  <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="text"
+                    value={posBillSearchTerm}
+                    onChange={e => setPosBillSearchTerm(e.target.value)}
+                    placeholder="Search by Invoice, Customer, Phone, Cashier..."
+                    className="pl-8 pr-3 py-1.5 rounded-xl bg-slate-800 border border-slate-700 text-xs text-white placeholder-slate-400 focus:outline-none focus:border-emerald-500 w-64"
+                  />
+                </div>
+
+                <div className="flex items-center gap-1 bg-slate-800 p-1 rounded-xl border border-slate-700 text-[10px]">
+                  {(['all', 'dispensed', 'cancelled', 'returned'] as const).map(st => (
+                    <button
+                      key={st}
+                      type="button"
+                      onClick={() => setPosBillStatusFilter(st)}
+                      className={`px-2.5 py-1 rounded-lg font-bold capitalize transition ${
+                        posBillStatusFilter === st
+                          ? 'bg-emerald-600 text-white'
+                          : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      {st}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* History Table */}
+            <div className="rounded-2xl border border-slate-800 overflow-x-auto">
+              <table className="w-full text-left text-xs border-collapse">
+                <thead className="bg-slate-950 text-slate-400 text-[10px] font-mono uppercase tracking-wider border-b border-slate-800">
+                  <tr>
+                    <th className="px-4 py-3">Invoice No.</th>
+                    <th className="px-4 py-3">Date & Time</th>
+                    <th className="px-4 py-3">Customer / Patient</th>
+                    <th className="px-3 py-3 text-center">Items</th>
+                    <th className="px-4 py-3 text-right">Net Bill</th>
+                    <th className="px-4 py-3 text-right">Paid</th>
+                    <th className="px-4 py-3">Payment</th>
+                    <th className="px-4 py-3">Cashier</th>
+                    <th className="px-4 py-3 text-center">Status</th>
+                    <th className="px-4 py-3 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800">
+                  {sales
+                    .filter(s => s.sourceType === 'RETAIL' || s.saleType === 'RETAIL' || !s.prescriptionId)
+                    .filter(s => {
+                      if (posBillStatusFilter !== 'all' && s.status !== posBillStatusFilter) return false;
+                      if (!posBillSearchTerm.trim()) return true;
+                      const q = posBillSearchTerm.toLowerCase();
+                      return (
+                        s.invoiceNumber.toLowerCase().includes(q) ||
+                        s.patientName.toLowerCase().includes(q) ||
+                        (s.patientPhone && s.patientPhone.includes(q)) ||
+                        (s.patientId && s.patientId.toLowerCase().includes(q)) ||
+                        (s.dispensedBy && s.dispensedBy.toLowerCase().includes(q))
+                      );
+                    })
+                    .map(sale => (
+                      <tr key={sale.id} className="hover:bg-slate-800/40 transition">
+                        <td className="px-4 py-3 font-mono font-bold text-emerald-400">
+                          {sale.invoiceNumber}
+                        </td>
+                        <td className="px-4 py-3 font-mono text-[11px] text-slate-400">
+                          {formatDateTime(sale.saleDate)}
+                        </td>
+                        <td className="px-4 py-3">
+                          <strong className="text-white block">{sale.patientName}</strong>
+                          {sale.patientPhone && (
+                            <span className="text-[10px] text-slate-400 font-mono block">
+                              Ph: {sale.patientPhone}
+                            </span>
+                          )}
+                          {sale.patientCardNo && (
+                            <span className="text-[9px] font-mono text-emerald-400 flex items-center gap-0.5">
+                              <ShieldCheck className="w-2.5 h-2.5" />
+                              {sale.patientCardNo}
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-3 py-3 text-center font-mono text-slate-300">
+                          {sale.items.length}
+                        </td>
+                        <td className="px-4 py-3 text-right font-mono font-bold text-white">
+                          {formatCurrency(sale.netTotal)}
+                        </td>
+                        <td className="px-4 py-3 text-right font-mono text-emerald-400 font-bold">
+                          {formatCurrency(sale.paidAmount)}
+                        </td>
+                        <td className="px-4 py-3 text-slate-300 text-[11px]">
+                          <span className="font-mono uppercase">{sale.paymentMethod}</span>
+                        </td>
+                        <td className="px-4 py-3 font-mono text-[10px] text-slate-400">
+                          {sale.dispensedBy}
+                        </td>
+                        <td className="px-4 py-3 text-center">
+                          <span
+                            className={`px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider ${
+                              sale.status === 'dispensed'
+                                ? 'bg-emerald-950/60 text-emerald-300 border border-emerald-500/30'
+                                : sale.status === 'cancelled'
+                                ? 'bg-rose-950/60 text-rose-300 border border-rose-500/30'
+                                : 'bg-amber-950/60 text-amber-300 border border-amber-500/30'
+                            }`}
+                          >
+                            {sale.status}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <div className="flex items-center justify-end gap-1.5">
+                            {/* View / Print A4 Half-Page */}
+                            <button
+                              type="button"
+                              onClick={() => setPrintedSale(sale)}
+                              className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] font-bold transition flex items-center gap-1 border border-slate-700"
+                              title="Preview and Print Official A4 Half-Page Invoice"
+                            >
+                              <Printer className="w-3 h-3 text-emerald-400" />
+                              <span>Print</span>
+                            </button>
+
+                            {/* Reprint */}
+                            {sale.status === 'dispensed' && (
+                              <button
+                                type="button"
+                                onClick={() => handleReprintSale(sale)}
+                                className="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-300 text-[10px] font-bold transition flex items-center gap-1 border border-slate-700"
+                                title="Official Reprint with audit logging"
+                              >
+                                <RotateCcw className="w-3 h-3" />
+                                <span>Reprint</span>
+                              </button>
+                            )}
+
+                            {/* Cancel / Reverse */}
+                            {sale.status === 'dispensed' && (
+                              <button
+                                type="button"
+                                onClick={() => handleOpenCancelModal(sale)}
+                                className="px-2 py-1 rounded-lg bg-slate-800 hover:bg-rose-950/50 text-slate-400 hover:text-rose-300 text-[10px] font-medium transition border border-slate-700 hover:border-rose-500/30"
+                                title="Non-destructive cancellation and reversal"
+                              >
+                                <span>Cancel</span>
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
       )}
 
@@ -4101,7 +4691,7 @@ export const PharmacyPage: React.FC = () => {
       )}
 
       {/* =====================================================================
-          MODAL: OFFICIAL PHARMACY TAX INVOICE PRINT
+          MODAL: OFFICIAL A4 HALF-PAGE PHARMACY TAX INVOICE PRINT / REPRINT / PDF
           ===================================================================== */}
       {printedSale && (
         <PharmacyBillPrintModal
@@ -4110,6 +4700,57 @@ export const PharmacyPage: React.FC = () => {
           sale={printedSale}
           patient={selectedPatientObj}
           card={activePatientCard}
+          onSaleUpdated={(updated) => {
+            setSales(PharmacyService.getSales());
+            setPrintedSale(updated);
+          }}
+        />
+      )}
+
+      {/* =====================================================================
+          MODAL: HELD BILLS QUEUE
+          ===================================================================== */}
+      <RetailPosHoldBillsModal
+        isOpen={isHoldBillsModalOpen}
+        onClose={() => setIsHoldBillsModalOpen(false)}
+        heldBills={heldBills}
+        onResumeBill={handleResumeHeldBill}
+        onDeleteBill={(id) => {
+          PharmacyService.deleteHeldBill(id);
+          setHeldBills(PharmacyService.getHeldBills());
+          showToast('info', 'Held Bill Discarded', 'Unfinished cart removed from queue.');
+        }}
+      />
+
+      {/* =====================================================================
+          MODAL: PHARMACY SHIFT / DAY CLOSING
+          ===================================================================== */}
+      <PharmacyShiftClosingModal
+        isOpen={isShiftClosingModalOpen}
+        onClose={() => setIsShiftClosingModalOpen(false)}
+        onShiftClosed={(closing) => {
+          showToast('success', 'Shift Closed', `Day closing record ${closing.shiftNumber} saved and verified.`);
+        }}
+      />
+
+      {/* =====================================================================
+          MODAL: NON-DESTRUCTIVE BILL CANCELLATION
+          ===================================================================== */}
+      {cancellingSale && (
+        <PharmacyBillCancelModal
+          isOpen={isCancelModalOpen}
+          onClose={() => {
+            setIsCancelModalOpen(false);
+            setCancellingSale(null);
+          }}
+          sale={cancellingSale}
+          onSaleCancelled={(cancelled) => {
+            setSales(PharmacyService.getSales());
+            setBatches(PharmacyService.getBatches());
+            setTransactions(PharmacyService.getPharmacyTransactions());
+            setMovements(PharmacyService.getStockMovements());
+            showToast('info', 'Bill Cancelled', `Invoice ${cancelled.invoiceNumber} has been reversed and marked cancelled.`);
+          }}
         />
       )}
     </div>

@@ -1,277 +1,181 @@
-# Walkthrough: Hospital-Grade Laboratory & Diagnostics Hub Master Upgrade
+# Walkthrough: LabMedix Super Admin Data & System Control Center & Retail Pharmacy POS
 
-We have upgraded the **Laboratory & Diagnostics Hub** into a strong, hospital-grade, production-ready laboratory management system with end-to-end specimen tracking, accessioning, barcode management, billing integration, technician workbench, pathologist verification, controlled rejection/recollection, real-time Firestore sync, and multichannel report delivery.
-
----
-
-## Key Achievements & Completed Modules
-
-### 1. Unified Laboratory Data Model & Single Source of Truth
-- **Unified Domain**: Eliminated split models between `labmedix_lab_orders_v1` and `labmedix_portal_lab_bookings_v1`. Both now share a unified schema synced directly with Firestore's `labBookings` collection.
-- **Dedicated Specimen Architecture (`SpecimenRecord`)**:
-  - Unique Accession Number (`ACC-2026-XXXXX`)
-  - Dedicated Specimen ID (`SPEC-XXXXXX`)
-  - Real barcode string (Code 128 compliant)
-  - Traceable status lifecycle: `awaiting_collection` → `collected` → `accessioned` → `received` → `in_analysis` → `rejected` → `recollection_required`.
-  - Links directly to Patient, Order, Test, Department, Container Tube, Phlebotomist, and Reception Staff.
-- **Firestore Security Rules & Live Sync**:
-  - Registered `specimens`, `diagnosticReports`, `laboratory_orders`, and `settings/laboratory` in [firestore.rules](file:///d:/Labmedix.in/firestore.rules) and [apiSyncService.ts](file:///d:/Labmedix.in/src/services/apiSyncService.ts).
+We have implemented the dedicated, sovereign **Super Admin Data & System Control Center** and the **Hospital-Grade Retail Pharmacy POS & A4 Half-Page Invoice System** in LabMedix.
 
 ---
 
-### 2. Complete Hospital Laboratory Workflow Implemented
+## 1. Super Admin Data & System Control Center
+
+### Security & Architecture
+- **Super Admin Exclusive**: Only users with `role === 'super_admin'` can view or access this module.
+- **Frontend Enforcement**: Gated via `<SuperAdminGuard>`, in [App.tsx](file:///d:/Labmedix.in/src/App.tsx), and in [Sidebar.tsx](file:///d:/Labmedix.in/src/components/layout/Sidebar.tsx). Unauthorized attempts result in an HTTP 403 screen and are automatically recorded in the tamper-evident security audit log.
+- **Centralized Engine**: [superAdminService.ts](file:///d:/Labmedix.in/src/services/superAdminService.ts) provides sovereign controls across the entire system.
 
 ```mermaid
-flowchart LR
-    A[Requisition & Billing] --> B[Phlebotomy Collection]
-    B --> C[Accessioning & Barcode]
-    C --> D[Reception & Verification]
-    D -->|QC Rejection| E[Controlled Rejection & Recollection]
-    E --> B
-    D -->|Accepted| F[Department Routing]
-    F --> G[Technician Result Entry]
-    G -->|Panic Threshold| H[Critical Result Alert]
-    G --> I[Pathologist Verification]
-    I --> J[Report Finalized & Locked]
-    J --> K[A4 Print / PDF / WhatsApp]
-```
-
-1. **Requisition & Billing**:
-   - Integrated with `PatientBill`, financial ledger, and discount engine.
-   - Built-in double-click submission prevention and duplicate requisition protection.
-2. **Specimen Collection (Phlebotomy Station)**:
-   - Cap-color guided vacutainer drawer (EDTA Lavender, Plain Red, SST Gold, Fluoride Grey, Citrate Blue, Heparin Green, Sterile Cup).
-   - Draw confirmation auto-generates accession number and barcode.
-   - Real-time cold-chain temperature monitoring (2°C - 8°C).
-3. **Barcode Label Printing & Reprint Protection**:
-   - Configurable printer dimensions:
-     - `50 × 25 mm` (Standard Vacutainer Tube)
-     - `50 × 30 mm` (Standard Lab Tube)
-     - `75 × 50 mm` (Transport Bag / Large Aliquot)
-     - `38 × 19 mm` (Pediatric / Cryovial)
-   - Real Code128 vector barcode and verification QR code.
-   - **Reprint Protection**: When reprinting, displays an alert, requires selecting/entering a clinical reason, increments `labelPrintCount`, and records an audit log without creating duplicate specimens.
-4. **Specimen Reception & Identifier Verification**:
-   - 4-point safety checklist:
-     1. Patient Identity verified (Name, Age, Gender)
-     2. Requested Investigation matches requisition
-     3. Appropriate container / vacutainer tube confirmed
-     4. Specimen tube barcode clearly readable and intact
-   - Controlled rejection with mandatory clinical reasons (`Gross Hemolysis`, `QNS`, `Clotted`, `Mislabeled`, `Incorrect container`, etc.).
-   - Linked urgent recollection workflow that preserves previous specimen history.
-5. **Technician Result Entry**:
-   - Multi-parameter entry supporting numeric, qualitative (Positive/Negative, Reactive/Non-Reactive), and text findings.
-   - Reference range evaluation engine: flags `normal`, `low`, `high`, and `critical`.
-   - Supports **Save as Draft** vs. **Submit for Verification**.
-6. **Critical Results Alert Console**:
-   - Flags life-critical panic values (e.g. Glucose < 45 or > 450 mg/dL, Potassium < 2.8 or > 6.5 mEq/L, Platelets < 20,000/mcL).
-   - Dedicated modal to document telephonic notification to ordering doctor with action notes.
-7. **Authorized Pathologist Verification & Immutable Locking**:
-   - Pathologist signs off with digital signature, council registration number, and clinical impression.
-   - Report is locked with dynamic report number `LMDX-RPT-2026-XXXXXX` and verification QR code.
-   - Controlled legal amendment workflow via `ReportAmendmentModal` with preserved historical audit.
-8. **Real-Time Laboratory Dashboard (100% Calculated, Zero Fake Data)**:
-   - Today's Orders, Pending Orders, Awaiting Collection, Collected, Awaiting Reception, In Analysis, Verification Pending, Finalized Reports, Critical Results, Recollections Required, Rejected Specimens, and Department Workload.
-   - Real-time Turnaround Time (TAT) monitoring: `Within TAT`, `Approaching TAT` (<60m left), `TAT Delayed`.
-
----
-
-## Modified & Newly Created Files
-
-| File | Change | Description |
-|---|---|---|
-| [src/types/index.ts](file:///d:/Labmedix.in/src/types/index.ts) | Modified | Added `SpecimenRecord`, `SpecimenStatus`, `SpecimenRejectionReason`, `PrinterLabelFormat`, `LaboratorySettings`, and enriched `LabOrderStatus` with all 14 hospital workflow statuses. |
-| [src/services/laboratoryService.ts](file:///d:/Labmedix.in/src/services/laboratoryService.ts) | Modified | Hospital-grade service with specimen accessioning, barcode generation, controlled rejection, recollection linkage, technician draft/submit, critical alert detection, TAT engine, and audit logging. |
-| [src/services/apiSyncService.ts](file:///d:/Labmedix.in/src/services/apiSyncService.ts) | Modified | Added `specimens`, `diagnosticReports`, and `settings/laboratory` to `STORAGE_MAP` and real-time subscribers. |
-| [firestore.rules](file:///d:/Labmedix.in/firestore.rules) | Modified | Added security rules for `/specimens`, `/diagnosticReports`, `/laboratory_orders`, `/settings`. |
-| [src/components/laboratory/SpecimenReceptionModal.tsx](file:///d:/Labmedix.in/src/components/laboratory/SpecimenReceptionModal.tsx) | **NEW** | Barcode scan check-in, 4-point safety verification checklist, acceptance, controlled rejection with mandatory reason, and recollection initiation. |
-| [src/components/laboratory/SpecimenLabelPrinterModal.tsx](file:///d:/Labmedix.in/src/components/laboratory/SpecimenLabelPrinterModal.tsx) | **NEW** | Thermal label printer modal with 4 standard dimensions, Code128 barcode, QR code, and audit-protected reprint workflow. |
-| [src/components/laboratory/CriticalResultActionModal.tsx](file:///d:/Labmedix.in/src/components/laboratory/CriticalResultActionModal.tsx) | **NEW** | Documenting urgent clinical notification to prescribing doctor on critical/panic findings. |
-| [src/components/laboratory/ReportAmendmentModal.tsx](file:///d:/Labmedix.in/src/components/laboratory/ReportAmendmentModal.tsx) | **NEW** | Controlled legal report amendment preserving prior analytical parameters and recording clinical justification. |
-| [src/components/laboratory/CreateLabOrderModal.tsx](file:///d:/Labmedix.in/src/components/laboratory/CreateLabOrderModal.tsx) | Modified | Unified with `LaboratoryService`, preventing duplicate orders and linking to patient billing. |
-| [src/components/laboratory/LabResultEntryModal.tsx](file:///d:/Labmedix.in/src/components/laboratory/LabResultEntryModal.tsx) | Modified | Multi-parameter workbench, auto-flagging, Save as Draft vs. Submit for Verification, and panic value detection. |
-| [src/pages/laboratory/LaboratoryPage.tsx](file:///d:/Labmedix.in/src/pages/laboratory/LaboratoryPage.tsx) | Modified | Comprehensive 16-view operational layout matching Section 36 with real-time counters, queue filters, phlebotomy station, accessioning, TAT monitoring, and longitudinal patient lab history. |
-
----
-
-## Verification Results
-
-1. **TypeScript Type Check**:
-   ```bash
-   npx tsc --noEmit
-   # Exited with code 0.
-   ```
-2. **Production Bundle Build**:
-   ```bash
-   npm run build
-   # Built in 16.46s with 0 errors.
-   ```
-
----
-
-# Walkthrough: Hospital Pharmacy Workflow Separation (Retail vs. Prescription Pharmacy)
-
-We have implemented strict **Workflow Separation** in the **Pharmacy Management Hub**, clearly dividing operations between **Retail Pharmacy** (Direct Walk-in / OTC Sales) and **Prescription Pharmacy** (Doctor Prescription Verification & Dispensing), while anchoring both to a shared inventory engine, distinct audit ledgers, separate returns handling, and segregated real-time dashboard counters.
-
----
-
-## 1. Architectural Overview & Workflow Separation
-
-```mermaid
-graph TD
-    subgraph CommonCore["Common Shared Inventory Core"]
-        MM["Medicine Master (Catalog & Prices)"]
-        BM["Batch Master (Stock & Expiry)"]
-        FEFO["FEFO Recommendation Engine"]
-        ST["Stock Deduction & Audit Movements"]
-    end
-
-    subgraph RetailFlow["1. Retail Pharmacy Workflow (OTC)"]
-        R1["Direct Walk-in / Patient Search"]
-        R2["Scan Barcode / Search OTC Drugs"]
-        R3["Auto FEFO Batch Pick"]
-        R4["Apply Health Card Tier Discount"]
-        R5["Calculate Tax (CGST / SGST)"]
-        R6["Generate PHARM-RET-YYYY-XXXXXX"]
-        R7["Deduct Stock & Issue Retail Invoice"]
-    end
-
-    subgraph RxFulfillment["2. Prescription Pharmacy Workflow (Doctor Rx)"]
-        P1["Doctor Prescription Queue (EMR)"]
-        P2["Verify Patient & Doctor Reg No"]
-        P3["Review Dosage, Frequency & Duration"]
-        P4["Auto-Match Medicine Master & FEFO Batches"]
-        P5["Clinical Safety Sign-Off Checklist"]
-        P6["Generate PHARM-RX-YYYY-XXXXXX"]
-        P7["Deduct Stock, Mark Rx Dispensed & Issue Rx Invoice"]
-    end
-
-    subgraph ReturnsFlow["3. Separated Returns with Quality Inspection"]
-        RET1["Retail Return (Receipt Ref)"]
-        RET2["Prescription Return (Rx/Ward Ref)"]
-        INSP["Mandatory Pharmacist Inspection"]
-        RESTOCK["Passed: Restocked to Batch Stock"]
-        QUARANTINE["Failed: Quarantined / Scrapped"]
-    end
-
-    MM --> R2
-    MM --> P4
-    BM --> R3
-    BM --> P4
-    R6 --> ST
-    P6 --> ST
-    RET1 --> INSP
-    RET2 --> INSP
-    INSP -->|Intact/Valid| RESTOCK
-    INSP -->|Damaged/Expired| QUARANTINE
-    RESTOCK --> BM
+flowchart TD
+    SA[Super Admin Auth Guard\nrole === 'super_admin'] --> Hub[Super Admin Control Center\n/super-admin]
+    Hub --> M1[Master Data Management\nCRUD, Archive, Activate & Cascade Merge]
+    Hub --> M2[Import Center\nMulti-format CSV/TSV, Validation, Previews & Error Reports]
+    Hub --> M3[Export Center\nExcel-ready UTF-8 BOM CSV & JSON with Filters]
+    Hub --> M4[Data Quality Center\nDuplicate Patients, Orphan Cards, Missing Info]
+    Hub --> M5[Demo Purge System\nTyped Phrase 'PURGE-DEMO-DATA-2026' Protected]
+    Hub --> M6[Reconciliation Engine\nBills ↔ Payments ↔ Pharmacy ↔ Ledger]
+    Hub --> M7[Health & Diagnostics\n14-Point Comprehensive System Audit]
+    Hub --> M8[ID & System Config\nSequential Prefixes, Family Limits & Rates]
+    Hub --> M9[Company Profile & Tamper Audit\nBlockchain SHA-256 Ledger Verification]
 ```
 
 ---
 
-## 2. Key Features Implemented
+### Core Super Admin Capabilities
 
-### A. Primary Entry Points & Navigation
-- **Two Prominent Navigation Entry Points** in the top hero banner and tabs:
-  1. **Retail Pharmacy (OTC)**: Direct walk-in & over-the-counter sales without prescription requirement.
-  2. **Prescription Pharmacy (Rx)**: EMR doctor prescription queue with pending counter badge.
-- **Additional Navigation Tabs**:
-  - `Dashboard & Partitioned Analytics`
-  - `Sales & Rx Returns` (with Pharmacist Inspection Audit)
-  - `Medicine Master`
-  - `Batch Stock & FEFO`
-  - `Purchases & Inward`
-  - `Suppliers Master`
-  - `Ledger & Audit`
-  - `Online Orders`
+#### 1. Master Data Management & Cascade Patient Merge
+- **Datasets Managed**: Patients, Health Cards, Family Members, Doctors, Staff, Medicines, Lab Test Master, Suppliers, Packages, Services.
+- **Full Operational Lifecycle**: Add, View, Edit, Activate, Deactivate, Archive, Restore.
+- **Patient Duplicate Detection & Cascade Merge**:
+  - Automatically identifies duplicate patients by mobile phone or name similarity.
+  - **Cascade Merge**: Select Target Primary Patient and Secondary Duplicate.
+  - Re-links all Health Cards, Family Members, Bills, Lab Orders, and Appointments from the secondary record to the primary record.
+  - Safely archives the secondary record with cross-reference pointers.
+  - Fully recorded in the audit trail.
+
+#### 2. Health Card & Family Member Controls
+- **Lifecycle Status Management**: `pending → approved → issued → active → suspended/expired → renewed/archived`.
+- **Family Member Safeguards**:
+  - Enforces strict maximum 5 family members per primary health card.
+  - Addition beyond 5 requires explicit Super Admin override approval.
+  - Independent status tracking per family member.
+  - Clarified policy: family members do not automatically generate independent physical cards without distinct registration.
+
+#### 3. Enterprise Import Center
+- **Supported Datasets**: Patients, Doctors, Medicines, Lab Tests.
+- **Downloadable Formats**: Standard CSV templates with field descriptions and sample rows.
+- **Two-Pass Client-side Validation**:
+  - Mandatory fields, phone numbers (10 digits), positive numbers, date formats (`YYYY-MM-DD`).
+  - Previews categorized as: **Valid Records**, **Invalid / Errored**, **Existing Duplicates**, **Skipped**.
+- **Downloadable Error Reports**: Generates an error report (`Row | Field | Error | Suggested Action`) for invalid rows.
+- **Atomic Batch Commit**: Commits valid records with simulated or direct Firestore batch writes.
+
+#### 4. Excel-Ready Export Center
+- **UTF-8 BOM Header (`\uFEFF`)**: Direct double-click compatibility in Microsoft Excel without character corruption or messy encoding.
+- **Datasets**: Patients, Health Cards, Billing & Invoices, Pharmacy Sales, Financial Transactions, Audit Logs.
+- **Export Filters**: Date ranges, Status, Module, Doctor, Payment Method.
+- **Formats**: CSV and formatted JSON.
+
+#### 5. Safe Demo Data Purge System
+- **Accidental Deletion Prevention**:
+  - Only purges explicitly tagged demo records (`environment === 'DEMO'`, `recordType === 'DEMO'`, or `isDemo === true`).
+  - Genuine production records are strictly shielded from deletion.
+- **Pre-Purge Impact Analysis**:
+  - Live breakdown displaying demo record counts across Patients, Cards, Bills, Pharmacy Sales, and Transactions.
+- **Double Confirmation**:
+  - Requires the Super Admin to type the exact security phrase: `PURGE-DEMO-DATA-2026`.
+  - Action is logged in the permanent audit trail with timestamp and admin identity.
+
+#### 6. Data Quality & Anomaly Scanner
+- **One-Click Audit**:
+  - Identifies duplicate patients by phone number.
+  - Identifies orphan health cards with missing primary patient profiles.
+  - Identifies duplicate medicine entries by generic brand/strength.
+  - Detects patients with missing vital demographics (DOB, Gender, Address).
+- **Direct Resolution**: Quick action buttons to merge duplicates or edit records.
+
+#### 7. Multi-Ledger Transaction Reconciliation
+- Cross-matches Patient Bills ↔ Payments ↔ Central Ledger ↔ Retail Pharmacy Sales.
+- Detects discrepancies:
+  - Unbalanced bills where sum of recorded payments does not match bill net amount.
+  - Orphan transactions without corresponding billing parent records.
+  - Mismatched status flags (e.g. `paymentStatus === 'paid'` with outstanding balance).
+- Summary metrics: Total Audited, Balanced, Discrepancies, Total Variance (₹).
+
+#### 8. 14-Point Live Diagnostics
+1. Firestore Database Connectivity
+2. Offline Storage Integrity (IndexedDB / LocalStorage)
+3. Audit Log Blockchain Immutability
+4. Demo Data Contamination Check
+5. Transaction Reconciliation Health
+6. Data Quality & Duplicate Health
+7. Health Card Quota & Family Caps
+8. Unbalanced Bills Check
+9. Orphan Health Cards Scan
+10. Unpaid Invoices Aging Check
+11. Expired Medicine Batches Audit
+12. Low Stock Alerts Scan
+13. Storage Quota & Capacity Check
+14. System Configuration Integrity
+
+#### 9. System Configuration & ID Prefix Management
+- Centralized configuration for sequential numbering prefixes:
+  - Patient UHID: `LM-PT-`
+  - Health Card ID: `LHC-`
+  - Patient Invoice: `LM-INV-`
+  - Pharmacy Invoice: `LM-PH-`
+  - Lab Report: `LAB-REP-`
+- Configurable family member limits (default: 5) and default GST/Tax rates.
+- Company Profile management with Clinical Establishment License No., Drug Licenses (DL 20B/21B), GSTIN, and contact details.
+
+#### 10. Cryptographic Audit Trail
+- Blockchain-style immutable SHA-256 block hashing with Merkle tree root verification.
+- Searchable by action, module, user, and date range.
 
 ---
 
-### B. Retail Pharmacy Workflow
-- **Zero Prescription Friction**: Walk-in customers and registered patients purchase eligible medications without selecting a doctor or uploading a prescription.
-- **Fast Search & FEFO Batch Allocation**: Real-time barcode scan, generic composition match, and auto-allocated earliest expiry batch.
-- **Health Card Tier Integration**: Automatic discount application for registered cardholders (10% - 20% discount).
-- **Invoice Generation**: Generates official tax invoices with serial `PHARM-RET-YYYY-XXXXXX`, `sourceType: 'RETAIL'`, and `prescriptionId: undefined`.
-- **Stock Movement Ledger**: Immediate stock deduction with `STOCK_OUT` movement and financial ledger record.
+## 2. Retail Pharmacy POS & A4 Half-Page Invoice System
+
+### Key Capabilities
+1. **Standardized A4 Half-Page Invoice**:
+   - Exact half-page height (`~140mm - 148.5mm`) on A4 portrait (`210mm × 297mm`).
+   - Strict CSS rules `@page { size: A4 portrait; margin: 6mm 8mm; }` prevent overflow.
+   - Dynamic branding, sequential number (`LM-PH-YYYY-XXXXXX`), items table with batch/exp/disc/GST, round-off, cash tender, and change return.
+   - Distinct duplicate copy option for clinic records on the bottom half of the sheet.
+2. **Retail Counter POS UI**:
+   - Walk-in, Registered Patient, or Health Card Holder selection.
+   - Barcode Scanner input with `Enter-to-Add` shortcut.
+   - Live Medicine Master search with auto-suggest and FEFO batch recommendation.
+   - Real-time stock limit checks, item-level discounts, and membership tier discounts.
+   - Cash payment with instant change calculation and automatic round-off.
+3. **Hold Bill Queue**:
+   - Cashiers can place in-progress carts on hold without deducting stock or creating ledger entries.
+   - Resume or discard anytime from the Held Bills modal.
+4. **Reprint & Non-Destructive Cancellation**:
+   - Official Reprint counter tracking (`OFFICIAL DUPLICATE / REPRINT #N`) and watermark.
+   - Non-destructive cancellation with mandatory reason, authorized supervisor logging, optional inventory restock, and refund ledger entry.
+5. **Daily Shift Closing**:
+   - Cash drawer reconciliation: Opening Float, Cash Sales, Card/UPI Sales, Returns, Expected Cash vs. Actual Cash Count.
+   - Difference calculation (balanced, shortage, excess) with printable shift closing report.
 
 ---
 
-### C. Prescription Pharmacy Workflow
-- **Live Hospital Prescription Queue**:
-  - Automatically receives digital prescriptions from doctor consultations (OPD, IPD, Emergency, External).
-  - Filter queue by `Pending Dispense`, `Dispensed`, or `All Prescriptions`.
-- **Prescription Dispensing & Clinical Verification Modal**:
-  - Displays Patient UHID, Name, Contact, and Health Card discount.
-  - Displays Doctor Name, Medical Council Registration Number, Department, and Encounter ID.
-  - Automatically matches prescribed drugs against the Medicine Master and allocates candidate unexpired batches via **FEFO**.
-  - Allows pharmacists to substitute batches or adjust dispense quantities.
-  - **Mandatory Clinical Safety Sign-Off**:
-    - [x] Dosage & Regimen Verified against clinical protocols
-    - [x] Patient Allergies & Contraindications Screened
-    - [x] Drug-Drug & Drug-Food Interactions Checked
-    - Pharmacist clinical remarks & patient instructions
-- **Prescription Invoice**: Generates official invoice with serial `PHARM-RX-YYYY-XXXXXX`, links `doctorId` and `prescriptionId`, updates encounter status to `isDispensed: true`, and links `dispensedInvoiceNo`.
+## 3. Verification & Build Results
+
+### A. TypeScript Type Check (`npx tsc --noEmit`)
+- **Status**: **PASS (0 errors)**
+- Clean compilation across all files in the project.
+
+### B. Production Build (`npm run build`)
+- **Status**: **PASS (0 errors, built in 21.42s)**
+- Generated assets:
+  - `dist/assets/SuperAdminControlCenterPage-XKToy2eq.js` (72.92 kB)
+  - `dist/assets/PharmacyPage-CQzW-etz.js` (172.93 kB)
+  - `dist/assets/pharmacyService-iTZGkidt.js` (47.81 kB)
+  - `dist/assets/printService-C0WTao8A.js` (8.10 kB)
 
 ---
 
-### D. Dedicated Returns Management with Pharmacist Quality Inspection
-- **Separated Workflows**: Filter and record returns by `RETAIL` vs `PRESCRIPTION`.
-- **Invoice Traceability**: Selects from historical billed invoices and verifies returned quantities.
-- **Mandatory Quality Inspection Gate**:
-  - **Passed Inspection (Restockable)**: Unopened packaging, intact strip, cold-chain verified. Automatically restocks back into the active shelf batch and generates `STOCK_IN` movement.
-  - **Failed / Quarantined (Scrapped)**: Broken seal, expired, or temperature compromised. Scrapped and recorded without returning to sellable inventory.
-- Logs full auditable reason, inspector name, and refund transaction in the ledger.
+## 4. Key Files Created / Modified
 
----
-
-### E. Partitioned Dashboard Metrics (Zero Hardcoding)
-The Pharmacy Dashboard displays 3 segregated, real-time counter groups:
-1. **Retail Pharmacy Workflow**:
-   - Today's Retail Sales (₹)
-   - Total Retail Revenue (₹)
-   - Retail Invoices Count (`PHARM-RET`)
-   - Retail Returns Count & Total Value Refunded
-2. **Prescription Pharmacy Workflow**:
-   - Pending Prescriptions Count
-   - Dispensed Prescriptions Count
-   - Prescription Sales Revenue (₹)
-   - Prescription Returns Count
-3. **Common Inventory & FEFO Expiry Core**:
-   - Total Inventory Valuation (MRP & Cost)
-   - Active SKUs & Batches Count
-   - Low Stock & Out-of-Stock SKUs
-   - FEFO Expiry Alerts (Expired, <30d, <60d, <90d)
-
----
-
-### F. Differentiated Tax Invoice Printing (`PharmacyBillPrintModal`)
-- Branded differently depending on `sourceType` or `saleType`:
-  - **RETAIL**: Branded as `RETAIL PHARMACY TAX INVOICE (OTC)`, displays customer/patient details, cashier, and direct OTC sale notice.
-  - **PRESCRIPTION**: Branded as `PRESCRIPTION DISPENSING INVOICE`, prominently displays Prescribing Doctor, Medical Council Reg No, Department, and Prescription Reference ID (`Rx Ref: #XXXXXX`).
-
----
-
-## 3. Files Modified & Created
-
-| File | Change | Description |
-|---|---|---|
-| [src/types/index.ts](file:///d:/Labmedix.in/src/types/index.ts) | Modified | Added `dispensedQuantity`, `prescriptionItemId`, `PharmacySourceType = 'RETAIL' \| 'PRESCRIPTION'`, and segregated fields on `PharmacySale` and `PharmacySalesReturn`. |
-| [src/services/pharmacyService.ts](file:///d:/Labmedix.in/src/services/pharmacyService.ts) | Modified | Added `dispenseRetailSale()` (`PHARM-RET-`), `dispensePrescriptionSale()` (`PHARM-RX-`), segregated `getDashboardMetrics()`, quality-inspected `recordSalesReturn()`, and enriched `getDoctorPrescriptions()`. |
-| [src/components/pharmacy/PharmacyBillPrintModal.tsx](file:///d:/Labmedix.in/src/components/pharmacy/PharmacyBillPrintModal.tsx) | Modified | Differentiated layout and metadata between Retail OTC Tax Invoices and Doctor Prescription Dispensing Invoices. |
-| [src/pages/pharmacy/PharmacyPage.tsx](file:///d:/Labmedix.in/src/pages/pharmacy/PharmacyPage.tsx) | Modified | Added separate primary entry points (`retail`, `prescriptions`, `returns`), partitioned 3-group dashboard, Prescription Dispense & Clinical Safety Modal, and Sales Return Modal with Quality Inspection. |
-
----
-
-## 4. Verification Results
-
-1. **TypeScript Type Check**:
-   ```bash
-   npx tsc --noEmit
-   # Exit code: 0 (Zero errors)
-   ```
-
-2. **Production Bundle Build**:
-   ```bash
-   npm run build
-   # Built in 16.46s with 0 errors
-   ```
+| File | Description |
+|---|---|
+| [`src/services/superAdminService.ts`](file:///d:/Labmedix.in/src/services/superAdminService.ts) | Core Super Admin operations engine: Master data CRUD, cascade patient merge, import validator & error report generator, UTF-8 BOM exporter, demo data purge with security phrase, data quality scanner, multi-ledger reconciliation, 14-point diagnostics, and ID/system config. |
+| [`src/pages/admin/SuperAdminControlCenterPage.tsx`](file:///d:/Labmedix.in/src/pages/admin/SuperAdminControlCenterPage.tsx) | Sovereign Super Admin UI with 11 functional tabs, manual data editors, cascade merge modal, and live metric indicators. |
+| [`src/App.tsx`](file:///d:/Labmedix.in/src/App.tsx) | Lazy-loaded `SuperAdminControlCenterPage` and protected `/super-admin` route using `<SuperAdminGuard>`. |
+| [`src/components/layout/Sidebar.tsx`](file:///d:/Labmedix.in/src/components/layout/Sidebar.tsx) | Added "Super Admin Center" navigation item with `ShieldAlert` icon visible strictly when `currentUser?.role === 'super_admin'`. |
+| [`src/types/index.ts`](file:///d:/Labmedix.in/src/types/index.ts) | Enriched data types for pharmacy permissions, held bills, shift closings, transactions, and system settings. |
+| [`src/services/pharmacyService.ts`](file:///d:/Labmedix.in/src/services/pharmacyService.ts) | Retail pharmacy invoice numbers, cash tender, round-off, hold queue, reprint tracking, cancellation, and shift closing. |
+| [`src/services/printService.ts`](file:///d:/Labmedix.in/src/services/printService.ts) | Isolated print window generation for A4 Half-Page Pharmacy bill. |
+| [`src/components/pharmacy/PharmacyA4HalfPageInvoice.tsx`](file:///d:/Labmedix.in/src/components/pharmacy/PharmacyA4HalfPageInvoice.tsx) | Standardized A4 Half-Page bill format with company branding, tax breakdown, and duplicate copy support. |
+| [`src/components/pharmacy/PharmacyBillPrintModal.tsx`](file:///d:/Labmedix.in/src/components/pharmacy/PharmacyBillPrintModal.tsx) | Bill preview, print, reprint, duplicate copy, and PDF download modal. |
+| [`src/components/pharmacy/RetailPosHoldBillsModal.tsx`](file:///d:/Labmedix.in/src/components/pharmacy/RetailPosHoldBillsModal.tsx) | Held bill queue modal for resuming or discarding suspended carts. |
+| [`src/components/pharmacy/PharmacyShiftClosingModal.tsx`](file:///d:/Labmedix.in/src/components/pharmacy/PharmacyShiftClosingModal.tsx) | Daily drawer closing and cash reconciliation modal with printable summary slip. |
+| [`src/components/pharmacy/PharmacyBillCancelModal.tsx`](file:///d:/Labmedix.in/src/components/pharmacy/PharmacyBillCancelModal.tsx) | Non-destructive bill cancellation modal with audit and inventory restock options. |
+| [`src/pages/pharmacy/PharmacyPage.tsx`](file:///d:/Labmedix.in/src/pages/pharmacy/PharmacyPage.tsx) | Complete Retail Pharmacy POS page with customer type selector, barcode scanner, cart, and recent bills. |

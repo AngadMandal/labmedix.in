@@ -1,8 +1,14 @@
-import React from 'react';
+import React, { useRef, useState } from 'react';
 import { Modal } from '../common/Modal';
 import { PharmacySale, Patient, HealthCard } from '../../types';
-import { formatCurrency, formatDateTime } from '../../utils/formatters';
-import { Printer, CheckCircle, ShieldCheck, Pill } from 'lucide-react';
+import { useSettings } from '../../context/SettingsContext';
+import { useAuth } from '../../context/AuthContext';
+import { PharmacyService } from '../../services/pharmacyService';
+import { PrintService } from '../../services/printService';
+import { PharmacyA4HalfPageInvoice } from './PharmacyA4HalfPageInvoice';
+import { Printer, Download, Copy, RotateCcw, CheckCircle, Eye } from 'lucide-react';
+import html2canvas from 'html2canvas';
+import { jsPDF } from 'jspdf';
 
 interface PharmacyBillPrintModalProps {
   isOpen: boolean;
@@ -10,304 +16,214 @@ interface PharmacyBillPrintModalProps {
   sale: PharmacySale | null;
   patient?: Patient | null;
   card?: HealthCard | null;
+  onSaleUpdated?: (updatedSale: PharmacySale) => void;
 }
 
 export const PharmacyBillPrintModal: React.FC<PharmacyBillPrintModalProps> = ({
   isOpen,
   onClose,
-  sale,
+  sale: initialSale,
   patient,
-  card
+  card,
+  onSaleUpdated
 }) => {
-  if (!sale) return null;
+  const { companyProfile } = useSettings();
+  const { currentUser } = useAuth();
+
+  const [currentSale, setCurrentSale] = useState<PharmacySale | null>(initialSale);
+  const [showDuplicateCopy, setShowDuplicateCopy] = useState<boolean>(false);
+  const [isExportingPdf, setIsExportingPdf] = useState<boolean>(false);
+  const [isReprinting, setIsReprinting] = useState<boolean>(false);
+
+  const printAreaRef = useRef<HTMLDivElement>(null);
+
+  // Sync initial sale
+  React.useEffect(() => {
+    setCurrentSale(initialSale);
+  }, [initialSale]);
+
+  if (!currentSale) return null;
 
   const handlePrint = () => {
-    window.print();
+    if (printAreaRef.current) {
+      PrintService.printPharmacyA4HalfPageBill(
+        printAreaRef.current,
+        `Pharmacy Invoice - ${currentSale.invoiceNumber}`
+      );
+    } else {
+      window.print();
+    }
   };
 
-  const isDue = (sale.dueAmount || 0) > 0;
+  const handleReprint = async () => {
+    try {
+      setIsReprinting(true);
+      const updated = await PharmacyService.reprintSale(
+        currentSale.id,
+        currentUser?.fullName || 'Authorized Cashier'
+      );
+      setCurrentSale(updated);
+      if (onSaleUpdated) onSaleUpdated(updated);
+      // Immediately open print window for the reprint
+      setTimeout(() => {
+        if (printAreaRef.current) {
+          PrintService.printPharmacyA4HalfPageBill(
+            printAreaRef.current,
+            `REPRINT - Pharmacy Invoice - ${updated.invoiceNumber}`
+          );
+        }
+      }, 100);
+    } catch (err: any) {
+      console.error('Failed to record reprint:', err);
+    } finally {
+      setIsReprinting(false);
+    }
+  };
+
+  const handleDownloadPdf = async () => {
+    if (!printAreaRef.current) return;
+    try {
+      setIsExportingPdf(true);
+      const canvas = await html2canvas(printAreaRef.current, {
+        scale: 2.5,
+        useCORS: true,
+        logging: false,
+        backgroundColor: '#ffffff'
+      });
+
+      const imgData = canvas.toDataURL('image/jpeg', 0.95);
+      const pdf = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4'
+      });
+
+      // Exact A4 dimensions: 210 x 297 mm
+      const pdfWidth = 210;
+      const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+
+      // Position top-aligned so it occupies the exact half-page
+      pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, Math.min(297, pdfHeight));
+      pdf.save(`${currentSale.invoiceNumber}.pdf`);
+    } catch (err) {
+      console.error('Failed to generate PDF:', err);
+    } finally {
+      setIsExportingPdf(false);
+    }
+  };
 
   return (
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title={`Pharmacy Tax Invoice: ${sale.invoiceNumber}`}
-      maxWidth="4xl"
+      title={`Official A4 Half-Page Bill: ${currentSale.invoiceNumber}`}
+      maxWidth="6xl"
     >
-      <div className="space-y-6 text-slate-800 dark:text-slate-200 printable-pharmacy-invoice">
-        {/* ACTION BAR (Hidden in print) */}
-        <div className="flex items-center justify-between p-3 rounded-2xl bg-slate-900 border border-slate-800 print:hidden">
-          <div className="flex items-center gap-2 text-xs">
-            <span className="p-1.5 rounded-lg bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+      <div className="space-y-4 text-slate-800 dark:text-slate-200">
+        {/* TOP ACTION BAR (Hidden on print) */}
+        <div className="p-3.5 rounded-2xl bg-slate-900 border border-slate-800 flex flex-wrap items-center justify-between gap-3 shadow-xl print:hidden">
+          <div className="flex items-center gap-2.5">
+            <span className="p-2 rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
               <CheckCircle className="w-4 h-4" />
             </span>
             <div>
-              <span className="font-bold text-white">Official Tax Invoice Generated</span>
+              <div className="flex items-center gap-2">
+                <span className="font-bold text-white text-xs">Standard A4 Half-Page Invoice</span>
+                <span className="px-2 py-0.5 rounded-full text-[9px] font-mono font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                  Fixed 140mm Boundary
+                </span>
+                {currentSale.isReprint && (
+                  <span className="px-2 py-0.5 rounded-full text-[9px] font-mono font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                    REPRINT (Copy #{currentSale.reprintCount || 1})
+                  </span>
+                )}
+              </div>
               <span className="text-[10px] text-slate-400 block font-mono">
-                {sale.invoiceNumber} • Live Firestore Ledger Synced
+                {currentSale.invoiceNumber} • Synchronized with Centralized Settings
               </span>
             </div>
           </div>
 
           <div className="flex items-center gap-2">
+            {/* Toggle duplicate copy on same A4 sheet */}
             <button
+              type="button"
+              onClick={() => setShowDuplicateCopy(!showDuplicateCopy)}
+              className={`px-3 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 border ${
+                showDuplicateCopy
+                  ? 'bg-purple-600 text-white border-purple-500 shadow-md shadow-purple-600/20'
+                  : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
+              }`}
+              title="Print 2 copies (Original + Store Duplicate) on 1 single A4 sheet"
+            >
+              <Copy className="w-3.5 h-3.5" />
+              <span>{showDuplicateCopy ? '2 Copies on Sheet (Active)' : 'Print 2 Copies / Sheet'}</span>
+            </button>
+
+            {/* Reprint Button */}
+            <button
+              type="button"
+              onClick={handleReprint}
+              disabled={isReprinting}
+              className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-amber-300 text-xs font-bold transition flex items-center gap-1.5"
+            >
+              <RotateCcw className={`w-3.5 h-3.5 ${isReprinting ? 'animate-spin' : ''}`} />
+              <span>{isReprinting ? 'Logging Reprint...' : 'Reprint Bill'}</span>
+            </button>
+
+            {/* Download PDF */}
+            <button
+              type="button"
+              onClick={handleDownloadPdf}
+              disabled={isExportingPdf}
+              className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 text-xs font-bold transition flex items-center gap-1.5"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span>{isExportingPdf ? 'Generating PDF...' : 'Download PDF'}</span>
+            </button>
+
+            {/* Print Official Bill */}
+            <button
+              type="button"
               onClick={handlePrint}
-              className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-lg shadow-emerald-600/30"
+              className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black transition flex items-center gap-1.5 shadow-lg shadow-emerald-600/30"
             >
               <Printer className="w-4 h-4" />
-              <span>Print Invoice (A4 / Thermal)</span>
+              <span>Print Official Bill</span>
             </button>
+
             <button
+              type="button"
               onClick={onClose}
-              className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold transition"
+              className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white text-xs font-bold transition"
             >
               Close
             </button>
           </div>
         </div>
 
-        {/* INVOICE PAPER CONTAINER */}
-        <div className="p-6 md:p-8 rounded-3xl bg-white text-slate-900 border border-slate-200 shadow-xl dark:bg-slate-950 dark:text-slate-100 dark:border-slate-800 space-y-6">
-          {/* 1. HEADER */}
-          <div className="border-b-2 border-emerald-600 pb-4 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="p-2 rounded-xl bg-emerald-600 text-white">
-                  <Pill className="w-5 h-5" />
-                </span>
-                <div>
-                  <h1 className="text-xl font-black tracking-tight text-slate-900 dark:text-white uppercase">
-                    LabMedix Healthcare Pharmacy
-                  </h1>
-                  <p className="text-[11px] text-slate-600 dark:text-slate-400 font-medium">
-                    Hospital & Day Care Dispensing Division • 24x7 In-House Pharmacy
-                  </p>
-                </div>
-              </div>
-              <div className="text-[10px] text-slate-500 dark:text-slate-400 space-y-0.5 mt-2">
-                <p>Kolkata Main Hospital Campus, Sector V, Bidhannagar, Kolkata, WB 700091</p>
-                <p className="font-mono">
-                  <strong>Drug Lic No:</strong> WB-KOL-20B-184920 & WB-KOL-21B-443912 • <strong>GSTIN:</strong> 19AAECM4421P1Z4
-                </p>
-                <p>Phone: +91 98310 12345 • Email: pharmacy@labmedix.in</p>
-              </div>
-            </div>
-
-            <div className="text-right md:min-w-[200px]">
-              <span className={`inline-block px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider mb-1 border ${
-                sale.sourceType === 'PRESCRIPTION' || sale.saleType === 'PRESCRIPTION'
-                  ? 'bg-purple-100 text-purple-800 dark:bg-purple-950/60 dark:text-purple-300 border-purple-300 dark:border-purple-700/50'
-                  : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700/50'
-              }`}>
-                {sale.sourceType === 'PRESCRIPTION' || sale.saleType === 'PRESCRIPTION'
-                  ? 'PRESCRIPTION DISPENSING INVOICE'
-                  : 'RETAIL PHARMACY TAX INVOICE (OTC)'}
-              </span>
-              <div className="font-mono text-xs font-black text-slate-900 dark:text-white">
-                {sale.invoiceNumber}
-              </div>
-              {sale.prescriptionId && (
-                <div className="text-[10px] text-purple-600 dark:text-purple-400 font-mono font-bold">
-                  Rx Ref: #{sale.prescriptionId.slice(-8).toUpperCase()}
-                </div>
-              )}
-              <div className="text-[10px] text-slate-500 dark:text-slate-400 font-mono mt-0.5">
-                Date: {formatDateTime(sale.saleDate)}
-              </div>
-              <div className="text-[10px] text-slate-500 dark:text-slate-400">
-                Payment: <strong className="uppercase">{sale.paymentMethod}</strong>
-              </div>
-            </div>
+        {/* VISUAL A4 SHEET PREVIEW SIMULATOR */}
+        <div className="p-4 md:p-6 rounded-3xl bg-slate-900/60 border border-slate-800 flex flex-col items-center justify-center overflow-x-auto">
+          <div className="flex items-center gap-1.5 text-[11px] text-slate-400 mb-3 print:hidden">
+            <Eye className="w-3.5 h-3.5 text-emerald-400" />
+            <span>Exact Print-Ready A4 Sheet Preview (Standardized Half-Page Layout)</span>
           </div>
 
-          {/* 2. PATIENT & PRESCRIBER METADATA */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs">
-            <div>
-              <span className="text-[10px] uppercase font-bold text-slate-400 block tracking-wider">
-                {sale.sourceType === 'PRESCRIPTION' || sale.saleType === 'PRESCRIPTION'
-                  ? 'Prescription Patient'
-                  : 'Customer / Patient'}
-              </span>
-              <strong className="text-sm text-slate-900 dark:text-white block mt-0.5">
-                {sale.patientName}
-              </strong>
-              {sale.patientPhone && (
-                <div className="text-[11px] text-slate-500 dark:text-slate-400 font-mono">
-                  Phone: {sale.patientPhone}
-                </div>
-              )}
-              {sale.patientId && (
-                <div className="text-[10px] text-slate-500 dark:text-slate-400 font-mono">
-                  UHID: {sale.patientId}
-                </div>
-              )}
-            </div>
-
-            <div>
-              <span className="text-[10px] uppercase font-bold text-slate-400 block tracking-wider">Health Card & Tier</span>
-              {sale.patientCardNo ? (
-                <div className="mt-0.5 space-y-0.5">
-                  <span className="inline-flex items-center gap-1 font-mono font-bold text-xs text-emerald-700 dark:text-emerald-400">
-                    <ShieldCheck className="w-3.5 h-3.5" />
-                    {sale.patientCardNo}
-                  </span>
-                  <div className="text-[10px] text-slate-600 dark:text-slate-400">
-                    Tier: <strong className="capitalize">{sale.cardTier || card?.tier || (card as any)?.membershipTier || 'Family Shield'}</strong>
-                  </div>
-                  {sale.healthCardDiscount > 0 && (
-                    <div className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold">
-                      Savings Applied: {formatCurrency(sale.healthCardDiscount)}
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <div className="text-slate-500 dark:text-slate-400 mt-0.5">Standard Retail Pricing</div>
-              )}
-            </div>
-
-            <div>
-              <span className="text-[10px] uppercase font-bold text-slate-400 block tracking-wider">
-                {sale.sourceType === 'PRESCRIPTION' || sale.saleType === 'PRESCRIPTION'
-                  ? 'Prescribing Doctor'
-                  : 'Counter / Cashier'}
-              </span>
-              <strong className="text-xs text-slate-900 dark:text-white block mt-0.5">
-                {sale.sourceType === 'PRESCRIPTION' || sale.saleType === 'PRESCRIPTION'
-                  ? (sale.prescribingDoctor || 'Hospital Out-Patient Department (OPD)')
-                  : 'Direct Walk-in Retail Counter'}
-              </strong>
-              <div className="text-[10px] text-slate-500 dark:text-slate-400 font-mono mt-0.5">
-                Dispensed by: {sale.dispensedBy}
-              </div>
-              <div className="text-[10px] text-slate-500 dark:text-slate-400">
-                Workflow: <span className="font-semibold uppercase text-emerald-600 dark:text-emerald-400">{sale.sourceType || sale.saleType}</span>
-              </div>
-            </div>
-          </div>
-
-          {/* 3. ITEMS TABLE */}
-          <div className="rounded-2xl border border-slate-200 dark:border-slate-800 overflow-hidden">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-slate-100 dark:bg-slate-900/80 text-slate-600 dark:text-slate-400 text-[10px] font-mono uppercase tracking-wider border-b border-slate-200 dark:border-slate-800">
-                <tr>
-                  <th className="px-3 py-2.5">#</th>
-                  <th className="px-3 py-2.5">Medicine Description</th>
-                  <th className="px-3 py-2.5">Batch</th>
-                  <th className="px-3 py-2.5">Expiry</th>
-                  <th className="px-3 py-2.5 text-center">Qty</th>
-                  <th className="px-3 py-2.5 text-right">MRP</th>
-                  <th className="px-3 py-2.5 text-right">Rate</th>
-                  <th className="px-3 py-2.5 text-right">Disc %</th>
-                  <th className="px-3 py-2.5 text-right">Amount</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
-                {sale.items.map((item, idx) => (
-                  <tr key={idx} className="hover:bg-slate-50 dark:hover:bg-slate-900/40">
-                    <td className="px-3 py-2 font-mono text-[11px] text-slate-400">{idx + 1}</td>
-                    <td className="px-3 py-2">
-                      <div className="font-bold text-slate-900 dark:text-white">{item.medicineName}</div>
-                      <div className="text-[9px] text-slate-500 font-mono">GST: {item.taxGstPercent}%</div>
-                    </td>
-                    <td className="px-3 py-2 font-mono text-[11px] text-slate-700 dark:text-slate-300">
-                      {item.batchNumber}
-                    </td>
-                    <td className="px-3 py-2 font-mono text-[11px] text-slate-700 dark:text-slate-300">
-                      {item.expiryDate}
-                    </td>
-                    <td className="px-3 py-2 text-center font-mono font-bold text-slate-900 dark:text-white">
-                      {item.quantity}
-                    </td>
-                    <td className="px-3 py-2 text-right font-mono text-slate-500">
-                      {formatCurrency(item.mrp)}
-                    </td>
-                    <td className="px-3 py-2 text-right font-mono text-slate-700 dark:text-slate-300">
-                      {formatCurrency(item.unitPrice)}
-                    </td>
-                    <td className="px-3 py-2 text-right font-mono text-emerald-600 dark:text-emerald-400">
-                      {item.discountPercent > 0 ? `${item.discountPercent}%` : '0%'}
-                    </td>
-                    <td className="px-3 py-2 text-right font-mono font-bold text-slate-900 dark:text-white">
-                      {formatCurrency(item.totalAmount)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          {/* 4. FINANCIAL TOTALS & TAX BREAKDOWN */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
-            <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-[11px] space-y-2">
-              <span className="font-bold uppercase tracking-wider text-[10px] text-slate-400 block">
-                Statutory GST Breakdown
-              </span>
-              <div className="flex justify-between text-slate-600 dark:text-slate-400">
-                <span>Taxable Value:</span>
-                <span className="font-mono">{formatCurrency(Math.max(0, sale.netTotal - sale.taxAmount))}</span>
-              </div>
-              <div className="flex justify-between text-slate-600 dark:text-slate-400">
-                <span>CGST (Central Tax 6%):</span>
-                <span className="font-mono">{formatCurrency(Math.round((sale.taxAmount / 2) * 100) / 100)}</span>
-              </div>
-              <div className="flex justify-between text-slate-600 dark:text-slate-400">
-                <span>SGST (State Tax 6%):</span>
-                <span className="font-mono">{formatCurrency(Math.round((sale.taxAmount / 2) * 100) / 100)}</span>
-              </div>
-              <div className="flex justify-between text-slate-700 dark:text-slate-300 pt-1 border-t border-slate-200 dark:border-slate-800 font-bold">
-                <span>Total Tax Included:</span>
-                <span className="font-mono">{formatCurrency(sale.taxAmount)}</span>
-              </div>
-            </div>
-
-            <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs space-y-2 font-mono">
-              <div className="flex justify-between text-slate-600 dark:text-slate-400">
-                <span>Total Gross Amount:</span>
-                <span>{formatCurrency(sale.subtotal)}</span>
-              </div>
-              {sale.discountAmount > 0 && (
-                <div className="flex justify-between text-emerald-600 dark:text-emerald-400 font-semibold">
-                  <span>Total Discount Savings:</span>
-                  <span>-{formatCurrency(sale.discountAmount)}</span>
-                </div>
-              )}
-              <div className="flex justify-between text-sm font-black text-slate-900 dark:text-white pt-2 border-t-2 border-slate-200 dark:border-slate-800">
-                <span>Net Payable:</span>
-                <span className="text-emerald-600 dark:text-emerald-400">{formatCurrency(sale.netTotal)}</span>
-              </div>
-              <div className="flex justify-between text-slate-700 dark:text-slate-300">
-                <span>Amount Paid ({sale.paymentMethod}):</span>
-                <span className="font-bold">{formatCurrency(sale.paidAmount)}</span>
-              </div>
-              {isDue && (
-                <div className="flex justify-between text-rose-600 dark:text-rose-400 font-black">
-                  <span>Due Balance:</span>
-                  <span>{formatCurrency(sale.dueAmount)}</span>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* 5. FOOTER & VERIFICATION STAMP */}
-          <div className="pt-6 border-t border-slate-200 dark:border-slate-800 flex flex-col md:flex-row justify-between items-end gap-6 text-[10px] text-slate-500 dark:text-slate-400">
-            <div className="space-y-1 max-w-md">
-              <p className="font-bold text-slate-700 dark:text-slate-300">Terms & Conditions:</p>
-              <p>1. Medicines once dispensed cannot be returned without the original tax invoice within 48 hours.</p>
-              <p>2. Refrigerated & Schedule H/X medications cannot be returned under drug control regulations.</p>
-              <p>3. Store all drugs in a cool, dry place away from direct sunlight and out of children's reach.</p>
-              <p className="text-[9px] font-mono text-slate-400 mt-2">
-                Digital Computer-Generated Invoice • Authentication Seal: LABMEDIX-RX-{sale.id.slice(-6).toUpperCase()}
-              </p>
-            </div>
-
-            <div className="text-center min-w-[180px] space-y-3">
-              <div className="h-10 border-b border-dashed border-slate-300 dark:border-slate-700"></div>
-              <div>
-                <p className="font-bold text-slate-800 dark:text-slate-200 text-xs">Authorized Pharmacist</p>
-                <p className="text-[9px] font-mono">Reg No: WB-PRX-49102</p>
-                <p className="text-[9px]">LabMedix Healthcare Pharmacy</p>
-              </div>
-            </div>
+          {/* Printable Container matching A4 boundaries */}
+          <div
+            ref={printAreaRef}
+            className="w-full max-w-[210mm] bg-white text-slate-950 p-6 rounded-2xl shadow-2xl border border-slate-300 print:border-none print:shadow-none print:p-0"
+            style={{ minHeight: showDuplicateCopy ? '297mm' : '148.5mm' }}
+          >
+            <PharmacyA4HalfPageInvoice
+              sale={currentSale}
+              companyProfile={companyProfile}
+              patient={patient}
+              card={card}
+              isReprint={currentSale.isReprint}
+              showDuplicateBottomCopy={showDuplicateCopy}
+              copyLabel="ORIGINAL CUSTOMER INVOICE"
+            />
           </div>
         </div>
       </div>

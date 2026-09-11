@@ -140,6 +140,9 @@ export type Permission =
   | 'pharmacy_return_process'
   | 'pharmacy_adjust_stock'
   | 'pharmacy_reports_view'
+  | 'pharmacy_discount_override'
+  | 'pharmacy_bill_cancel'
+  | 'pharmacy_shift_close'
   // Transactions
   | 'transactions_view_own'
   | 'transactions_view_all'
@@ -2218,10 +2221,11 @@ export type PharmacySourceType = 'RETAIL' | 'PRESCRIPTION';
 
 export interface PharmacySale {
   id: string;
-  invoiceNumber: string; // e.g. PHARM-RET-2026-0001 or PHARM-RX-2026-0001
+  invoiceNumber: string; // e.g. LM-PH-2026-000001, PHARM-RET-2026-0001, or PHARM-RX-2026-0001
   saleDate: string;
   saleType: PharmacySaleType;
   sourceType: PharmacySourceType;
+  customerType?: 'walkin' | 'registered' | 'card_holder';
   customerId?: string;
   patientId?: string;
   patientName: string;
@@ -2236,14 +2240,29 @@ export interface PharmacySale {
   subtotal: number;
   discountAmount: number;
   healthCardDiscount: number;
+  manualDiscountAmount?: number;
+  manualDiscountPercent?: number;
+  manualDiscountReason?: string;
+  manualDiscountApprovedBy?: string;
   taxAmount: number;
+  roundOff?: number;
   netTotal: number;
   paidAmount: number;
   dueAmount: number;
+  cashReceived?: number;
+  changeGiven?: number;
   paymentMethod: 'Cash' | 'Card' | 'UPI' | 'Health Wallet' | 'Bank Transfer';
   dispensedBy: string;
   status: 'dispensed' | 'returned' | 'cancelled';
   notes?: string;
+  isReprint?: boolean;
+  reprintCount?: number;
+  lastReprintAt?: string;
+  lastReprintBy?: string;
+  cancelledAt?: string;
+  cancelledBy?: string;
+  cancellationReason?: string;
+  idempotencyKey?: string;
   createdAt: string;
 }
 
@@ -2299,3 +2318,49 @@ export interface PharmacyTransaction {
   timestamp: string;
 }
 
+export interface PharmacyHeldBill {
+  id: string;
+  holdNumber: string; // e.g. HOLD-2026-0001
+  customerType: 'walkin' | 'registered' | 'card_holder';
+  patientName: string;
+  patientPhone?: string;
+  patientId?: string;
+  patientCardNo?: string;
+  cardTier?: string;
+  items: PharmacySaleItem[];
+  subtotal: number;
+  discountAmount: number;
+  manualDiscountPercent?: number;
+  manualDiscountReason?: string;
+  healthCardDiscount: number;
+  taxAmount: number;
+  netTotal: number;
+  paymentMode?: 'Cash' | 'Card' | 'UPI' | 'Health Wallet' | 'Bank Transfer';
+  heldBy: string;
+  notes?: string;
+  heldAt: string;
+}
+
+export interface PharmacyShiftClosing {
+  id: string;
+  shiftNumber: string; // e.g. SHIFT-2026-0001
+  cashierId: string;
+  cashierName: string;
+  startTime: string;
+  endTime: string;
+  openingCash: number;
+  cashSales: number;
+  upiSales: number;
+  cardSales: number;
+  otherSales: number;
+  totalReturnsAmount: number;
+  refundsAmount: number;
+  totalDiscountsAmount: number;
+  expectedCash: number;
+  actualCash: number;
+  difference: number;
+  totalSales: number;
+  totalTransactions: number;
+  notes?: string;
+  closedAt: string;
+}

@@ -14,7 +14,9 @@ import {
   PharmacySaleItem,
   PharmacySalesReturn,
   PharmacyStockAdjustment,
-  PharmacyTransaction
+  PharmacyTransaction,
+  PharmacyHeldBill,
+  PharmacyShiftClosing
 } from '../types';
 
 // Backward-compatible interface for legacy callers
@@ -88,11 +90,19 @@ export interface RetailDispenseRequest {
   patientPhone?: string;
   patientId?: string;
   cardNo?: string;
+  cardTier?: string;
+  customerType?: 'walkin' | 'registered' | 'card_holder';
   items: DispenseItem[];
-  paymentMode: 'Cash' | 'Card' | 'UPI' | 'Health Wallet';
+  paymentMode: 'Cash' | 'Card' | 'UPI' | 'Health Wallet' | 'Bank Transfer';
   paidAmount?: number;
+  cashReceived?: number;
+  manualDiscountPercent?: number;
+  manualDiscountAmount?: number;
+  manualDiscountReason?: string;
+  manualDiscountApprovedBy?: string;
   notes?: string;
   performedBy: string;
+  idempotencyKey?: string;
 }
 
 export interface PrescriptionDispenseRequest {
@@ -168,6 +178,8 @@ const PHARMACY_SALES_KEY = 'labmedix_pharmacy_sales_v2';
 const PHARMACY_SALES_RETURNS_KEY = 'labmedix_pharmacy_sales_returns_v2';
 const PHARMACY_ADJUSTMENTS_KEY = 'labmedix_pharmacy_stock_adjustments_v2';
 const PHARMACY_TRANSACTIONS_KEY = 'labmedix_pharmacy_transactions_v2';
+const PHARMACY_HELD_BILLS_KEY = 'labmedix_pharmacy_held_bills_v2';
+const PHARMACY_SHIFT_CLOSINGS_KEY = 'labmedix_pharmacy_shift_closings_v2';
 
 // Legacy keys for backward-compatibility
 const LEGACY_INVENTORY_KEY = 'labmedix_pharmacy_inventory_v1';
@@ -1379,15 +1391,47 @@ export class PharmacyService {
       });
     }
 
-    // Step 2: Totals
-    const subtotal = saleItems.reduce((acc, curr) => acc + (curr.quantity * curr.unitPrice), 0);
-    const discountTotal = saleItems.reduce((acc, curr) => acc + curr.discountAmount, 0);
-    const taxTotal = saleItems.reduce((acc, curr) => acc + curr.taxAmount, 0);
-    const netTotal = Math.max(0, Math.round((subtotal - discountTotal) * 100) / 100);
+    // Step 2: Totals & Precise Round-off Calculation
+    const subtotal = Math.round(saleItems.reduce((acc, curr) => acc + (curr.quantity * curr.unitPrice), 0) * 100) / 100;
+    const itemDiscountTotal = Math.round(saleItems.reduce((acc, curr) => acc + curr.discountAmount, 0) * 100) / 100;
+    
+    // Manual discount override calculation
+    let manualDiscountAmount = 0;
+    if (request.manualDiscountAmount !== undefined && request.manualDiscountAmount > 0) {
+      manualDiscountAmount = request.manualDiscountAmount;
+    } else if (request.manualDiscountPercent !== undefined && request.manualDiscountPercent > 0) {
+      manualDiscountAmount = Math.round(((subtotal - itemDiscountTotal) * request.manualDiscountPercent / 100) * 100) / 100;
+    }
+    
+    const discountTotal = Math.round((itemDiscountTotal + manualDiscountAmount) * 100) / 100;
+    const taxTotal = Math.round(saleItems.reduce((acc, curr) => acc + curr.taxAmount, 0) * 100) / 100;
+    const unroundedNet = Math.max(0, subtotal - discountTotal);
+    const netTotal = Math.round(unroundedNet); // Round-off to nearest whole rupee
+    const roundOff = Math.round((netTotal - unroundedNet) * 100) / 100;
+    
     const paidAmount = request.paidAmount !== undefined ? request.paidAmount : netTotal;
-    const dueAmount = Math.max(0, netTotal - paidAmount);
+    const dueAmount = Math.max(0, Math.round((netTotal - paidAmount) * 100) / 100);
+    const cashReceived = request.cashReceived !== undefined 
+      ? request.cashReceived 
+      : (request.paymentMode === 'Cash' ? paidAmount : undefined);
+    const changeGiven = cashReceived !== undefined 
+      ? Math.max(0, Math.round((cashReceived - paidAmount) * 100) / 100) 
+      : 0;
 
-    const invoiceNumber = `PHARM-RET-${new Date().getFullYear()}-${Math.floor(100000 + Math.random() * 900000)}`;
+    // Idempotency check: prevent duplicate bill submission
+    if (request.idempotencyKey) {
+      const existing = this.getSales().find(s => s.idempotencyKey === request.idempotencyKey);
+      if (existing) {
+        return {
+          sale: existing,
+          bill: null as any,
+          items: existing.items
+        };
+      }
+    }
+
+    // Standard official sequential invoice numbering: LM-PH-YYYY-XXXXXX
+    const invoiceNumber = this.generateRetailInvoiceNumber();
 
     const sale: PharmacySale = {
       id: `sale_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
@@ -1395,24 +1439,34 @@ export class PharmacyService {
       saleDate: new Date().toISOString(),
       saleType: 'RETAIL',
       sourceType: 'RETAIL',
+      customerType: request.customerType || (request.cardNo ? 'card_holder' : request.patientId ? 'registered' : 'walkin'),
       customerId: request.customerId,
       patientId: request.patientId,
       patientName: request.customerName || request.patientName || 'Walk-in Customer',
       patientPhone: request.customerPhone || request.patientPhone,
       patientCardNo: request.cardNo,
+      cardTier: request.cardTier,
       prescriptionId: undefined, // Explicitly undefined for Retail
       items: saleItems,
       subtotal,
       discountAmount: discountTotal,
-      healthCardDiscount: request.cardNo ? discountTotal : 0,
+      healthCardDiscount: request.cardNo ? itemDiscountTotal : 0,
+      manualDiscountAmount,
+      manualDiscountPercent: request.manualDiscountPercent,
+      manualDiscountReason: request.manualDiscountReason,
+      manualDiscountApprovedBy: request.manualDiscountApprovedBy,
       taxAmount: taxTotal,
+      roundOff,
       netTotal,
       paidAmount,
       dueAmount,
+      cashReceived,
+      changeGiven,
       paymentMethod: request.paymentMode,
       dispensedBy: request.performedBy,
       status: 'dispensed',
       notes: request.notes,
+      idempotencyKey: request.idempotencyKey,
       createdAt: new Date().toISOString()
     };
 
@@ -1421,7 +1475,8 @@ export class PharmacyService {
       'Cash': 'cash',
       'UPI': 'upi',
       'Card': 'card',
-      'Health Wallet': 'wallet'
+      'Health Wallet': 'wallet',
+      'Bank Transfer': 'netbanking'
     };
 
     const bill = BillService.createHospitalBill({
@@ -1449,7 +1504,7 @@ export class PharmacyService {
       this.recordMovement({
         ...mov,
         referenceId: invoiceNumber,
-        notes: `Retail Sale to ${request.customerName} (${invoiceNumber})`
+        notes: `Retail Sale to ${sale.patientName} (${invoiceNumber})`
       });
     }
 
@@ -1473,6 +1528,254 @@ export class PharmacyService {
     AuditService.log('RETAIL_PHARMACY_SALE', 'pharmacy', `Retail sale ${sale.invoiceNumber} to ${sale.patientName} for ₹${netTotal}`, sale.id);
 
     return { sale, bill, items: saleItems };
+  }
+
+  /**
+   * Generates a unique, standardized sequential retail invoice number.
+   * Format: LM-PH-YYYY-XXXXXX (e.g. LM-PH-2026-000001)
+   */
+  public static generateRetailInvoiceNumber(): string {
+    const sales = this.getSales();
+    const currentYear = new Date().getFullYear();
+    const prefix = `LM-PH-${currentYear}-`;
+    const existingNums = sales
+      .map(s => s.invoiceNumber)
+      .filter(num => num && num.startsWith(prefix))
+      .map(num => parseInt(num.replace(prefix, ''), 10))
+      .filter(n => !isNaN(n));
+    const nextSeq = existingNums.length > 0 ? Math.max(...existingNums) + 1 : 1;
+    return `${prefix}${nextSeq.toString().padStart(6, '0')}`;
+  }
+
+  /* =======================================================================
+     HELD BILLS (UNFINISHED CARTS MANAGEMENT)
+     ======================================================================= */
+  public static getHeldBills(): PharmacyHeldBill[] {
+    return StorageService.getItem<PharmacyHeldBill[]>(PHARMACY_HELD_BILLS_KEY, []);
+  }
+
+  public static saveHeldBills(items: PharmacyHeldBill[]): void {
+    StorageService.setItem(PHARMACY_HELD_BILLS_KEY, items);
+  }
+
+  public static async holdBill(
+    data: Omit<PharmacyHeldBill, 'id' | 'holdNumber' | 'heldAt'>
+  ): Promise<PharmacyHeldBill> {
+    const heldList = this.getHeldBills();
+    const currentYear = new Date().getFullYear();
+    const holdNumber = `HOLD-${currentYear}-${(heldList.length + 1).toString().padStart(4, '0')}`;
+
+    const newHold: PharmacyHeldBill = {
+      ...data,
+      id: `hold_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      holdNumber,
+      heldAt: new Date().toISOString()
+    };
+
+    heldList.unshift(newHold);
+    this.saveHeldBills(heldList);
+    await ApiSyncService.saveDocument('pharmacyHeldBills', newHold.id, newHold);
+    AuditService.log('PHARMACY_BILL_HELD', 'pharmacy', `Bill ${holdNumber} put on hold by ${data.heldBy} for ${data.patientName}`);
+    return newHold;
+  }
+
+  public static deleteHeldBill(id: string): void {
+    const heldList = this.getHeldBills();
+    const filtered = heldList.filter(b => b.id !== id);
+    this.saveHeldBills(filtered);
+  }
+
+  /* =======================================================================
+     BILL CANCELLATION & REVERSAL (NON-DESTRUCTIVE AUDIT)
+     ======================================================================= */
+  public static async cancelSale(
+    saleId: string,
+    reason: string,
+    cancelledBy: string,
+    restock: boolean = true
+  ): Promise<PharmacySale> {
+    const sales = this.getSales();
+    const saleIndex = sales.findIndex(s => s.id === saleId);
+    if (saleIndex === -1) {
+      throw new Error(`Sale ID "${saleId}" not found.`);
+    }
+
+    const sale = sales[saleIndex];
+    if (sale.status === 'cancelled') {
+      throw new Error(`Sale "${sale.invoiceNumber}" is already cancelled.`);
+    }
+
+    sale.status = 'cancelled';
+    sale.cancelledAt = new Date().toISOString();
+    sale.cancelledBy = cancelledBy;
+    sale.cancellationReason = reason;
+
+    // Conditionally restock medicines to batches
+    if (restock && sale.items && sale.items.length > 0) {
+      const batches = this.getBatches();
+      for (const item of sale.items) {
+        const batch = batches.find(b => b.id === item.batchId);
+        if (batch) {
+          const prevQty = batch.availableQty;
+          batch.availableQty += item.quantity;
+          batch.updatedAt = new Date().toISOString();
+
+          this.recordMovement({
+            medicineId: item.medicineId,
+            medicineName: item.medicineName,
+            batchNumber: batch.batchNumber,
+            type: 'STOCK_IN',
+            quantity: item.quantity,
+            previousStock: prevQty,
+            newStock: batch.availableQty,
+            referenceId: sale.invoiceNumber,
+            notes: `Bill Cancellation Restock: ${sale.invoiceNumber} (${reason})`,
+            performedBy: cancelledBy
+          });
+        }
+      }
+      this.saveBatchesList(batches);
+    }
+
+    // Record Reversal Transaction
+    if (sale.paidAmount > 0) {
+      this.recordPharmacyTransaction({
+        type: 'refund',
+        referenceId: sale.invoiceNumber,
+        entityName: sale.patientName,
+        amount: sale.paidAmount,
+        flow: 'outflow',
+        paymentMethod: sale.paymentMethod,
+        performedBy: cancelledBy,
+        notes: `Cancellation Refund for ${sale.invoiceNumber}: ${reason}`
+      });
+    }
+
+    sales[saleIndex] = sale;
+    this.saveSalesList(sales);
+    await ApiSyncService.saveDocument('pharmacySales', sale.id, sale);
+    AuditService.log('PHARMACY_BILL_CANCELLED', 'pharmacy', `Invoice ${sale.invoiceNumber} cancelled by ${cancelledBy}. Reason: ${reason}`);
+
+    return sale;
+  }
+
+  /* =======================================================================
+     OFFICIAL REPRINT TRACKING
+     ======================================================================= */
+  public static async reprintSale(saleId: string, reprintedBy: string): Promise<PharmacySale> {
+    const sales = this.getSales();
+    const sale = sales.find(s => s.id === saleId);
+    if (!sale) {
+      throw new Error(`Sale ID "${saleId}" not found.`);
+    }
+
+    sale.isReprint = true;
+    sale.reprintCount = (sale.reprintCount || 0) + 1;
+    sale.lastReprintAt = new Date().toISOString();
+    sale.lastReprintBy = reprintedBy;
+
+    this.saveSalesList(sales);
+    await ApiSyncService.saveDocument('pharmacySales', sale.id, sale);
+    AuditService.log('PHARMACY_BILL_REPRINTED', 'pharmacy', `Invoice ${sale.invoiceNumber} reprinted (Copy #${sale.reprintCount}) by ${reprintedBy}`);
+    return sale;
+  }
+
+  /* =======================================================================
+     SHIFT / DAY CLOSING LEDGER
+     ======================================================================= */
+  public static getShiftClosings(): PharmacyShiftClosing[] {
+    return StorageService.getItem<PharmacyShiftClosing[]>(PHARMACY_SHIFT_CLOSINGS_KEY, []);
+  }
+
+  public static saveShiftClosings(items: PharmacyShiftClosing[]): void {
+    StorageService.setItem(PHARMACY_SHIFT_CLOSINGS_KEY, items);
+  }
+
+  public static getShiftSummary(cashierId?: string): {
+    openingCash: number;
+    cashSales: number;
+    upiSales: number;
+    cardSales: number;
+    otherSales: number;
+    returnsAmount: number;
+    refundsAmount: number;
+    totalDiscountsAmount: number;
+    expectedCash: number;
+    totalSales: number;
+    totalTransactions: number;
+  } {
+    const today = new Date().toISOString().split('T')[0];
+    const sales = this.getSales().filter(s => {
+      const isToday = s.saleDate.startsWith(today);
+      const matchesCashier = !cashierId || s.dispensedBy === cashierId;
+      return isToday && matchesCashier && s.status !== 'cancelled';
+    });
+
+    const returns = this.getSalesReturns().filter(r => {
+      const isToday = r.returnDate.startsWith(today);
+      return isToday;
+    });
+
+    let cashSales = 0;
+    let upiSales = 0;
+    let cardSales = 0;
+    let otherSales = 0;
+    let totalDiscountsAmount = 0;
+
+    for (const s of sales) {
+      totalDiscountsAmount += s.discountAmount || 0;
+      if (s.paymentMethod === 'Cash') {
+        cashSales += s.paidAmount || 0;
+      } else if (s.paymentMethod === 'UPI') {
+        upiSales += s.paidAmount || 0;
+      } else if (s.paymentMethod === 'Card') {
+        cardSales += s.paidAmount || 0;
+      } else {
+        otherSales += s.paidAmount || 0;
+      }
+    }
+
+    const returnsAmount = returns.reduce((acc, r) => acc + (r.refundAmount || 0), 0);
+    const openingCash = 2000; // Standard configured drawer float
+    const expectedCash = Math.max(0, Math.round((openingCash + cashSales - returnsAmount) * 100) / 100);
+    const totalSales = Math.round((cashSales + upiSales + cardSales + otherSales) * 100) / 100;
+    const totalTransactions = sales.length;
+
+    return {
+      openingCash,
+      cashSales,
+      upiSales,
+      cardSales,
+      otherSales,
+      returnsAmount,
+      refundsAmount: returnsAmount,
+      totalDiscountsAmount,
+      expectedCash,
+      totalSales,
+      totalTransactions
+    };
+  }
+
+  public static async closeShift(
+    data: Omit<PharmacyShiftClosing, 'id' | 'shiftNumber' | 'closedAt'>
+  ): Promise<PharmacyShiftClosing> {
+    const closings = this.getShiftClosings();
+    const currentYear = new Date().getFullYear();
+    const shiftNumber = `SHIFT-${currentYear}-${(closings.length + 1).toString().padStart(4, '0')}`;
+
+    const newShift: PharmacyShiftClosing = {
+      ...data,
+      id: `shift_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      shiftNumber,
+      closedAt: new Date().toISOString()
+    };
+
+    closings.unshift(newShift);
+    this.saveShiftClosings(closings);
+    await ApiSyncService.saveDocument('pharmacyShiftClosings', newShift.id, newShift);
+    AuditService.log('PHARMACY_SHIFT_CLOSED', 'pharmacy', `Shift ${shiftNumber} closed by ${data.cashierName}. Expected Cash: ₹${data.expectedCash}, Actual: ₹${data.actualCash}, Diff: ₹${data.difference}`);
+
+    return newShift;
   }
 
   /**

@@ -208,6 +208,9 @@ const PERMISSION_LABELS: Record<Permission, { label: string; category: string }>
   pharmacy_return_process: { label: 'Process Sales & Purchase Returns', category: 'Pharmacy' },
   pharmacy_adjust_stock: { label: 'Perform Audited Stock Adjustments', category: 'Pharmacy' },
   pharmacy_reports_view: { label: 'View Pharmacy Sales & Expiry Analytics', category: 'Pharmacy' },
+  pharmacy_discount_override: { label: 'Authorize Pharmacy Discount Overrides', category: 'Pharmacy' },
+  pharmacy_bill_cancel: { label: 'Cancel & Reverse Pharmacy Bills', category: 'Pharmacy' },
+  pharmacy_shift_close: { label: 'Close Pharmacy Shifts & Reconcile Drawers', category: 'Pharmacy' },
 
   // Ledger & Transactions Granular
   transactions_view_own: { label: 'View Own Generated Transactions', category: 'Financial' },

@@ -34,7 +34,9 @@ import {
   Pill,
   DollarSign,
   KeyRound,
-  ShieldCheck
+  ShieldCheck,
+  ShieldAlert,
+  BarChart2
 } from 'lucide-react';
 
 import { SystemModuleKey } from '../../constants/roles';
@@ -86,7 +88,13 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onCloseMobile }) => {
     { name: 'Staff & Users', href: '/users', icon: UserCheck, moduleKey: 'users', permission: 'users_manage' },
     { name: 'Permissions', href: '/permissions', icon: KeyRound, moduleKey: 'permissions', permission: ['users_manage', 'all'] },
     { name: 'Audit Logs', href: '/activity', icon: History, moduleKey: 'activity', permission: 'audit_view' },
-    { name: 'Settings & System', href: '/settings', icon: Settings, moduleKey: 'settings', permission: 'settings_manage' }
+    { name: 'Settings & System', href: '/settings', icon: Settings, moduleKey: 'settings', permission: 'settings_manage' },
+    ...(currentUser?.role === 'super_admin'
+      ? [
+          { name: 'Super Admin Center', href: '/super-admin', icon: ShieldAlert, moduleKey: 'settings' as SystemModuleKey, permission: 'all' as Permission },
+          { name: 'NGO Impact Report', href: '/super-admin/ngo-impact-report', icon: BarChart2, moduleKey: 'settings' as SystemModuleKey, permission: 'all' as Permission },
+        ]
+      : [])
   ];
 
   const navigation = baseNavigation.filter(item => {

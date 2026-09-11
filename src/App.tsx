@@ -31,6 +31,8 @@ const UserListPage = React.lazy(() => import('./pages/users/UserListPage').then(
 const ActivityLogPage = React.lazy(() => import('./pages/activity/ActivityLogPage').then(m => ({ default: m.ActivityLogPage })));
 const BackupRestorePage = React.lazy(() => import('./pages/backup/BackupRestorePage').then(m => ({ default: m.BackupRestorePage })));
 const SettingsPage = React.lazy(() => import('./pages/settings/SettingsPage').then(m => ({ default: m.SettingsPage })));
+const SuperAdminControlCenterPage = React.lazy(() => import('./pages/admin/SuperAdminControlCenterPage').then(m => ({ default: m.SuperAdminControlCenterPage })));
+const HealthCardImpactReportPage = React.lazy(() => import('./pages/admin/HealthCardImpactReportPage'));
 const IntegrationsPage = React.lazy(() => import('./pages/integrations/IntegrationsPage').then(m => ({ default: m.IntegrationsPage })));
 const GmailIntegrationPage = React.lazy(() => import('./pages/integrations/GmailIntegrationPage').then(m => ({ default: m.GmailIntegrationPage })));
 const WebsiteCmsPage = React.lazy(() => import('./pages/cms/WebsiteCmsPage').then(m => ({ default: m.WebsiteCmsPage })));
@@ -343,8 +345,11 @@ export const App: React.FC = () => {
                     <Route path="/gmail-integration" element={<ModuleGuard moduleKey="integrations"><GmailIntegrationPage /></ModuleGuard>} />
                     <Route path="/settings" element={<ModuleGuard moduleKey="settings"><SettingsPage /></ModuleGuard>} />
 
-                    {/* Super Admin Security Portal */}
-                    <Route path="/super-admin" element={<SuperAdminGuard><SettingsPage /></SuperAdminGuard>} />
+                    {/* Super Admin Sovereign Control Center */}
+                    <Route path="/super-admin" element={<SuperAdminGuard><SuperAdminControlCenterPage /></SuperAdminGuard>} />
+
+                    {/* Super Admin — Health Card Impact & Beneficiary Report (NGO / CSR) */}
+                    <Route path="/super-admin/ngo-impact-report" element={<SuperAdminGuard><HealthCardImpactReportPage /></SuperAdminGuard>} />
 
                   </Route>
 
