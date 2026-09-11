@@ -391,7 +391,7 @@ export class ApiSyncService {
 
         // Automatically sync to local memory cache and localStorage
         for (const [key, conf] of Object.entries(this.KEY_TO_FIRESTORE_MAP)) {
-          if (conf.type === 'collection' && conf.path === collectionName) {
+          if (conf.type === 'collection' && (conf.path === collectionName || (collectionName === 'audit_logs' && conf.path === 'auditLogs'))) {
             try {
               if (typeof window !== 'undefined' && (window as any).__labmedix_update_cache) {
                 (window as any).__labmedix_update_cache(key, items);
@@ -405,6 +405,8 @@ export class ApiSyncService {
                   localStorage.setItem('labmedix_memberships_v1', JSON.stringify(items));
                   sessionStorage.setItem('labmedix_memberships_v1', JSON.stringify(items));
                 }
+              }
+              if (typeof window !== 'undefined') {
                 window.dispatchEvent(new CustomEvent('labmedix_data_synced', { detail: { key, value: items } }));
               }
             } catch {}
@@ -436,7 +438,8 @@ export class ApiSyncService {
     'labmedix_families_v1': { type: 'collection', path: 'families' },
     'labmedix_wallets_v1': { type: 'collection', path: 'wallets' },
     'labmedix_transactions_v1': { type: 'collection', path: 'transactions' },
-    'labmedix_audit_logs_v1': { type: 'collection', path: 'auditLogs' },
+    'labmedix_audit_logs_v1': { type: 'collection', path: 'audit_logs' },
+    'labmedix_audit_logs_v2': { type: 'collection', path: 'auditLogs' },
     'labmedix_clinical_encounters': { type: 'collection', path: 'emrEncounters' },
     'labmedix_patient_appointments_v1': { type: 'collection', path: 'appointments' },
     'labmedix_doctor_master_records_v1': { type: 'collection', path: 'doctors' },
@@ -466,8 +469,20 @@ export class ApiSyncService {
     'labmedix_card_request_transactions_v1': { type: 'collection', path: 'card_transactions' },
     'labmedix_wallet_transactions_v1': { type: 'collection', path: 'wallet_transactions' },
     'LABMEDIX_WEBSITE_CMS_CONFIG': { type: 'doc', path: 'settings/websiteCms' },
+    'labmedix_pharmacy_medicines_v2': { type: 'collection', path: 'pharmacyMedicines' },
+    'labmedix_pharmacy_batches_v2': { type: 'collection', path: 'pharmacyBatches' },
+    'labmedix_pharmacy_suppliers_v2': { type: 'collection', path: 'pharmacySuppliers' },
+    'labmedix_pharmacy_purchases_v2': { type: 'collection', path: 'pharmacyPurchases' },
+    'labmedix_pharmacy_purchase_returns_v2': { type: 'collection', path: 'pharmacyPurchaseReturns' },
+    'labmedix_pharmacy_sales_v2': { type: 'collection', path: 'pharmacySales' },
+    'labmedix_pharmacy_sales_returns_v2': { type: 'collection', path: 'pharmacySalesReturns' },
+    'labmedix_pharmacy_stock_adjustments_v2': { type: 'collection', path: 'pharmacyAdjustments' },
+    'labmedix_pharmacy_transactions_v2': { type: 'collection', path: 'pharmacyTransactions' },
+    'labmedix_pharmacy_held_bills_v2': { type: 'collection', path: 'pharmacyHeldBills' },
+    'labmedix_pharmacy_shift_closings_v2': { type: 'collection', path: 'pharmacyShiftClosings' },
     'labmedix_pharmacy_inventory_v1': { type: 'collection', path: 'pharmacyInventory' },
     'labmedix_pharmacy_stock_movements_v1': { type: 'collection', path: 'stockMovements' },
+    'labmedix_technicians_v1': { type: 'collection', path: 'technicians' },
     'labmedix_integrations_v4': { type: 'doc', path: 'settings/integrations' }
   };
 
