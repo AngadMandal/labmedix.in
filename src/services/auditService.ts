@@ -1,6 +1,8 @@
 import { AuditLog, AuditModule, AuditSeverity } from '../types';
 import { StorageService } from './storage';
 import { generateUuid } from '../utils/idGenerator';
+import { db } from './firebaseService';
+import { doc, setDoc, collection, query, orderBy, limit, onSnapshot } from 'firebase/firestore';
 
 export class AuditService {
   /** Deterministic SHA-256 style block hash generator */
@@ -143,10 +145,52 @@ export class AuditService {
     // Keep max 2000 logs in local storage
     if (logs.length > 2000) logs.pop();
     StorageService.saveAuditLogs(logs);
+
+    // Real-time Cloud Dual-Write to Firestore for distributed immutable audit logging
+    if (db) {
+      try {
+        setDoc(doc(db, 'audit_logs', newLog.id), {
+          ...newLog,
+          _syncedAt: new Date().toISOString()
+        }).catch((err) => {
+          console.warn('[AuditService] Cloud audit write failed (offline fallback active):', err?.message || err);
+        });
+      } catch (err) {
+        console.warn('[AuditService] Firestore write failed:', err);
+      }
+    }
   }
 
   public static getLogs(): AuditLog[] {
     return StorageService.getAuditLogs();
+  }
+
+  /** Subscribe to live audit logs from Firestore with fallback to localStorage */
+  public static subscribeLiveLogs(callback: (logs: AuditLog[]) => void): () => void {
+    if (!db) {
+      callback(StorageService.getAuditLogs());
+      return () => {};
+    }
+    try {
+      const q = query(collection(db, 'audit_logs'), orderBy('index', 'desc'), limit(500));
+      return onSnapshot(q, (snapshot) => {
+        if (!snapshot.empty) {
+          const cloudLogs: AuditLog[] = [];
+          snapshot.forEach((docSnap) => {
+            cloudLogs.push(docSnap.data() as AuditLog);
+          });
+          callback(cloudLogs);
+        } else {
+          callback(StorageService.getAuditLogs());
+        }
+      }, (err) => {
+        console.warn('[AuditService] Live snapshot error, using local:', err);
+        callback(StorageService.getAuditLogs());
+      });
+    } catch {
+      callback(StorageService.getAuditLogs());
+      return () => {};
+    }
   }
 
   /** Verify cryptographic integrity of the entire audit chain & compute Merkle Root */

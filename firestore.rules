@@ -263,7 +263,15 @@ service cloud.firestore {
     }
 
     match /_system_cloud_backups/{docId} {
-      allow read, write: if true;
+      allow read, write: if isSuperAdmin();
+    }
+
+    match /_system_firestore_backups/{docId} {
+      allow read, write: if isSuperAdmin();
+    }
+
+    match /_system_firestore_backups_meta/{docId} {
+      allow read, write: if isSuperAdmin();
     }
 
     match /_system_health/{docId} {

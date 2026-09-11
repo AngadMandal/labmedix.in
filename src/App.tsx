@@ -334,13 +334,13 @@ export const App: React.FC = () => {
                     {/* NGO & CSR Welfare Hub */}
                     <Route path="/ngo-welfare" element={<ModuleGuard moduleKey="ngo_welfare"><NgoWelfare /></ModuleGuard>} />
 
-                    {/* System & Audit */}
-                    <Route path="/activity" element={<ModuleGuard moduleKey="activity"><ActivityLogPage /></ModuleGuard>} />
+                    {/* System & Audit — Consolidated into Super Admin Sovereign Control Center */}
+                    <Route path="/activity" element={<Navigate to="/super-admin?tab=audit_logs" replace />} />
                     <Route path="/system-monitoring" element={<SuperAdminGuard><ModuleGuard moduleKey="system_monitoring"><SystemMonitoringPage /></ModuleGuard></SuperAdminGuard>} />
                     <Route path="/monitoring" element={<Navigate to="/system-monitoring" replace />} />
                     <Route path="/multi-device" element={<ModuleGuard moduleKey="system_monitoring"><MultiDeviceManagementPage /></ModuleGuard>} />
                     <Route path="/devices" element={<Navigate to="/multi-device" replace />} />
-                    <Route path="/backup" element={<SuperAdminGuard><ModuleGuard moduleKey="backup"><BackupRestorePage /></ModuleGuard></SuperAdminGuard>} />
+                    <Route path="/backup" element={<SuperAdminGuard><Navigate to="/super-admin?tab=backup" replace /></SuperAdminGuard>} />
                     <Route path="/integrations" element={<ModuleGuard moduleKey="integrations"><IntegrationsPage /></ModuleGuard>} />
                     <Route path="/gmail-integration" element={<ModuleGuard moduleKey="integrations"><GmailIntegrationPage /></ModuleGuard>} />
                     <Route path="/settings" element={<ModuleGuard moduleKey="settings"><SettingsPage /></ModuleGuard>} />

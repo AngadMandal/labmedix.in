@@ -779,6 +779,33 @@ export interface FirestoreDriftReport {
   driftCount: number;
 }
 
+export interface BackupHistoryRecord {
+  id: string;
+  label: string;
+  type: 'manual' | 'scheduled' | 'pre_restore' | 'cloud_sync' | 'auto';
+  status: 'processing' | 'successful' | 'failed';
+  createdAt: string;
+  completedAt?: string;
+  createdBy: string;
+  verificationStatus: 'pending' | 'verified' | 'unverified' | 'tampered' | 'corrupted' | 'failed';
+  verifiedAt?: string;
+  firestoreSnapshotId?: string;
+  sizeBytes?: number;
+  recordCount?: number;
+  checksum?: string;
+  errorMessage?: string;
+  failureReason?: string;
+}
+
+export interface BackupSystemStatus {
+  lastSuccessfulBackup: string | null;
+  nextScheduledBackup: string;
+  health: 'good' | 'warning' | 'critical';
+  totalBackups: number;
+  failedCount: number;
+  processingCount: number;
+}
+
 export interface VerificationResult {
   verified: boolean;
   type?: 'health_card' | 'staff_pass' | 'diagnostic_report';
