@@ -569,12 +569,104 @@ export interface ZohoPaymentConfig {
   lastPingTimestamp?: string;
 }
 
+export interface CompanyLogoMetadata {
+  url: string;
+  storageRef?: string;
+  fileType?: string;
+  fileSize?: number;
+  dimensions?: { width: number; height: number };
+  uploadedAt?: string;
+  uploadedBy?: string;
+  isActive: boolean;
+}
+
+export interface DocumentBrandingConfig {
+  bill: {
+    headerTitle?: string;
+    showLogo: boolean;
+    showGstin: boolean;
+    showDrugLicense: boolean;
+    footerNotice?: string;
+    termsAndConditions?: string[];
+    showQrCode: boolean;
+    showBarcode: boolean;
+    maxItemsPerPage?: number;
+  };
+  diagnosticReport: {
+    headerTitle?: string;
+    showLogo: boolean;
+    showNablLogo?: boolean;
+    labDirectorName?: string;
+    labDirectorDegree?: string;
+    pathologistName?: string;
+    technicianName?: string;
+    footerDisclaimer?: string;
+  };
+  healthCard: {
+    cardTitle?: string;
+    showLogo: boolean;
+    showWatermark: boolean;
+    watermarkText?: string;
+    cardFooterNotice?: string;
+    helplineText?: string;
+  };
+  prescription: {
+    headerTitle?: string;
+    showLogo: boolean;
+    showDoctorContact: boolean;
+    rxFooterNotice?: string;
+  };
+}
+
+export interface SystemSettingsConfig {
+  numbering: {
+    patientPrefix: string;
+    healthCardPrefix: string;
+    cardRequestPrefix: string;
+    billPrefix: string;
+    invoicePrefix: string;
+    transactionPrefix: string;
+    labReportPrefix: string;
+  };
+  dateTime: {
+    timeZone: string;
+    dateFormat: 'DD/MM/YYYY' | 'YYYY-MM-DD' | 'MM/DD/YYYY' | 'DD MMM YYYY';
+    timeFormat: '12h' | '24h';
+  };
+  printing: {
+    paperSize: 'A4' | 'Half-Page' | 'Thermal-80mm';
+    defaultLayout: 'portrait' | 'landscape';
+    autoPrintOnSave: boolean;
+    cutLineMarker: boolean;
+    margins: { top: number; bottom: number; left: number; right: number };
+  };
+  notifications: {
+    whatsappEnabled: boolean;
+    whatsappApiKey?: string;
+    smsEnabled: boolean;
+    smsSenderId?: string;
+    smsApiKey?: string;
+    emailEnabled: boolean;
+    emailSenderName?: string;
+    emailFromAddress?: string;
+  };
+  security: {
+    sessionTimeoutMinutes: number;
+    maxFailedAttempts: number;
+    lockoutDurationMinutes: number;
+    requirePinForBilling: boolean;
+    enforcePasswordPolicy: boolean;
+  };
+}
+
 export interface CompanyProfile {
   companyId?: string;
   name: string;
+  legalName?: string;
   tagline: string;
   estdYear: string;
   logoUrl: string;
+  logoMetadata?: CompanyLogoMetadata;
   subtitle: string;
   address: string;
   postOffice: string;
@@ -601,6 +693,9 @@ export interface CompanyProfile {
   isLocked?: boolean;
   lockedAt?: string;
   lockedBy?: string;
+  documentBranding?: DocumentBrandingConfig;
+  systemConfig?: SystemSettingsConfig;
+  validationStatus?: 'complete' | 'warning' | 'incomplete';
   services: {
     id: string;
     title: string;

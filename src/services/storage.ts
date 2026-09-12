@@ -1243,7 +1243,20 @@ export class StorageService {
         ...(DEFAULT_COMPANY_PROFILE.upiSettings || {}),
         ...(profile.upiSettings || {}),
         enabled: profile.upiSettings?.enabled ?? DEFAULT_COMPANY_PROFILE.upiSettings?.enabled ?? true
-      }
+      },
+      documentBranding: {
+        bill: { ...DEFAULT_COMPANY_PROFILE.documentBranding?.bill, ...(profile.documentBranding?.bill || {}) },
+        diagnosticReport: { ...DEFAULT_COMPANY_PROFILE.documentBranding?.diagnosticReport, ...(profile.documentBranding?.diagnosticReport || {}) },
+        healthCard: { ...DEFAULT_COMPANY_PROFILE.documentBranding?.healthCard, ...(profile.documentBranding?.healthCard || {}) },
+        prescription: { ...DEFAULT_COMPANY_PROFILE.documentBranding?.prescription, ...(profile.documentBranding?.prescription || {}) },
+      } as any,
+      systemConfig: {
+        numbering: { ...DEFAULT_COMPANY_PROFILE.systemConfig?.numbering, ...(profile.systemConfig?.numbering || {}) },
+        dateTime: { ...DEFAULT_COMPANY_PROFILE.systemConfig?.dateTime, ...(profile.systemConfig?.dateTime || {}) },
+        printing: { ...DEFAULT_COMPANY_PROFILE.systemConfig?.printing, ...(profile.systemConfig?.printing || {}) },
+        notifications: { ...DEFAULT_COMPANY_PROFILE.systemConfig?.notifications, ...(profile.systemConfig?.notifications || {}) },
+        security: { ...DEFAULT_COMPANY_PROFILE.systemConfig?.security, ...(profile.systemConfig?.security || {}) },
+      } as any
     };
   }
   public static saveCompanyProfile(profile: CompanyProfile): void {

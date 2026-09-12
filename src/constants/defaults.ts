@@ -1,11 +1,99 @@
-import { CompanyProfile, CardDesignConfig, ClinicRegistrationSettings } from '../types';
+import { CompanyProfile, CardDesignConfig, ClinicRegistrationSettings, DocumentBrandingConfig, SystemSettingsConfig } from '../types';
+
+export const DEFAULT_DOCUMENT_BRANDING: DocumentBrandingConfig = {
+  bill: {
+    headerTitle: 'HOSPITAL TAX INVOICE & CASH RECEIPT',
+    showLogo: true,
+    showGstin: true,
+    showDrugLicense: true,
+    footerNotice: 'Computer-generated official invoice. No physical signature required. Thank you for choosing LABMEDIX.',
+    termsAndConditions: [
+      'Medicines and laboratory test fees once billed are subject to hospital refund policy.',
+      'Discount benefits applied per registered Health Card terms.',
+      'For billing inquiries, contact Cashier Desk or Accounts.'
+    ],
+    showQrCode: true,
+    showBarcode: true,
+    maxItemsPerPage: 6
+  },
+  diagnosticReport: {
+    headerTitle: 'CLINICAL LABORATORY & DIAGNOSTIC REPORT',
+    showLogo: true,
+    showNablLogo: true,
+    labDirectorName: 'Dr. Angad Mandal, MBBS, MD (Path)',
+    labDirectorDegree: 'Chief Medical Director & Consultant Pathologist',
+    pathologistName: 'Dr. S. K. Roy, MD (Biochemistry)',
+    technicianName: 'P. Sengupta, DMLT (Senior Lab Tech)',
+    footerDisclaimer: 'The reported results refer exclusively to the specimen tested. Clinical correlation is recommended.'
+  },
+  healthCard: {
+    cardTitle: 'SMART HEALTH PRIVILEGE CARD',
+    showLogo: true,
+    showWatermark: true,
+    watermarkText: 'LABMEDIX SECURE HEALTHCARE • AngadMandal/Labmedix.in',
+    cardFooterNotice: 'Present this card or digital QR at LABMEDIX front desk to redeem medical discounts.',
+    helplineText: '24x7 Emergency Helpline: +91 98765 43210'
+  },
+  prescription: {
+    headerTitle: 'OUTPATIENT CLINICAL CONSULTATION & PRESCRIPTION',
+    showLogo: true,
+    showDoctorContact: true,
+    rxFooterNotice: 'Please review dosage instructions carefully. Return for follow-up as advised.'
+  }
+};
+
+export const DEFAULT_SYSTEM_CONFIG: SystemSettingsConfig = {
+  numbering: {
+    patientPrefix: 'LMDX-PAT-',
+    healthCardPrefix: 'LHC-2026-',
+    cardRequestPrefix: 'REQ-',
+    billPrefix: 'BILL-2026-',
+    invoicePrefix: 'INV-',
+    transactionPrefix: 'TXN-',
+    labReportPrefix: 'REP-'
+  },
+  dateTime: {
+    timeZone: 'Asia/Kolkata (IST)',
+    dateFormat: 'DD/MM/YYYY',
+    timeFormat: '12h'
+  },
+  printing: {
+    paperSize: 'Half-Page',
+    defaultLayout: 'portrait',
+    autoPrintOnSave: true,
+    cutLineMarker: true,
+    margins: { top: 5, bottom: 5, left: 8, right: 8 }
+  },
+  notifications: {
+    whatsappEnabled: true,
+    smsEnabled: false,
+    emailEnabled: true,
+    emailSenderName: 'LABMEDIX Healthcare Secretariat',
+    emailFromAddress: 'care@labmedix.in'
+  },
+  security: {
+    sessionTimeoutMinutes: 15,
+    maxFailedAttempts: 5,
+    lockoutDurationMinutes: 5,
+    requirePinForBilling: false,
+    enforcePasswordPolicy: true
+  }
+};
 
 export const DEFAULT_COMPANY_PROFILE: CompanyProfile = {
   companyId: 'LABMEDIX-MAIN-CLINIC',
   name: 'LABMEDIX MULTI-SPECIALITY HEALTHCARE & DIAGNOSTIC CENTRE',
+  legalName: 'LABMEDIX MULTI-SPECIALITY HEALTHCARE PRIVATE LIMITED',
   tagline: 'Angad Mandal • Confident In Care',
   estdYear: '2025',
   logoUrl: '/logo.jpg',
+  logoMetadata: {
+    url: '/logo.jpg',
+    fileType: 'image/jpeg',
+    uploadedAt: '2025-01-01T00:00:00.000Z',
+    uploadedBy: 'Super Administrator',
+    isActive: true
+  },
   subtitle: 'AngadMandal/Labmedix.in • ISO 9001:2015 ACCREDITED • DIAGNOSTIC LABS • NABH STANDARDS',
   address: 'Main Medical Expressway, Sultanganj',
   postOffice: 'Sultanganj P.O.',
@@ -31,6 +119,9 @@ export const DEFAULT_COMPANY_PROFILE: CompanyProfile = {
   sessionTimeoutMinutes: 15,
   isLocked: true,
   lockedBy: 'Super Administrator',
+  documentBranding: DEFAULT_DOCUMENT_BRANDING,
+  systemConfig: DEFAULT_SYSTEM_CONFIG,
+  validationStatus: 'complete',
   services: [
     {
       id: 'srv_1',
