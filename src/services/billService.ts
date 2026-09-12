@@ -286,7 +286,8 @@ export class BillService {
     patientAddress?: string;
     healthCardId?: string;
     healthCardNumber?: string;
-    billCategory: 'opd_consultation' | 'lab_diagnostics' | 'pharmacy_dispensing' | 'card_enrollment' | 'registration' | 'general';
+    membershipName?: string;
+    billCategory?: PatientBill['billCategory'];
     items: Array<{ description: string; quantity: number; unitPrice: number; total: number }>;
     discountAmount?: number;
     paidAmount?: number;
@@ -332,6 +333,7 @@ export class BillService {
       patientAddress: params.patientAddress,
       healthCardId: params.healthCardId,
       healthCardNumber: params.healthCardNumber,
+      membershipName: params.membershipName,
       isCardIssued: !!params.healthCardNumber,
       familyMemberCount: 0,
       includedMembers: 0,
@@ -347,7 +349,7 @@ export class BillService {
       authorizedStaff,
       billCategory: params.billCategory,
       items: params.items,
-      notes: params.notes || `${params.billCategory.replace(/_/g, ' ').toUpperCase()} Bill for ${params.patientName}`,
+      notes: params.notes || `${(params.billCategory || 'general').replace(/_/g, ' ').toUpperCase()} Bill for ${params.patientName}`,
       createdAt: now
     };
 

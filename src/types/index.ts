@@ -152,6 +152,32 @@ export type Permission =
   // Standard Bill & Print Center
   | 'print_center_view'
   | 'print_center_manage'
+  // Hospital Clinical Departments
+  | 'emergency_manage'
+  | 'emergency_view'
+  | 'emergency_triage'
+  | 'ipd_manage'
+  | 'ipd_view'
+  | 'ipd_admit'
+  | 'ipd_discharge'
+  | 'ward_manage'
+  | 'ward_view'
+  | 'bed_manage'
+  | 'nursing_manage'
+  | 'nursing_view'
+  | 'nursing_administer'
+  | 'ot_manage'
+  | 'ot_view'
+  | 'ot_schedule'
+  | 'anaesthesia_manage'
+  | 'anaesthesia_view'
+  | 'anaesthesia_pac'
+  | 'radiology_manage'
+  | 'radiology_view'
+  | 'radiology_report'
+  | 'blood_bank_manage'
+  | 'blood_bank_view'
+  | 'blood_bank_issue'
   // User Governance & Audit
   | 'staff_create'
   | 'user_create'
@@ -527,7 +553,15 @@ export type AuditModule =
   | 'portal'
   | 'pharmacy'
   | 'laboratory'
-  | 'billing';
+  | 'billing'
+  | 'emergency'
+  | 'ipd'
+  | 'ward'
+  | 'nursing'
+  | 'ot'
+  | 'anaesthesia'
+  | 'radiology'
+  | 'blood_bank';
 
 export type AuditSeverity = 'info' | 'financial' | 'security' | 'warning' | 'critical';
 
@@ -752,7 +786,19 @@ export interface PatientBill {
     role: string;
   };
   notes?: string;
-  billCategory?: 'registration' | 'card_enrollment' | 'opd_consultation' | 'lab_diagnostics' | 'pharmacy_dispensing' | 'general';
+  billCategory?:
+    | 'registration'
+    | 'card_enrollment'
+    | 'opd_consultation'
+    | 'lab_diagnostics'
+    | 'pharmacy_dispensing'
+    | 'emergency'
+    | 'ipd'
+    | 'ot_surgery'
+    | 'anaesthesia'
+    | 'radiology'
+    | 'blood_bank'
+    | 'general';
   items?: Array<{ description: string; quantity: number; unitPrice: number; total: number }>;
   createdAt: string;
 }
@@ -2559,3 +2605,363 @@ export interface BillPrintRecord {
   reprintReason?: string;
   paperFormat: 'A4_half_page' | 'A4_full' | 'thermal_receipt';
 }
+
+// ============================================================================
+// CLINICAL HOSPITAL DEPARTMENTS (Modules 7-12, 15, 16)
+// ============================================================================
+
+// 1. EMERGENCY & CASUALTY (Module 7)
+export type EmergencyTriagePriority = 'red' | 'yellow' | 'green' | 'black';
+export type EmergencyStatus =
+  | 'triaged'
+  | 'under_treatment'
+  | 'admitted_ipd'
+  | 'discharged'
+  | 'transferred'
+  | 'deceased';
+
+export interface EmergencyEncounter {
+  id: string;
+  encounterNumber: string;
+  patientId: string;
+  uhid?: string;
+  patientName: string;
+  age: number;
+  gender: string;
+  contactNumber: string;
+  arrivalMode: 'ambulance' | 'walk_in' | 'wheelchair' | 'stretcher';
+  chiefComplaint: string;
+  priority: EmergencyTriagePriority;
+  vitals: {
+    bpSystolic?: number;
+    bpDiastolic?: number;
+    pulse?: number;
+    temperature?: number;
+    spo2?: number;
+    respiratoryRate?: number;
+    gcsScore?: number;
+    painScore?: number;
+  };
+  attendingDoctorId?: string;
+  attendingDoctorName?: string;
+  triageNotes: string;
+  treatmentNotes?: string;
+  medicationsAdministered?: Array<{
+    medicineName: string;
+    dose: string;
+    route: string;
+    administeredAt: string;
+  }>;
+  status: EmergencyStatus;
+  convertedToIpdAdmissionId?: string;
+  totalEstimatedCharges: number;
+  isBilled?: boolean;
+  billId?: string;
+  arrivedAt: string;
+  dischargedAt?: string;
+}
+
+// 2. INPATIENT DEPARTMENT (IPD) & ADMISSION (Module 8)
+export type AdmissionStatus = 'admitted' | 'transferred' | 'discharge_planned' | 'discharged';
+export type AdmissionType = 'emergency' | 'planned_opd' | 'transfer';
+
+export interface IpdDoctorRound {
+  id: string;
+  admissionId: string;
+  doctorId: string;
+  doctorName: string;
+  timestamp: string;
+  clinicalNotes: string;
+  treatmentAdvice: string;
+  vitalsRecorded?: Record<string, any>;
+}
+
+export interface IpdAdmission {
+  id: string;
+  admissionNumber: string;
+  patientId: string;
+  patientName: string;
+  uhid: string;
+  age: number;
+  gender: string;
+  bloodGroup?: string;
+  contactNumber: string;
+  admissionDate: string;
+  admissionType: AdmissionType;
+  wardId: string;
+  wardName: string;
+  bedNumber: string;
+  attendingDoctorId: string;
+  attendingDoctorName: string;
+  department: string;
+  admittingDiagnosis: string;
+  status: AdmissionStatus;
+  rounds?: IpdDoctorRound[];
+  dailyRoomRate: number;
+  advancePaid: number;
+  totalCharges: number;
+  estimatedDischargeDate?: string;
+  actualDischargeDate?: string;
+  dischargeSummary?: {
+    diagnosis: string;
+    hospitalCourse: string;
+    conditionAtDischarge: string;
+    medicationsOnDischarge: string;
+    followUpAdvice: string;
+    signedByDoctor: string;
+  };
+  isFinalBilled?: boolean;
+  finalBillId?: string;
+}
+
+// 3. WARD & BED MANAGEMENT (Module 9)
+export type BedStatus = 'available' | 'occupied' | 'cleaning' | 'maintenance';
+export type WardType = 'general' | 'icu' | 'ccu' | 'nicu' | 'picu' | 'private' | 'semi_private' | 'emergency';
+
+export interface HospitalBed {
+  id: string;
+  bedNumber: string;
+  wardId: string;
+  wardName: string;
+  status: BedStatus;
+  type: string;
+  dailyRate: number;
+  currentPatientId?: string;
+  currentPatientName?: string;
+  currentAdmissionId?: string;
+  occupiedSince?: string;
+  oxygenSupported: boolean;
+  ventilatorSupported: boolean;
+}
+
+export interface HospitalWard {
+  id: string;
+  name: string;
+  code: string;
+  floor: string;
+  type: WardType;
+  totalBeds: number;
+  dailyRate: number;
+  supervisorName?: string;
+}
+
+// 4. NURSING DEPARTMENT (Module 10)
+export interface NursePatientTask {
+  id: string;
+  admissionId: string;
+  patientName: string;
+  bedNumber: string;
+  nurseId?: string;
+  nurseName: string;
+  taskType: 'vitals' | 'medication' | 'dressing' | 'iv_fluid' | 'catheter_care' | 'diet';
+  description: string;
+  dueTime: string;
+  completedAt?: string;
+  isCompleted: boolean;
+  notes?: string;
+}
+
+export interface MedicationAdminRecord {
+  id: string;
+  admissionId: string;
+  patientName: string;
+  bedNumber: string;
+  medicineName: string;
+  dosage: string;
+  route: string;
+  scheduledTime: string;
+  administeredTime?: string;
+  status: 'scheduled' | 'given' | 'omitted' | 'refused';
+  administeredByNurse?: string;
+  remarks?: string;
+}
+
+export interface IntakeOutputRecord {
+  id: string;
+  admissionId: string;
+  patientName?: string;
+  date: string;
+  shift: 'morning' | 'evening' | 'night';
+  intakeOralMl: number;
+  intakeIvMl: number;
+  outputUrineMl: number;
+  outputDrainsMl: number;
+  outputVomitusMl: number;
+  balanceNetMl: number;
+  recordedByNurse: string;
+}
+
+export interface ShiftHandoverNote {
+  id: string;
+  wardName: string;
+  shift: string;
+  date: string;
+  outgoingNurse: string;
+  incomingNurse: string;
+  summary: string;
+  criticalPatientsCount: number;
+  pendingTasksCount: number;
+  createdAt: string;
+}
+
+// 5. OPERATION THEATRE (OT) & SURGERY (Module 11)
+export type SurgeryStatus = 'scheduled' | 'in_preparation' | 'in_surgery' | 'recovery' | 'completed' | 'cancelled';
+export type SurgeryCategory =
+  | 'general_surgery'
+  | 'orthopedic'
+  | 'gynaecology'
+  | 'cardiac'
+  | 'neuro'
+  | 'ent'
+  | 'ophthalmology'
+  | 'urology'
+  | 'emergency';
+
+export interface SurgeryBooking {
+  id: string;
+  otNumber: string;
+  patientId: string;
+  patientName: string;
+  uhid?: string;
+  admissionId?: string;
+  procedureName: string;
+  category: SurgeryCategory;
+  leadSurgeonId: string;
+  leadSurgeonName: string;
+  anaesthetistId?: string;
+  anaesthetistName?: string;
+  scheduledDate: string;
+  scheduledStartTime: string;
+  scheduledDurationMinutes: number;
+  status: SurgeryStatus;
+  whoChecklistCompleted: boolean;
+  intraOpNotes?: string;
+  postOpInstructions?: string;
+  theatreCharges: number;
+  surgeonCharges: number;
+  anaesthesiaCharges: number;
+  totalCharges: number;
+  isBilled?: boolean;
+  billId?: string;
+}
+
+// 6. ANAESTHESIA MANAGEMENT (Module 12)
+export type AsaPacGrade = 'ASA_I' | 'ASA_II' | 'ASA_III' | 'ASA_IV' | 'ASA_V' | 'ASA_VI' | 'ASA_E';
+export type AnaesthesiaType = 'general' | 'spinal' | 'epidural' | 'regional_block' | 'local' | 'sedation_mac';
+
+export interface AnaesthesiaRecord {
+  id: string;
+  surgeryId: string;
+  patientId: string;
+  patientName: string;
+  anaesthetistName: string;
+  pacEvaluationDate: string;
+  asaGrade: AsaPacGrade;
+  mallampatiScore: 1 | 2 | 3 | 4;
+  airwayAssessment: string;
+  cardiacHistory?: string;
+  respiratoryHistory?: string;
+  allergies?: string;
+  proposedAnaesthesiaType: AnaesthesiaType;
+  preOpMedications?: string;
+  npoStatusHours: number;
+  pacStatus: 'cleared' | 'cleared_high_risk' | 'deferred';
+  intraOpVitalsLog?: Array<{
+    time: string;
+    bp: string;
+    pulse: number;
+    spo2: number;
+    etco2?: number;
+  }>;
+  aldreteRecoveryScore?: number;
+  recoveryNotes?: string;
+}
+
+// 7. RADIOLOGY & IMAGING (Module 15)
+export type RadiologyModality = 'x_ray' | 'ultrasound' | 'ct_scan' | 'mri' | 'mammography' | 'dexa' | 'ecg';
+export type RadiologyStatus = 'ordered' | 'scheduled' | 'technician_completed' | 'reported' | 'verified';
+
+export interface RadiologyInvestigation {
+  id: string;
+  accessionNumber: string;
+  patientId: string;
+  patientName: string;
+  uhid?: string;
+  referringDoctor?: string;
+  modality: RadiologyModality;
+  studyName: string;
+  bodyPart: string;
+  clinicalIndication: string;
+  orderedAt: string;
+  scheduledFor?: string;
+  status: RadiologyStatus;
+  technicianName?: string;
+  technicianCompletedAt?: string;
+  radiologistName?: string;
+  radiologistFindings?: string;
+  impression?: string;
+  recommendations?: string;
+  verifiedAt?: string;
+  cost: number;
+  isBilled?: boolean;
+  billId?: string;
+}
+
+// 8. BLOOD BANK MANAGEMENT (Module 16)
+export type BloodGroup = 'A+' | 'A-' | 'B+' | 'B-' | 'AB+' | 'AB-' | 'O+' | 'O-' | 'Bombay_Oh';
+export type BloodComponentType = 'whole_blood' | 'prbc' | 'ffp' | 'platelet_concentrate' | 'cryoprecipitate';
+export type BloodUnitStatus = 'in_stock' | 'cross_matched' | 'issued' | 'expired' | 'discarded';
+
+export interface BloodUnitRecord {
+  id: string;
+  unitBarcode: string;
+  bloodGroup: BloodGroup;
+  componentType: BloodComponentType;
+  volumeMl: number;
+  collectionDate: string;
+  expiryDate: string;
+  storageLocation: string;
+  donorId?: string;
+  status: BloodUnitStatus;
+  hivTest: 'negative' | 'positive';
+  hcvTest: 'negative' | 'positive';
+  hbsAgTest: 'negative' | 'positive';
+  vdrlTest: 'negative' | 'positive';
+  malariaTest: 'negative' | 'positive';
+  issuedToPatientId?: string;
+  issuedToPatientName?: string;
+  issuedAt?: string;
+}
+
+export interface BloodIssueRequest {
+  id: string;
+  requestNumber: string;
+  patientId: string;
+  patientName: string;
+  wardOrOt: string;
+  bloodGroup: BloodGroup;
+  componentRequired: BloodComponentType;
+  unitsRequested: number;
+  crossMatchCompatibility: 'compatible' | 'incompatible' | 'pending';
+  urgency: 'routine' | 'urgent' | 'emergency_crash';
+  assignedUnitBarcodes?: string[];
+  requestStatus: 'requested' | 'cross_matching' | 'issued' | 'cancelled';
+  requisitionDoctor: string;
+  requestedAt: string;
+}
+
+export interface BloodDonor {
+  id: string;
+  donorRegNumber: string;
+  fullName: string;
+  gender: string;
+  age: number;
+  contactNumber: string;
+  bloodGroup: BloodGroup;
+  weightKg: number;
+  hemoglobinGmDl: number;
+  lastDonationDate?: string;
+  isEligible: boolean;
+  screeningNotes?: string;
+}
+

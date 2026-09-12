@@ -54,6 +54,14 @@ const PrintCenterPage = React.lazy(() => import('./pages/billing/PrintCenterPage
 const NotificationsPage = React.lazy(() => import('./pages/notifications/NotificationsPage').then(m => ({ default: m.NotificationsPage })));
 const TransactionsPage = React.lazy(() => import('./pages/transactions/TransactionsPage').then(m => ({ default: m.TransactionsPage })));
 const PermissionsPage = React.lazy(() => import('./pages/users/PermissionsPage').then(m => ({ default: m.PermissionsPage })));
+const EmergencyDepartmentPage = React.lazy(() => import('./pages/emergency/EmergencyDepartmentPage').then(m => ({ default: m.EmergencyDepartmentPage })));
+const InpatientDepartmentPage = React.lazy(() => import('./pages/ipd/InpatientDepartmentPage').then(m => ({ default: m.InpatientDepartmentPage })));
+const WardManagementPage = React.lazy(() => import('./pages/wards/WardManagementPage').then(m => ({ default: m.WardManagementPage })));
+const NursingStationPage = React.lazy(() => import('./pages/nursing/NursingStationPage').then(m => ({ default: m.NursingStationPage })));
+const OperationTheatrePage = React.lazy(() => import('./pages/ot/OperationTheatrePage').then(m => ({ default: m.OperationTheatrePage })));
+const AnaesthesiaPage = React.lazy(() => import('./pages/anaesthesia/AnaesthesiaPage').then(m => ({ default: m.AnaesthesiaPage })));
+const RadiologyDepartmentPage = React.lazy(() => import('./pages/radiology/RadiologyDepartmentPage').then(m => ({ default: m.RadiologyDepartmentPage })));
+const BloodBankPage = React.lazy(() => import('./pages/bloodbank/BloodBankPage').then(m => ({ default: m.BloodBankPage })));
 const NotFoundPage = React.lazy(() => import('./pages/not-found/NotFoundPage').then(m => ({ default: m.NotFoundPage })));
 
 const RouteLoadingSpinner: React.FC = () => (
@@ -298,17 +306,47 @@ export const App: React.FC = () => {
                     <Route path="/doctors" element={<ModuleGuard moduleKey="doctors"><DoctorsPage /></ModuleGuard>} />
                     <Route path="/doctor-master" element={<ModuleGuard moduleKey="doctors"><DoctorsPage /></ModuleGuard>} />
 
-                    {/* Clinical / OPD (Module 8) */}
+                    {/* Clinical / OPD (Module 4 & 5) */}
                     <Route path="/clinical" element={<DoctorRouteGuard><DoctorEMRPage /></DoctorRouteGuard>} />
                     <Route path="/emr" element={<DoctorRouteGuard><DoctorEMRPage /></DoctorRouteGuard>} />
                     <Route path="/doctor-dashboard" element={<DoctorRouteGuard><DoctorDashboardPage /></DoctorRouteGuard>} />
 
-                    {/* Diagnostic Laboratory Hub & Sub-Modules (Modules 9, 10, 11, 12, 13) */}
+                    {/* Emergency Department & Casualty (Module 7) */}
+                    <Route path="/emergency" element={<ModuleGuard moduleKey="emergency"><EmergencyDepartmentPage /></ModuleGuard>} />
+                    <Route path="/casualty" element={<Navigate to="/emergency" replace />} />
+
+                    {/* Inpatient Department (IPD) & Admission (Module 8) */}
+                    <Route path="/ipd" element={<ModuleGuard moduleKey="ipd"><InpatientDepartmentPage /></ModuleGuard>} />
+                    <Route path="/admissions" element={<Navigate to="/ipd" replace />} />
+
+                    {/* Ward & Bed Management (Module 9) */}
+                    <Route path="/wards" element={<ModuleGuard moduleKey="wards"><WardManagementPage /></ModuleGuard>} />
+                    <Route path="/beds" element={<Navigate to="/wards" replace />} />
+
+                    {/* Nursing Department & MAR (Module 10) */}
+                    <Route path="/nursing" element={<ModuleGuard moduleKey="nursing"><NursingStationPage /></ModuleGuard>} />
+
+                    {/* Operation Theatre (OT) & Surgery (Module 11) */}
+                    <Route path="/ot" element={<ModuleGuard moduleKey="ot"><OperationTheatrePage /></ModuleGuard>} />
+                    <Route path="/surgeries" element={<Navigate to="/ot" replace />} />
+
+                    {/* Anaesthesia Management (Module 12) */}
+                    <Route path="/anaesthesia" element={<ModuleGuard moduleKey="anaesthesia"><AnaesthesiaPage /></ModuleGuard>} />
+                    <Route path="/pac" element={<Navigate to="/anaesthesia" replace />} />
+
+                    {/* Diagnostic Laboratory Hub & Sub-Modules (Modules 13, 14, 20, 21) */}
                     <Route path="/laboratory" element={<ModuleGuard moduleKey="laboratory"><LaboratoryPage /></ModuleGuard>} />
                     <Route path="/test-master" element={<ModuleGuard moduleKey="laboratory"><TestMasterPage /></ModuleGuard>} />
                     <Route path="/specimen-collection" element={<ModuleGuard moduleKey="laboratory"><LaboratoryPage initialTab="collection" /></ModuleGuard>} />
                     <Route path="/lab-results" element={<ModuleGuard moduleKey="laboratory"><LaboratoryPage initialTab="processing" /></ModuleGuard>} />
                     <Route path="/diagnostic-reports" element={<ModuleGuard moduleKey="laboratory"><LaboratoryPage initialTab="reports" /></ModuleGuard>} />
+
+                    {/* Radiology & Imaging (Module 15) */}
+                    <Route path="/radiology" element={<ModuleGuard moduleKey="radiology"><RadiologyDepartmentPage /></ModuleGuard>} />
+                    <Route path="/imaging" element={<Navigate to="/radiology" replace />} />
+
+                    {/* Blood Bank & Transfusion (Module 16) */}
+                    <Route path="/blood-bank" element={<ModuleGuard moduleKey="blood_bank"><BloodBankPage /></ModuleGuard>} />
 
                     {/* Pharmacy Management & Sub-Modules (Modules 14, 15, 16, 17) */}
                     <Route path="/pharmacy" element={<ModuleGuard moduleKey="pharmacy"><PharmacyPage /></ModuleGuard>} />

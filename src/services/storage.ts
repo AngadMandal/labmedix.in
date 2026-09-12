@@ -81,7 +81,22 @@ export const STORAGE_KEYS = {
   CHARITY_GRANTS: 'labmedix_charity_grants_v1',
   NGO_FUND_TRANSACTIONS: 'labmedix_ngo_fund_transactions_v1',
   BILLS: 'labmedix_bills_v1',
-  CARD_REQUEST_TRANSACTIONS: 'labmedix_card_request_transactions_v1'
+  CARD_REQUEST_TRANSACTIONS: 'labmedix_card_request_transactions_v1',
+  // Clinical Hospital Departments
+  EMERGENCY_ENCOUNTERS: 'labmedix_emergency_encounters_v1',
+  IPD_ADMISSIONS: 'labmedix_ipd_admissions_v1',
+  HOSPITAL_WARDS: 'labmedix_hospital_wards_v1',
+  HOSPITAL_BEDS: 'labmedix_hospital_beds_v1',
+  NURSING_TASKS: 'labmedix_nursing_tasks_v1',
+  NURSING_MAR: 'labmedix_nursing_mar_v1',
+  NURSING_IO: 'labmedix_nursing_io_v1',
+  NURSING_HANDOVERS: 'labmedix_nursing_handovers_v1',
+  SURGERY_BOOKINGS: 'labmedix_surgery_bookings_v1',
+  ANAESTHESIA_RECORDS: 'labmedix_anaesthesia_records_v1',
+  RADIOLOGY_ORDERS: 'labmedix_radiology_orders_v1',
+  BLOOD_UNITS: 'labmedix_blood_units_v1',
+  BLOOD_REQUESTS: 'labmedix_blood_requests_v1',
+  BLOOD_DONORS: 'labmedix_blood_donors_v1'
 };
 
 const INITIAL_USERS: User[] = [

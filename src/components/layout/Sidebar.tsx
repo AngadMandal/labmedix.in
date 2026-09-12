@@ -38,7 +38,15 @@ import {
   ShieldAlert,
   BarChart2,
   Printer,
-  Bell
+  Bell,
+  Ambulance,
+  BedDouble,
+  Building,
+  HeartPulse,
+  Scissors,
+  Activity,
+  Scan,
+  Droplet
 } from 'lucide-react';
 
 import { SystemModuleKey } from '../../constants/roles';
@@ -76,6 +84,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onCloseMobile }) => {
 
   const baseNavigation: NavigationItem[] = [
     ...doctorNav,
+    // Front Office & Reception
     { name: 'Patient Directory', href: '/patients', icon: Users, moduleKey: 'patients', permission: 'patient_read' },
     { name: 'Health Cards', href: '/cards', icon: CreditCard, moduleKey: 'cards', permission: ['card_read', 'card_request_view', 'card_request_create'] },
     { name: 'Card Requests & Issuance', href: '/card-requests', icon: ShieldCheck, moduleKey: 'card_requests', permission: ['card_request_view', 'card_request_view_own', 'card_request_create'] },
@@ -83,13 +92,31 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onCloseMobile }) => {
     { name: 'Appointments & Queue', href: '/appointments', icon: Calendar, moduleKey: 'appointments', permission: ['appointment_view', 'emr_read', 'patient_read'] },
     { name: 'Doctor Management', href: '/doctors', icon: Crown, moduleKey: 'doctors', permission: ['doctor_view', 'doctor_manage', 'emr_read'] },
     { name: 'Clinical / OPD', href: '/clinical', icon: Stethoscope, moduleKey: 'emr', permission: ['emr_read', 'clinical_view', 'patient_read'] },
+
+    // Hospital Clinical Departments
+    { name: 'Emergency & Casualty', href: '/emergency', icon: Ambulance, moduleKey: 'emergency', permission: ['emergency_view', 'emergency_manage', 'all'] },
+    { name: 'Inpatient (IPD)', href: '/ipd', icon: BedDouble, moduleKey: 'ipd', permission: ['ipd_view', 'ipd_manage', 'all'] },
+    { name: 'Ward & Bed Matrix', href: '/wards', icon: Building, moduleKey: 'wards', permission: ['ward_view', 'ward_manage', 'all'] },
+    { name: 'Nursing Station', href: '/nursing', icon: HeartPulse, moduleKey: 'nursing', permission: ['nursing_view', 'nursing_manage', 'all'] },
+    { name: 'Operation Theatre (OT)', href: '/ot', icon: Scissors, moduleKey: 'ot', permission: ['ot_view', 'ot_manage', 'all'] },
+    { name: 'Anaesthesia & PAC', href: '/anaesthesia', icon: Activity, moduleKey: 'anaesthesia', permission: ['anaesthesia_view', 'anaesthesia_manage', 'all'] },
+    { name: 'Radiology & Imaging', href: '/radiology', icon: Scan, moduleKey: 'radiology', permission: ['radiology_view', 'radiology_manage', 'all'] },
+    { name: 'Blood Bank & Transfusion', href: '/blood-bank', icon: Droplet, moduleKey: 'blood_bank', permission: ['blood_bank_view', 'blood_bank_manage', 'all'] },
+
+    // Diagnostics & Pharmacy
     { name: 'Laboratory & Diagnostics', href: '/laboratory', icon: TestTube, moduleKey: 'laboratory', permission: ['test_view', 'catalog_manage', 'patient_read'] },
     { name: 'Pharmacy Management', href: '/pharmacy', icon: Pill, moduleKey: 'pharmacy', permission: ['patient_read', 'catalog_manage'] },
+
+    // Central Billing & Financial Ledger
     { name: 'Billing & Invoicing', href: '/billing', icon: Receipt, moduleKey: 'billing', permission: ['bill_view', 'bill_view_own', 'bill_create'] },
     { name: 'Standard Bill & Print Center', href: '/print-center', icon: Printer, moduleKey: 'print_center', permission: ['print_center_view', 'bill_print', 'all'] },
     { name: 'Payments & Transactions', href: '/transactions', icon: DollarSign, moduleKey: 'transactions', permission: ['card_transactions_view', 'card_transactions_view_own', 'wallet_read'] },
+
+    // Reports & Notifications
     { name: 'Reports & Analytics', href: '/reports', icon: BarChart3, moduleKey: 'reports', permission: 'reports_view' },
     { name: 'Notifications & Alerts', href: '/notifications', icon: Bell, moduleKey: 'notifications', permission: ['notifications_view', 'all'] },
+
+    // Staff & System Governance
     { name: 'Staff & Users', href: '/users', icon: UserCheck, moduleKey: 'users', permission: 'users_manage' },
     { name: 'Role-Based Permissions', href: '/permissions', icon: KeyRound, moduleKey: 'permissions', permission: ['users_manage', 'all'] },
     { name: 'Audit Logs', href: '/activity', icon: History, moduleKey: 'activity', permission: 'audit_view' },

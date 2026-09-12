@@ -232,7 +232,34 @@ const PERMISSION_LABELS: Record<Permission, { label: string; category: string }>
 
   // Standard Bill & Print Center
   print_center_view: { label: 'Access Standard Bill & Print Center', category: 'Financial' },
-  print_center_manage: { label: 'Authorize Official Duplicate Bill Reprints', category: 'Financial' }
+  print_center_manage: { label: 'Authorize Official Duplicate Bill Reprints', category: 'Financial' },
+
+  // Hospital Clinical Departments
+  emergency_manage: { label: 'Full Emergency Department Management', category: 'Clinical Emergency' },
+  emergency_view: { label: 'View Emergency Queue & Casualty Intake', category: 'Clinical Emergency' },
+  emergency_triage: { label: 'Perform Emergency Triage & Color-Coding', category: 'Clinical Emergency' },
+  ipd_manage: { label: 'Full Inpatient (IPD) Department Management', category: 'Inpatient (IPD)' },
+  ipd_view: { label: 'View Inpatient Admissions & Records', category: 'Inpatient (IPD)' },
+  ipd_admit: { label: 'Admit Patients & Allocate Beds', category: 'Inpatient (IPD)' },
+  ipd_discharge: { label: 'Process Discharges & Summaries', category: 'Inpatient (IPD)' },
+  ward_manage: { label: 'Manage Wards, Floors & Bed Masters', category: 'Wards & Beds' },
+  ward_view: { label: 'View Live Ward Bed Matrix & Occupancy', category: 'Wards & Beds' },
+  bed_manage: { label: 'Transfer Beds & Toggle Cleaning Status', category: 'Wards & Beds' },
+  nursing_manage: { label: 'Manage Nursing Station & Assignments', category: 'Nursing' },
+  nursing_view: { label: 'View Nursing Care Plans & Patient Charts', category: 'Nursing' },
+  nursing_administer: { label: 'Administer Medications (MAR) & Log Vitals', category: 'Nursing' },
+  ot_manage: { label: 'Manage Operation Theatres & Schedules', category: 'Surgery & OT' },
+  ot_view: { label: 'View Surgical Bookings & Schedules', category: 'Surgery & OT' },
+  ot_schedule: { label: 'Book Surgeries & Assign Surgical Teams', category: 'Surgery & OT' },
+  anaesthesia_manage: { label: 'Manage Anaesthesia Records & Protocols', category: 'Anaesthesia' },
+  anaesthesia_view: { label: 'View Pre-Anaesthetic Checkups (PAC)', category: 'Anaesthesia' },
+  anaesthesia_pac: { label: 'Perform Pre-Anaesthetic Evaluations & ASA Grading', category: 'Anaesthesia' },
+  radiology_manage: { label: 'Manage Radiology & Imaging Department', category: 'Radiology' },
+  radiology_view: { label: 'View Modality Queues & Imaging Orders', category: 'Radiology' },
+  radiology_report: { label: 'Write & Verify Diagnostic Imaging Reports', category: 'Radiology' },
+  blood_bank_manage: { label: 'Manage Blood Bank Inventory & Cross-Matching', category: 'Blood Bank' },
+  blood_bank_view: { label: 'View Blood Stocks & Storage Units', category: 'Blood Bank' },
+  blood_bank_issue: { label: 'Cross-Match & Issue Blood Units', category: 'Blood Bank' }
 };
 
 // Preset high-res clinical avatar gallery

@@ -37,6 +37,14 @@ export const ROLE_CONFIGS: Record<Role, RoleConfig> = {
       'pharmacy_dispense', 'prescription_view', 'medicine_dispense', 'pharmacy_sale_create', 'pharmacy_stock_manage', 'pharmacy_bill_print',
       'pharmacy_purchase_manage', 'pharmacy_supplier_manage', 'pharmacy_batch_manage', 'pharmacy_return_process', 'pharmacy_adjust_stock', 'pharmacy_reports_view',
       'notifications_view', 'notifications_send', 'print_center_view', 'print_center_manage',
+      'emergency_manage', 'emergency_view', 'emergency_triage',
+      'ipd_manage', 'ipd_view', 'ipd_admit', 'ipd_discharge',
+      'ward_manage', 'ward_view', 'bed_manage',
+      'nursing_manage', 'nursing_view', 'nursing_administer',
+      'ot_manage', 'ot_view', 'ot_schedule',
+      'anaesthesia_manage', 'anaesthesia_view', 'anaesthesia_pac',
+      'radiology_manage', 'radiology_view', 'radiology_report',
+      'blood_bank_manage', 'blood_bank_view', 'blood_bank_issue',
       'permissions_manage'
     ]
   },
@@ -51,6 +59,7 @@ export const ROLE_CONFIGS: Record<Role, RoleConfig> = {
       'emr_read', 'emr_create', 'emr_edit', 'emr_prescribe', 'doctor_view',
       'appointment_view', 'consultation_open', 'consultation_complete', 'prescription_add', 'investigation_order', 'followup_add',
       'lab_order_create', 'lab_order_view', 'result_verify', 'report_finalize', 'report_download',
+      'emergency_view', 'emergency_triage', 'ipd_view', 'ward_view', 'ot_view', 'anaesthesia_view', 'radiology_view', 'blood_bank_view',
       'prescription_view', 'bill_view_own'
     ]
   },
@@ -197,7 +206,15 @@ export const MODULE_KEYS = [
   'website_cms',
   'system_monitoring',
   'notifications',
-  'print_center'
+  'print_center',
+  'emergency',
+  'ipd',
+  'wards',
+  'nursing',
+  'ot',
+  'anaesthesia',
+  'radiology',
+  'blood_bank'
 ] as const;
 
 export type SystemModuleKey = typeof MODULE_KEYS[number];
@@ -461,6 +478,70 @@ export const SYSTEM_MODULES: SystemModuleInfo[] = [
     associatedPermissions: ['print_center_view', 'print_center_manage', 'bill_print', 'all']
   },
   {
+    key: 'emergency',
+    name: 'Emergency & Casualty',
+    href: '/emergency',
+    category: 'clinical',
+    description: 'Casualty intake, color-coded triage (Red/Yellow/Green/Black), vitals, crash resuscitation & IPD conversion.',
+    associatedPermissions: ['emergency_view', 'emergency_manage', 'emergency_triage', 'all']
+  },
+  {
+    key: 'ipd',
+    name: 'Inpatient Department (IPD)',
+    href: '/ipd',
+    category: 'clinical',
+    description: 'Inpatient admissions, ward/bed assignment, daily doctor rounds, discharge planning & summary.',
+    associatedPermissions: ['ipd_view', 'ipd_manage', 'ipd_admit', 'ipd_discharge', 'all']
+  },
+  {
+    key: 'wards',
+    name: 'Ward & Bed Management',
+    href: '/wards',
+    category: 'clinical',
+    description: 'Live visual bed occupancy matrix, ward masters (ICU, CCU, General), and bed transfer management.',
+    associatedPermissions: ['ward_view', 'ward_manage', 'bed_manage', 'all']
+  },
+  {
+    key: 'nursing',
+    name: 'Nursing Station',
+    href: '/nursing',
+    category: 'clinical',
+    description: 'Patient vitals dashboard, Medication Administration Record (MAR), intake/output charts & shift handovers.',
+    associatedPermissions: ['nursing_view', 'nursing_manage', 'nursing_administer', 'all']
+  },
+  {
+    key: 'ot',
+    name: 'Operation Theatre (OT)',
+    href: '/ot',
+    category: 'clinical',
+    description: 'Surgical scheduling, WHO surgical safety checklist, lead surgeon assignments & intra/post-op logs.',
+    associatedPermissions: ['ot_view', 'ot_manage', 'ot_schedule', 'all']
+  },
+  {
+    key: 'anaesthesia',
+    name: 'Anaesthesia & PAC',
+    href: '/anaesthesia',
+    category: 'clinical',
+    description: 'Pre-Anaesthetic Checkup (PAC), ASA physical status grading, intra-op monitoring & Aldrete score.',
+    associatedPermissions: ['anaesthesia_view', 'anaesthesia_manage', 'anaesthesia_pac', 'all']
+  },
+  {
+    key: 'radiology',
+    name: 'Radiology & Imaging',
+    href: '/radiology',
+    category: 'clinical',
+    description: 'Modality worklist (X-Ray, USG, CT, MRI), technician status, radiologist findings & verified reports.',
+    associatedPermissions: ['radiology_view', 'radiology_manage', 'radiology_report', 'all']
+  },
+  {
+    key: 'blood_bank',
+    name: 'Blood Bank & Transfusion',
+    href: '/blood-bank',
+    category: 'clinical',
+    description: 'Blood donor registry, component stocks (PRBC, FFP, Platelets), cross-matching & issue logs.',
+    associatedPermissions: ['blood_bank_view', 'blood_bank_manage', 'blood_bank_issue', 'all']
+  },
+  {
     key: 'permissions',
     name: 'RBAC & Action Permissions Matrix',
     href: '/permissions',
@@ -474,23 +555,31 @@ export const ROLE_DEFAULT_MODULES: Record<Role, SystemModuleKey[]> = {
   super_admin: [
     'dashboard', 'patients', 'cards', 'card_requests', 'families', 'appointments', 'doctors', 'laboratory', 'pharmacy', 'billing', 'transactions', 'reports', 'users', 'permissions', 'activity', 'settings',
     'doctor_master', 'test_master', 'ngo_welfare', 'card_studio', 'print_sheet', 'card_dispatch',
-    'memberships', 'wallet', 'website_cms', 'integrations', 'backup', 'cash_desk_vouchers', 'system_monitoring', 'notifications', 'print_center'
+    'memberships', 'wallet', 'website_cms', 'integrations', 'backup', 'cash_desk_vouchers', 'system_monitoring', 'notifications', 'print_center',
+    'emergency', 'ipd', 'wards', 'nursing', 'ot', 'anaesthesia', 'radiology', 'blood_bank'
   ],
   admin: [
     'dashboard', 'patients', 'cards', 'card_requests', 'families', 'appointments', 'doctors', 'laboratory', 'pharmacy', 'billing', 'transactions', 'reports', 'users', 'permissions', 'activity', 'settings',
     'doctor_master', 'test_master', 'ngo_welfare', 'card_studio', 'print_sheet', 'card_dispatch',
-    'memberships', 'wallet', 'integrations', 'backup', 'notifications', 'print_center'
+    'memberships', 'wallet', 'integrations', 'backup', 'notifications', 'print_center',
+    'emergency', 'ipd', 'wards', 'nursing', 'ot', 'anaesthesia', 'radiology', 'blood_bank'
   ],
-  doctor: ['emr', 'dashboard', 'patients', 'appointments', 'doctors', 'laboratory', 'pharmacy', 'cards', 'wallet'],
-  reception: ['dashboard', 'patients', 'cards', 'card_requests', 'families', 'appointments', 'billing', 'transactions', 'wallet', 'notifications', 'print_center'],
+  doctor: [
+    'emr', 'dashboard', 'patients', 'appointments', 'doctors', 'laboratory', 'pharmacy', 'cards', 'wallet',
+    'emergency', 'ipd', 'wards', 'nursing', 'ot', 'anaesthesia', 'radiology', 'blood_bank'
+  ],
+  reception: ['dashboard', 'patients', 'cards', 'card_requests', 'families', 'appointments', 'billing', 'transactions', 'wallet', 'notifications', 'print_center', 'emergency', 'ipd', 'wards'],
   cashier: ['dashboard', 'patients', 'billing', 'transactions', 'wallet', 'cash_desk_vouchers', 'cards', 'reports', 'print_center'],
-  manager: ['dashboard', 'patients', 'cards', 'card_requests', 'families', 'appointments', 'doctors', 'laboratory', 'pharmacy', 'billing', 'transactions', 'memberships', 'wallet', 'reports', 'activity', 'notifications', 'print_center'],
-  lab_staff: ['dashboard', 'patients', 'laboratory', 'test_master', 'cards', 'wallet'],
-  phlebotomist: ['dashboard', 'patients', 'laboratory', 'test_master', 'cards'],
+  manager: [
+    'dashboard', 'patients', 'cards', 'card_requests', 'families', 'appointments', 'doctors', 'laboratory', 'pharmacy', 'billing', 'transactions', 'memberships', 'wallet', 'reports', 'activity', 'notifications', 'print_center',
+    'emergency', 'ipd', 'wards', 'nursing', 'ot', 'anaesthesia', 'radiology', 'blood_bank'
+  ],
+  lab_staff: ['dashboard', 'patients', 'laboratory', 'test_master', 'cards', 'wallet', 'blood_bank'],
+  phlebotomist: ['dashboard', 'patients', 'laboratory', 'test_master', 'cards', 'blood_bank'],
   pharmacist: ['dashboard', 'patients', 'pharmacy', 'cards', 'billing', 'wallet', 'print_center'],
   marketing: ['dashboard', 'patients', 'cards', 'card_requests', 'reports', 'notifications'],
   card_operator: ['dashboard', 'patients', 'cards', 'card_requests', 'card_studio', 'print_sheet', 'card_dispatch'],
-  read_only: ['dashboard', 'patients', 'cards', 'appointments', 'laboratory', 'pharmacy', 'billing', 'transactions', 'activity']
+  read_only: ['dashboard', 'patients', 'cards', 'appointments', 'laboratory', 'pharmacy', 'billing', 'transactions', 'activity', 'emergency', 'ipd', 'wards', 'radiology']
 };
 
 export function hasPermission(userRole: Role, permission: Permission): boolean {
