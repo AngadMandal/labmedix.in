@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import { PortalService, MedicineOrder } from '../../services/portalService';
@@ -97,12 +98,25 @@ interface POSCartLine {
   discountPercent: number;
 }
 
-export const PharmacyPage: React.FC = () => {
+export interface PharmacyPageProps {
+  initialTab?: PharmacyHubTab;
+}
+
+export const PharmacyPage: React.FC<PharmacyPageProps> = ({ initialTab }) => {
   const { currentUser } = useAuth();
   const { showToast } = useToast();
+  const [searchParams] = useSearchParams();
 
-  // Active Tab
-  const [activeTab, setActiveTab] = useState<PharmacyHubTab>('dashboard');
+  // Active Tab with URL synchronization
+  const tabParam = (searchParams.get('tab') as PharmacyHubTab) || initialTab;
+  const [activeTab, setActiveTab] = useState<PharmacyHubTab>(tabParam || 'dashboard');
+
+  useEffect(() => {
+    const currentParam = (searchParams.get('tab') as PharmacyHubTab) || initialTab;
+    if (currentParam) {
+      setActiveTab(currentParam);
+    }
+  }, [searchParams, initialTab]);
 
   // Core Data
   const [medicines, setMedicines] = useState<MedicineMasterItem[]>(() => PharmacyService.getMedicines());

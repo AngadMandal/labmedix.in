@@ -50,6 +50,8 @@ const DoctorsPage = React.lazy(() => import('./pages/doctors/DoctorsPage').then(
 const LaboratoryPage = React.lazy(() => import('./pages/laboratory/LaboratoryPage').then(m => ({ default: m.LaboratoryPage })));
 const PharmacyPage = React.lazy(() => import('./pages/pharmacy/PharmacyPage').then(m => ({ default: m.PharmacyPage })));
 const BillingPage = React.lazy(() => import('./pages/billing/BillingPage').then(m => ({ default: m.BillingPage })));
+const PrintCenterPage = React.lazy(() => import('./pages/billing/PrintCenterPage').then(m => ({ default: m.PrintCenterPage })));
+const NotificationsPage = React.lazy(() => import('./pages/notifications/NotificationsPage').then(m => ({ default: m.NotificationsPage })));
 const TransactionsPage = React.lazy(() => import('./pages/transactions/TransactionsPage').then(m => ({ default: m.TransactionsPage })));
 const PermissionsPage = React.lazy(() => import('./pages/users/PermissionsPage').then(m => ({ default: m.PermissionsPage })));
 const NotFoundPage = React.lazy(() => import('./pages/not-found/NotFoundPage').then(m => ({ default: m.NotFoundPage })));
@@ -296,54 +298,71 @@ export const App: React.FC = () => {
                     <Route path="/doctors" element={<ModuleGuard moduleKey="doctors"><DoctorsPage /></ModuleGuard>} />
                     <Route path="/doctor-master" element={<ModuleGuard moduleKey="doctors"><DoctorsPage /></ModuleGuard>} />
 
-                    {/* Diagnostic Laboratory Hub */}
+                    {/* Clinical / OPD (Module 8) */}
+                    <Route path="/clinical" element={<DoctorRouteGuard><DoctorEMRPage /></DoctorRouteGuard>} />
+                    <Route path="/emr" element={<DoctorRouteGuard><DoctorEMRPage /></DoctorRouteGuard>} />
+                    <Route path="/doctor-dashboard" element={<DoctorRouteGuard><DoctorDashboardPage /></DoctorRouteGuard>} />
+
+                    {/* Diagnostic Laboratory Hub & Sub-Modules (Modules 9, 10, 11, 12, 13) */}
                     <Route path="/laboratory" element={<ModuleGuard moduleKey="laboratory"><LaboratoryPage /></ModuleGuard>} />
-                    <Route path="/test-master" element={<ModuleGuard moduleKey="laboratory"><LaboratoryPage /></ModuleGuard>} />
+                    <Route path="/test-master" element={<ModuleGuard moduleKey="laboratory"><TestMasterPage /></ModuleGuard>} />
+                    <Route path="/specimen-collection" element={<ModuleGuard moduleKey="laboratory"><LaboratoryPage initialTab="collection" /></ModuleGuard>} />
+                    <Route path="/lab-results" element={<ModuleGuard moduleKey="laboratory"><LaboratoryPage initialTab="processing" /></ModuleGuard>} />
+                    <Route path="/diagnostic-reports" element={<ModuleGuard moduleKey="laboratory"><LaboratoryPage initialTab="reports" /></ModuleGuard>} />
 
-                    {/* Pharmacy & Dispensing Hub */}
+                    {/* Pharmacy Management & Sub-Modules (Modules 14, 15, 16, 17) */}
                     <Route path="/pharmacy" element={<ModuleGuard moduleKey="pharmacy"><PharmacyPage /></ModuleGuard>} />
+                    <Route path="/medicine-master" element={<ModuleGuard moduleKey="pharmacy"><PharmacyPage initialTab="medicines" /></ModuleGuard>} />
+                    <Route path="/retail-pharmacy" element={<ModuleGuard moduleKey="pharmacy"><PharmacyPage initialTab="retail" /></ModuleGuard>} />
+                    <Route path="/dispensing" element={<ModuleGuard moduleKey="pharmacy"><PharmacyPage initialTab="prescriptions" /></ModuleGuard>} />
 
-                    {/* Hospital Billing & Invoices */}
+                    {/* Hospital Billing & Invoices (Module 18) */}
                     <Route path="/billing" element={<ModuleGuard moduleKey="billing"><BillingPage /></ModuleGuard>} />
 
-                    {/* Central Financial Ledger & Revenue */}
+                    {/* Standard Bill & Print Center (Module 19) */}
+                    <Route path="/print-center" element={<ModuleGuard moduleKey="billing"><PrintCenterPage /></ModuleGuard>} />
+
+                    {/* Central Financial Ledger & Revenue (Module 20) */}
                     <Route path="/transactions" element={<ModuleGuard moduleKey="transactions"><TransactionsPage /></ModuleGuard>} />
 
                     {/* Wallet */}
                     <Route path="/wallet" element={<ModuleGuard moduleKey="wallet"><WalletDashboardPage /></ModuleGuard>} />
 
-                    {/* Doctor EMR & Clinical Prescriptions (Exclusive to Doctor Role) */}
-                    <Route path="/emr" element={<DoctorRouteGuard><DoctorEMRPage /></DoctorRouteGuard>} />
-                    <Route path="/doctor-dashboard" element={<DoctorRouteGuard><DoctorDashboardPage /></DoctorRouteGuard>} />
-
-                    {/* Branch Analytics & Reports */}
+                    {/* Branch Analytics & Reports (Module 21) */}
                     <Route path="/reports" element={<ModuleGuard moduleKey="reports"><ReportsPage /></ModuleGuard>} />
+                    <Route path="/reports/ngo-impact" element={<SuperAdminGuard><HealthCardImpactReportPage /></SuperAdminGuard>} />
+                    <Route path="/super-admin/ngo-impact-report" element={<SuperAdminGuard><HealthCardImpactReportPage /></SuperAdminGuard>} />
 
-                    {/* Staff User Management */}
+                    {/* Notifications & Communication (Module 24) */}
+                    <Route path="/notifications" element={<ModuleGuard moduleKey="notifications"><NotificationsPage /></ModuleGuard>} />
+
+                    {/* Staff User Management (Module 22) */}
                     <Route path="/users" element={<ModuleGuard moduleKey="users"><UserListPage /></ModuleGuard>} />
 
-                    {/* Permissions & RBAC Matrix */}
+                    {/* Permissions & RBAC Matrix (Module 23) */}
                     <Route path="/permissions" element={<ModuleGuard moduleKey="permissions"><PermissionsPage /></ModuleGuard>} />
 
-                    {/* Audit Logs */}
+                    {/* Audit Logs (Module 25) */}
                     <Route path="/activity" element={<ModuleGuard moduleKey="activity"><ActivityLogPage /></ModuleGuard>} />
 
-                    {/* Consolidated System, Diagnostics & Central Company Settings */}
-                    <Route path="/settings" element={<Navigate to="/super-admin?tab=company_settings" replace />} />
+                    {/* System & Super Admin Sovereign Control Center (Modules 26, 27, 28, 29, 30) */}
+                    <Route path="/import-export" element={<SuperAdminGuard><Navigate to="/super-admin?tab=import_export" replace /></SuperAdminGuard>} />
+                    <Route path="/backup-restore" element={<SuperAdminGuard><Navigate to="/super-admin?tab=backup_restore" replace /></SuperAdminGuard>} />
+                    <Route path="/backup" element={<SuperAdminGuard><Navigate to="/super-admin?tab=backup_restore" replace /></SuperAdminGuard>} />
+                    <Route path="/data-integrity" element={<SuperAdminGuard><Navigate to="/super-admin?tab=data_integrity" replace /></SuperAdminGuard>} />
+                    <Route path="/settings" element={<SuperAdminGuard><Navigate to="/super-admin?tab=company_settings" replace /></SuperAdminGuard>} />
+                    <Route path="/super-admin" element={<SuperAdminGuard><SuperAdminControlCenterPage /></SuperAdminGuard>} />
+
+                    {/* Direct Aliases */}
                     <Route path="/cash-desk-vouchers" element={<Navigate to="/billing" replace />} />
                     <Route path="/website-cms" element={<Navigate to="/super-admin" replace />} />
                     <Route path="/ngo-welfare" element={<Navigate to="/dashboard" replace />} />
-                    <Route path="/system-monitoring" element={<Navigate to="/super-admin?tab=diagnostics" replace />} />
-                    <Route path="/monitoring" element={<Navigate to="/super-admin?tab=diagnostics" replace />} />
-                    <Route path="/multi-device" element={<Navigate to="/super-admin?tab=diagnostics" replace />} />
-                    <Route path="/devices" element={<Navigate to="/super-admin?tab=diagnostics" replace />} />
-                    <Route path="/backup" element={<Navigate to="/super-admin?tab=backup" replace />} />
+                    <Route path="/system-monitoring" element={<Navigate to="/super-admin?tab=data_integrity" replace />} />
+                    <Route path="/monitoring" element={<Navigate to="/super-admin?tab=data_integrity" replace />} />
+                    <Route path="/multi-device" element={<Navigate to="/super-admin?tab=data_integrity" replace />} />
+                    <Route path="/devices" element={<Navigate to="/super-admin?tab=data_integrity" replace />} />
                     <Route path="/integrations" element={<Navigate to="/super-admin" replace />} />
                     <Route path="/gmail-integration" element={<Navigate to="/super-admin" replace />} />
-                    <Route path="/super-admin/ngo-impact-report" element={<Navigate to="/reports" replace />} />
-
-                    {/* Super Admin Sovereign Control Center */}
-                    <Route path="/super-admin" element={<SuperAdminGuard><SuperAdminControlCenterPage /></SuperAdminGuard>} />
 
                   </Route>
 

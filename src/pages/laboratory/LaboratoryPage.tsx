@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import { PortalService, BloodTestBooking } from '../../services/portalService';
@@ -100,12 +101,25 @@ export type LabTab =
   | 'history'
   | 'settings';
 
-export const LaboratoryPage: React.FC = () => {
+export interface LaboratoryPageProps {
+  initialTab?: LabTab;
+}
+
+export const LaboratoryPage: React.FC<LaboratoryPageProps> = ({ initialTab }) => {
   const { currentUser, can } = useAuth();
   const { showToast } = useToast();
+  const [searchParams] = useSearchParams();
 
-  // Navigation Tab
-  const [activeTab, setActiveTab] = useState<LabTab>('dashboard');
+  // Navigation Tab with URL synchronization
+  const tabParam = (searchParams.get('tab') as LabTab) || initialTab;
+  const [activeTab, setActiveTab] = useState<LabTab>(tabParam || 'dashboard');
+
+  useEffect(() => {
+    const currentParam = (searchParams.get('tab') as LabTab) || initialTab;
+    if (currentParam) {
+      setActiveTab(currentParam);
+    }
+  }, [searchParams, initialTab]);
 
   // Core Data Stores
   const [labOrders, setLabOrders] = useState<LabOrderRecord[]>(() => LaboratoryService.getAll());

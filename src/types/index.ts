@@ -146,6 +146,12 @@ export type Permission =
   // Transactions
   | 'transactions_view_own'
   | 'transactions_view_all'
+  // Notifications & Communication
+  | 'notifications_view'
+  | 'notifications_send'
+  // Standard Bill & Print Center
+  | 'print_center_view'
+  | 'print_center_manage'
   // User Governance & Audit
   | 'staff_create'
   | 'user_create'
@@ -520,7 +526,8 @@ export type AuditModule =
   | 'clinical'
   | 'portal'
   | 'pharmacy'
-  | 'laboratory';
+  | 'laboratory'
+  | 'billing';
 
 export type AuditSeverity = 'info' | 'financial' | 'security' | 'warning' | 'critical';
 
@@ -2485,4 +2492,70 @@ export interface PharmacyShiftClosing {
   totalTransactions: number;
   notes?: string;
   closedAt: string;
+}
+
+// ============================================================================
+// NOTIFICATIONS & COMMUNICATION (Module 24)
+// ============================================================================
+
+export type NotificationChannel = 'whatsapp' | 'sms' | 'email';
+
+export type NotificationTrigger =
+  | 'appointment_reminder'
+  | 'report_ready'
+  | 'billing_receipt'
+  | 'card_renewal'
+  | 'card_status'
+  | 'custom_broadcast';
+
+export type NotificationStatus = 'pending' | 'sent' | 'delivered' | 'failed';
+
+export interface NotificationRecord {
+  id: string;
+  recipientName: string;
+  recipientPhone: string;
+  recipientEmail?: string;
+  patientId?: string;
+  cardNumber?: string;
+  channel: NotificationChannel;
+  trigger: NotificationTrigger;
+  title: string;
+  message: string;
+  status: NotificationStatus;
+  sentAt: string;
+  deliveredAt?: string;
+  metadata?: {
+    appointmentId?: string;
+    reportNumber?: string;
+    invoiceNumber?: string;
+    trackingId?: string;
+    apiResponse?: string;
+    whatsappUrl?: string;
+    error?: string;
+  };
+  dispatchedBy?: string;
+}
+
+// ============================================================================
+// STANDARD BILL & PRINT CENTER (Module 19)
+// ============================================================================
+
+export type PrintDocumentType =
+  | 'patient_bill'
+  | 'opd_slip'
+  | 'lab_receipt'
+  | 'pharmacy_pos'
+  | 'card_slip';
+
+export interface BillPrintRecord {
+  id: string;
+  documentType: PrintDocumentType;
+  referenceNumber: string;
+  patientName: string;
+  patientId?: string;
+  printedBy: string;
+  printCount: number; // 1 = Original, >1 = Official Duplicate / Reprint
+  lastPrintedAt: string;
+  reprintReason?: string;
+  paperFormat: 'A4_half_page' | 'A4_full' | 'thermal_receipt';
 }

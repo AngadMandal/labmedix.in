@@ -224,7 +224,15 @@ const PERMISSION_LABELS: Record<Permission, { label: string; category: string }>
   user_status_toggle: { label: 'Activate / Suspend Staff Accounts', category: 'System Core' },
   staff_department_assign: { label: 'Assign Hospital Department', category: 'System Core' },
   user_activity_review: { label: 'Review Staff Workflow Audit Activity', category: 'Compliance' },
-  audit_export: { label: 'Export Cryptographic Audit Logs', category: 'Compliance' }
+  audit_export: { label: 'Export Cryptographic Audit Logs', category: 'Compliance' },
+
+  // Notifications & Communication
+  notifications_view: { label: 'View Notification & Communication Logs', category: 'Communication' },
+  notifications_send: { label: 'Compose & Dispatch WhatsApp / SMS / Email Alerts', category: 'Communication' },
+
+  // Standard Bill & Print Center
+  print_center_view: { label: 'Access Standard Bill & Print Center', category: 'Financial' },
+  print_center_manage: { label: 'Authorize Official Duplicate Bill Reprints', category: 'Financial' }
 };
 
 // Preset high-res clinical avatar gallery

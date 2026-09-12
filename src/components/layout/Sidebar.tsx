@@ -36,7 +36,9 @@ import {
   KeyRound,
   ShieldCheck,
   ShieldAlert,
-  BarChart2
+  BarChart2,
+  Printer,
+  Bell
 } from 'lucide-react';
 
 import { SystemModuleKey } from '../../constants/roles';
@@ -65,7 +67,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onCloseMobile }) => {
 
   const doctorNav: NavigationItem[] = isDoctorRole
     ? [
-        { name: 'Doctor EMR & Rx Suite', href: '/emr', icon: Stethoscope, moduleKey: 'emr', permission: 'emr_read', doctorOnly: true },
+        { name: 'Doctor EMR & Rx Suite', href: '/clinical', icon: Stethoscope, moduleKey: 'emr', permission: 'emr_read', doctorOnly: true },
         { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard, moduleKey: 'dashboard', permission: 'all' },
       ]
     : [
@@ -74,21 +76,24 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onCloseMobile }) => {
 
   const baseNavigation: NavigationItem[] = [
     ...doctorNav,
-    { name: 'Patients', href: '/patients', icon: Users, moduleKey: 'patients', permission: 'patient_read' },
+    { name: 'Patient Directory', href: '/patients', icon: Users, moduleKey: 'patients', permission: 'patient_read' },
     { name: 'Health Cards', href: '/cards', icon: CreditCard, moduleKey: 'cards', permission: ['card_read', 'card_request_view', 'card_request_create'] },
-    { name: 'Card Requests', href: '/card-requests', icon: ShieldCheck, moduleKey: 'card_requests', permission: ['card_request_view', 'card_request_view_own', 'card_request_create'] },
+    { name: 'Card Requests & Issuance', href: '/card-requests', icon: ShieldCheck, moduleKey: 'card_requests', permission: ['card_request_view', 'card_request_view_own', 'card_request_create'] },
     { name: 'Family Health Shield', href: '/families', icon: Users2, moduleKey: 'families', permission: 'family_manage' },
-    { name: 'Appointments', href: '/appointments', icon: Calendar, moduleKey: 'appointments', permission: ['appointment_view', 'emr_read', 'patient_read'] },
-    { name: 'Doctors', href: '/doctors', icon: Crown, moduleKey: 'doctors', permission: ['doctor_view', 'doctor_manage', 'emr_read'] },
-    { name: 'Laboratory', href: '/laboratory', icon: TestTube, moduleKey: 'laboratory', permission: ['test_view', 'catalog_manage', 'patient_read'] },
-    { name: 'Pharmacy', href: '/pharmacy', icon: Pill, moduleKey: 'pharmacy', permission: ['patient_read', 'catalog_manage'] },
-    { name: 'Billing', href: '/billing', icon: Receipt, moduleKey: 'billing', permission: ['bill_view', 'bill_view_own', 'bill_create'] },
-    { name: 'Transactions', href: '/transactions', icon: DollarSign, moduleKey: 'transactions', permission: ['card_transactions_view', 'card_transactions_view_own', 'wallet_read'] },
+    { name: 'Appointments & Queue', href: '/appointments', icon: Calendar, moduleKey: 'appointments', permission: ['appointment_view', 'emr_read', 'patient_read'] },
+    { name: 'Doctor Management', href: '/doctors', icon: Crown, moduleKey: 'doctors', permission: ['doctor_view', 'doctor_manage', 'emr_read'] },
+    { name: 'Clinical / OPD', href: '/clinical', icon: Stethoscope, moduleKey: 'emr', permission: ['emr_read', 'clinical_view', 'patient_read'] },
+    { name: 'Laboratory & Diagnostics', href: '/laboratory', icon: TestTube, moduleKey: 'laboratory', permission: ['test_view', 'catalog_manage', 'patient_read'] },
+    { name: 'Pharmacy Management', href: '/pharmacy', icon: Pill, moduleKey: 'pharmacy', permission: ['patient_read', 'catalog_manage'] },
+    { name: 'Billing & Invoicing', href: '/billing', icon: Receipt, moduleKey: 'billing', permission: ['bill_view', 'bill_view_own', 'bill_create'] },
+    { name: 'Standard Bill & Print Center', href: '/print-center', icon: Printer, moduleKey: 'print_center', permission: ['print_center_view', 'bill_print', 'all'] },
+    { name: 'Payments & Transactions', href: '/transactions', icon: DollarSign, moduleKey: 'transactions', permission: ['card_transactions_view', 'card_transactions_view_own', 'wallet_read'] },
     { name: 'Reports & Analytics', href: '/reports', icon: BarChart3, moduleKey: 'reports', permission: 'reports_view' },
+    { name: 'Notifications & Alerts', href: '/notifications', icon: Bell, moduleKey: 'notifications', permission: ['notifications_view', 'all'] },
     { name: 'Staff & Users', href: '/users', icon: UserCheck, moduleKey: 'users', permission: 'users_manage' },
-    { name: 'Permissions', href: '/permissions', icon: KeyRound, moduleKey: 'permissions', permission: ['users_manage', 'all'] },
+    { name: 'Role-Based Permissions', href: '/permissions', icon: KeyRound, moduleKey: 'permissions', permission: ['users_manage', 'all'] },
     { name: 'Audit Logs', href: '/activity', icon: History, moduleKey: 'activity', permission: 'audit_view' },
-    { name: 'Super Admin / System', href: '/super-admin', icon: ShieldAlert, moduleKey: 'settings', permission: 'all' }
+    { name: 'Super Admin Sovereign', href: '/super-admin', icon: ShieldAlert, moduleKey: 'settings', permission: 'all' }
   ];
 
   const navigation = baseNavigation.filter(item => {

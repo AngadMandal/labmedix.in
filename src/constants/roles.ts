@@ -36,6 +36,7 @@ export const ROLE_CONFIGS: Record<Role, RoleConfig> = {
       'lab_order_create', 'lab_order_view', 'lab_order_manage', 'specimen_collect', 'specimen_receive', 'specimen_process', 'result_enter', 'result_draft_save', 'result_submit_verification', 'result_verify', 'report_finalize', 'report_amend', 'barcode_print', 'report_download', 'report_share',
       'pharmacy_dispense', 'prescription_view', 'medicine_dispense', 'pharmacy_sale_create', 'pharmacy_stock_manage', 'pharmacy_bill_print',
       'pharmacy_purchase_manage', 'pharmacy_supplier_manage', 'pharmacy_batch_manage', 'pharmacy_return_process', 'pharmacy_adjust_stock', 'pharmacy_reports_view',
+      'notifications_view', 'notifications_send', 'print_center_view', 'print_center_manage',
       'permissions_manage'
     ]
   },
@@ -67,7 +68,8 @@ export const ROLE_CONFIGS: Record<Role, RoleConfig> = {
       'doctor_view', 'test_view', 'bill_create', 'bill_view', 'bill_view_own', 'bill_view_all', 'bill_print', 'bill_view_due', 'payment_collect', 'finance_view',
       'card_transactions_view', 'card_transactions_view_own', 'card_transactions_view_all', 'transactions_view_own', 'transactions_view_all', 'transactions_manage',
       'appointment_view', 'appointment_manage', 'lab_order_create', 'lab_order_view', 'lab_order_manage', 'pharmacy_dispense',
-      'pharmacy_sale_create', 'pharmacy_stock_manage', 'pharmacy_purchase_manage', 'pharmacy_supplier_manage', 'pharmacy_batch_manage', 'pharmacy_return_process', 'pharmacy_adjust_stock', 'pharmacy_reports_view'
+      'pharmacy_sale_create', 'pharmacy_stock_manage', 'pharmacy_purchase_manage', 'pharmacy_supplier_manage', 'pharmacy_batch_manage', 'pharmacy_return_process', 'pharmacy_adjust_stock', 'pharmacy_reports_view',
+      'notifications_view', 'notifications_send', 'print_center_view', 'print_center_manage'
     ]
   },
   reception: {
@@ -83,7 +85,8 @@ export const ROLE_CONFIGS: Record<Role, RoleConfig> = {
       'lab_order_create', 'lab_order_view', 'report_download',
       'bill_create', 'bill_view_own', 'bill_print', 'payment_collect',
       'wallet_read', 'wallet_credit',
-      'card_transactions_view_own', 'transactions_view_own'
+      'card_transactions_view_own', 'transactions_view_own',
+      'notifications_view', 'notifications_send', 'print_center_view'
     ]
   },
   cashier: {
@@ -95,7 +98,8 @@ export const ROLE_CONFIGS: Record<Role, RoleConfig> = {
       'patient_read', 'patient_search', 'patient_print', 'card_read',
       'wallet_read', 'wallet_credit', 'wallet_debit', 'voucher_redeem',
       'bill_create', 'bill_view_own', 'bill_print', 'payment_collect',
-      'card_transactions_view_own', 'transactions_view_own'
+      'card_transactions_view_own', 'transactions_view_own',
+      'print_center_view', 'print_center_manage'
     ]
   },
   lab_staff: {
@@ -191,7 +195,9 @@ export const MODULE_KEYS = [
   'integrations',
   'backup',
   'website_cms',
-  'system_monitoring'
+  'system_monitoring',
+  'notifications',
+  'print_center'
 ] as const;
 
 export type SystemModuleKey = typeof MODULE_KEYS[number];
@@ -439,6 +445,22 @@ export const SYSTEM_MODULES: SystemModuleInfo[] = [
     associatedPermissions: ['card_transactions_view', 'card_transactions_view_own', 'wallet_read', 'transactions_manage']
   },
   {
+    key: 'notifications',
+    name: 'Notifications & Communication',
+    href: '/notifications',
+    category: 'admin',
+    description: 'Appointment reminders, test ready alerts, billing notices & WhatsApp/SMS dispatch log.',
+    associatedPermissions: ['notifications_view', 'notifications_send', 'all']
+  },
+  {
+    key: 'print_center',
+    name: 'Standard Bill & Print Center',
+    href: '/print-center',
+    category: 'finance',
+    description: 'A4 half-page standardized bills, preview, reprint tracking, and print history log.',
+    associatedPermissions: ['print_center_view', 'print_center_manage', 'bill_print', 'all']
+  },
+  {
     key: 'permissions',
     name: 'RBAC & Action Permissions Matrix',
     href: '/permissions',
@@ -452,21 +474,21 @@ export const ROLE_DEFAULT_MODULES: Record<Role, SystemModuleKey[]> = {
   super_admin: [
     'dashboard', 'patients', 'cards', 'card_requests', 'families', 'appointments', 'doctors', 'laboratory', 'pharmacy', 'billing', 'transactions', 'reports', 'users', 'permissions', 'activity', 'settings',
     'doctor_master', 'test_master', 'ngo_welfare', 'card_studio', 'print_sheet', 'card_dispatch',
-    'memberships', 'wallet', 'website_cms', 'integrations', 'backup', 'cash_desk_vouchers', 'system_monitoring'
+    'memberships', 'wallet', 'website_cms', 'integrations', 'backup', 'cash_desk_vouchers', 'system_monitoring', 'notifications', 'print_center'
   ],
   admin: [
     'dashboard', 'patients', 'cards', 'card_requests', 'families', 'appointments', 'doctors', 'laboratory', 'pharmacy', 'billing', 'transactions', 'reports', 'users', 'permissions', 'activity', 'settings',
     'doctor_master', 'test_master', 'ngo_welfare', 'card_studio', 'print_sheet', 'card_dispatch',
-    'memberships', 'wallet', 'integrations', 'backup'
+    'memberships', 'wallet', 'integrations', 'backup', 'notifications', 'print_center'
   ],
   doctor: ['emr', 'dashboard', 'patients', 'appointments', 'doctors', 'laboratory', 'pharmacy', 'cards', 'wallet'],
-  reception: ['dashboard', 'patients', 'cards', 'card_requests', 'families', 'appointments', 'billing', 'transactions', 'wallet'],
-  cashier: ['dashboard', 'patients', 'billing', 'transactions', 'wallet', 'cash_desk_vouchers', 'cards', 'reports'],
-  manager: ['dashboard', 'patients', 'cards', 'card_requests', 'families', 'appointments', 'doctors', 'laboratory', 'pharmacy', 'billing', 'transactions', 'memberships', 'wallet', 'reports', 'activity'],
+  reception: ['dashboard', 'patients', 'cards', 'card_requests', 'families', 'appointments', 'billing', 'transactions', 'wallet', 'notifications', 'print_center'],
+  cashier: ['dashboard', 'patients', 'billing', 'transactions', 'wallet', 'cash_desk_vouchers', 'cards', 'reports', 'print_center'],
+  manager: ['dashboard', 'patients', 'cards', 'card_requests', 'families', 'appointments', 'doctors', 'laboratory', 'pharmacy', 'billing', 'transactions', 'memberships', 'wallet', 'reports', 'activity', 'notifications', 'print_center'],
   lab_staff: ['dashboard', 'patients', 'laboratory', 'test_master', 'cards', 'wallet'],
   phlebotomist: ['dashboard', 'patients', 'laboratory', 'test_master', 'cards'],
-  pharmacist: ['dashboard', 'patients', 'pharmacy', 'cards', 'billing', 'wallet'],
-  marketing: ['dashboard', 'patients', 'cards', 'card_requests', 'reports'],
+  pharmacist: ['dashboard', 'patients', 'pharmacy', 'cards', 'billing', 'wallet', 'print_center'],
+  marketing: ['dashboard', 'patients', 'cards', 'card_requests', 'reports', 'notifications'],
   card_operator: ['dashboard', 'patients', 'cards', 'card_requests', 'card_studio', 'print_sheet', 'card_dispatch'],
   read_only: ['dashboard', 'patients', 'cards', 'appointments', 'laboratory', 'pharmacy', 'billing', 'transactions', 'activity']
 };
