@@ -259,7 +259,19 @@ const PERMISSION_LABELS: Record<Permission, { label: string; category: string }>
   radiology_report: { label: 'Write & Verify Diagnostic Imaging Reports', category: 'Radiology' },
   blood_bank_manage: { label: 'Manage Blood Bank Inventory & Cross-Matching', category: 'Blood Bank' },
   blood_bank_view: { label: 'View Blood Stocks & Storage Units', category: 'Blood Bank' },
-  blood_bank_issue: { label: 'Cross-Match & Issue Blood Units', category: 'Blood Bank' }
+  blood_bank_issue: { label: 'Cross-Match & Issue Blood Units', category: 'Blood Bank' },
+
+  // Inventory & Store
+  inventory_manage: { label: 'Full Hospital Inventory & Store Management', category: 'Inventory & Store' },
+  inventory_view: { label: 'View Stock Matrix & Item Catalogs', category: 'Inventory & Store' },
+  inventory_adjust: { label: 'Perform Stock Adjustments & Batch Audits', category: 'Inventory & Store' },
+  inventory_issue: { label: 'Issue Supplies to Clinical Departments (OT, ICU, Wards)', category: 'Inventory & Store' },
+
+  // Procurement & Suppliers
+  procurement_manage: { label: 'Full Procurement & Vendor Management', category: 'Procurement' },
+  procurement_view: { label: 'View Purchase Orders & Supplier Catalogs', category: 'Procurement' },
+  procurement_po_create: { label: 'Generate & Authorize Purchase Orders (PO)', category: 'Procurement' },
+  procurement_grn_process: { label: 'Receive Goods (GRN) & Inspect Shipments', category: 'Procurement' }
 };
 
 // Preset high-res clinical avatar gallery

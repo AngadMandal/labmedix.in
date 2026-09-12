@@ -178,6 +178,16 @@ export type Permission =
   | 'blood_bank_manage'
   | 'blood_bank_view'
   | 'blood_bank_issue'
+  // Inventory & Store
+  | 'inventory_manage'
+  | 'inventory_view'
+  | 'inventory_adjust'
+  | 'inventory_issue'
+  // Procurement & Suppliers
+  | 'procurement_manage'
+  | 'procurement_view'
+  | 'procurement_po_create'
+  | 'procurement_grn_process'
   // User Governance & Audit
   | 'staff_create'
   | 'user_create'
@@ -561,7 +571,9 @@ export type AuditModule =
   | 'ot'
   | 'anaesthesia'
   | 'radiology'
-  | 'blood_bank';
+  | 'blood_bank'
+  | 'inventory'
+  | 'procurement';
 
 export type AuditSeverity = 'info' | 'financial' | 'security' | 'warning' | 'critical';
 
@@ -2964,4 +2976,127 @@ export interface BloodDonor {
   isEligible: boolean;
   screeningNotes?: string;
 }
+
+// -------------------------------------------------------------
+// MODULE 29 & 30: INVENTORY / STORE & PROCUREMENT / SUPPLIERS
+// -------------------------------------------------------------
+
+export type InventoryCategory =
+  | 'medical_supply'
+  | 'surgical_ot'
+  | 'lab_reagent'
+  | 'general'
+  | 'radiology_film'
+  | 'linen_laundry';
+
+export interface HospitalInventoryItem {
+  id: string;
+  itemCode: string;
+  itemName: string;
+  category: InventoryCategory;
+  unitOfMeasure: string;
+  currentStock: number;
+  minimumStockLevel: number;
+  reorderQuantity: number;
+  batchNumber?: string;
+  expiryDate?: string;
+  unitPurchasePrice: number;
+  storeLocation: string;
+  lastRestockedDate?: string;
+  status: 'in_stock' | 'low_stock' | 'out_of_stock' | 'expired';
+}
+
+export interface HospitalSupplier {
+  id: string;
+  supplierCode: string;
+  supplierName: string;
+  category: 'medical_devices' | 'pharmaceuticals' | 'lab_reagents' | 'general_supplies' | 'surgical_instruments';
+  contactPerson: string;
+  phone: string;
+  email: string;
+  address: string;
+  taxGstNumber: string;
+  drugLicenseNumber?: string;
+  paymentTerms: string;
+  status: 'active' | 'suspended' | 'blacklisted';
+  totalPurchasesAmount: number;
+  ratingStars: number;
+}
+
+export interface PurchaseOrderItem {
+  itemId: string;
+  itemName: string;
+  itemCode: string;
+  category: InventoryCategory;
+  unitOfMeasure: string;
+  orderQuantity: number;
+  unitPrice: number;
+  totalPrice: number;
+  receivedQuantity?: number;
+}
+
+export type PurchaseOrderStatus = 'draft' | 'ordered' | 'partially_received' | 'received' | 'cancelled';
+
+export interface PurchaseOrder {
+  id: string;
+  poNumber: string;
+  supplierId: string;
+  supplierName: string;
+  orderDate: string;
+  expectedDeliveryDate: string;
+  items: PurchaseOrderItem[];
+  subtotal: number;
+  taxPercent: number;
+  taxAmount: number;
+  grandTotal: number;
+  status: PurchaseOrderStatus;
+  paymentTerms: string;
+  shippingAddress: string;
+  notes?: string;
+  createdBy: string;
+  approvedBy?: string;
+}
+
+export interface GoodsReceivedNote {
+  id: string;
+  grnNumber: string;
+  poId: string;
+  poNumber: string;
+  supplierName: string;
+  receivedDate: string;
+  receivedBy: string;
+  vendorInvoiceNumber: string;
+  vendorChallanNumber?: string;
+  items: {
+    itemId: string;
+    itemName: string;
+    orderedQty: number;
+    receivedQty: number;
+    acceptedQty: number;
+    rejectedQty: number;
+    batchNumber: string;
+    expiryDate?: string;
+    unitCost: number;
+    totalCost: number;
+  }[];
+  totalAcceptedAmount: number;
+  qcStatus: 'passed' | 'partial' | 'rejected';
+  remarks?: string;
+}
+
+export interface InventoryIssueRecord {
+  id: string;
+  issueNumber: string;
+  itemId: string;
+  itemName: string;
+  category: InventoryCategory;
+  quantityIssued: number;
+  unitOfMeasure: string;
+  departmentIssuedTo: 'OT' | 'ICU' | 'Emergency' | 'Laboratory' | 'Radiology' | 'Wards' | 'OPD';
+  requisitionedBy: string;
+  issuedBy: string;
+  issueDate: string;
+  remarks?: string;
+}
+
 

@@ -62,6 +62,8 @@ const OperationTheatrePage = React.lazy(() => import('./pages/ot/OperationTheatr
 const AnaesthesiaPage = React.lazy(() => import('./pages/anaesthesia/AnaesthesiaPage').then(m => ({ default: m.AnaesthesiaPage })));
 const RadiologyDepartmentPage = React.lazy(() => import('./pages/radiology/RadiologyDepartmentPage').then(m => ({ default: m.RadiologyDepartmentPage })));
 const BloodBankPage = React.lazy(() => import('./pages/bloodbank/BloodBankPage').then(m => ({ default: m.BloodBankPage })));
+const InventoryStorePage = React.lazy(() => import('./pages/inventory/InventoryStorePage').then(m => ({ default: m.InventoryStorePage })));
+const ProcurementSuppliersPage = React.lazy(() => import('./pages/procurement/ProcurementSuppliersPage').then(m => ({ default: m.ProcurementSuppliersPage })));
 const NotFoundPage = React.lazy(() => import('./pages/not-found/NotFoundPage').then(m => ({ default: m.NotFoundPage })));
 
 const RouteLoadingSpinner: React.FC = () => (
@@ -353,6 +355,15 @@ export const App: React.FC = () => {
                     <Route path="/medicine-master" element={<ModuleGuard moduleKey="pharmacy"><PharmacyPage initialTab="medicines" /></ModuleGuard>} />
                     <Route path="/retail-pharmacy" element={<ModuleGuard moduleKey="pharmacy"><PharmacyPage initialTab="retail" /></ModuleGuard>} />
                     <Route path="/dispensing" element={<ModuleGuard moduleKey="pharmacy"><PharmacyPage initialTab="prescriptions" /></ModuleGuard>} />
+
+                    {/* Central Hospital Inventory & Store (Module 29) */}
+                    <Route path="/inventory" element={<ModuleGuard moduleKey="inventory"><InventoryStorePage /></ModuleGuard>} />
+                    <Route path="/store" element={<Navigate to="/inventory" replace />} />
+
+                    {/* Procurement & Suppliers (Module 30) */}
+                    <Route path="/procurement" element={<ModuleGuard moduleKey="procurement"><ProcurementSuppliersPage /></ModuleGuard>} />
+                    <Route path="/suppliers" element={<Navigate to="/procurement" replace />} />
+                    <Route path="/purchase-orders" element={<Navigate to="/procurement" replace />} />
 
                     {/* Hospital Billing & Invoices (Module 18) */}
                     <Route path="/billing" element={<ModuleGuard moduleKey="billing"><BillingPage /></ModuleGuard>} />

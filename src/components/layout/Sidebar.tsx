@@ -46,7 +46,8 @@ import {
   Scissors,
   Activity,
   Scan,
-  Droplet
+  Droplet,
+  Boxes
 } from 'lucide-react';
 
 import { SystemModuleKey } from '../../constants/roles';
@@ -106,6 +107,10 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onCloseMobile }) => {
     // Diagnostics & Pharmacy
     { name: 'Laboratory & Diagnostics', href: '/laboratory', icon: TestTube, moduleKey: 'laboratory', permission: ['test_view', 'catalog_manage', 'patient_read'] },
     { name: 'Pharmacy Management', href: '/pharmacy', icon: Pill, moduleKey: 'pharmacy', permission: ['patient_read', 'catalog_manage'] },
+
+    // Central Hospital Inventory & Procurement (Modules 29 & 30)
+    { name: 'Inventory & Store', href: '/inventory', icon: Boxes, moduleKey: 'inventory', permission: ['inventory_view', 'inventory_manage', 'all'] },
+    { name: 'Procurement & Suppliers', href: '/procurement', icon: Truck, moduleKey: 'procurement', permission: ['procurement_view', 'procurement_manage', 'all'] },
 
     // Central Billing & Financial Ledger
     { name: 'Billing & Invoicing', href: '/billing', icon: Receipt, moduleKey: 'billing', permission: ['bill_view', 'bill_view_own', 'bill_create'] },

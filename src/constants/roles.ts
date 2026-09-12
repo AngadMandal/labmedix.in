@@ -45,6 +45,8 @@ export const ROLE_CONFIGS: Record<Role, RoleConfig> = {
       'anaesthesia_manage', 'anaesthesia_view', 'anaesthesia_pac',
       'radiology_manage', 'radiology_view', 'radiology_report',
       'blood_bank_manage', 'blood_bank_view', 'blood_bank_issue',
+      'inventory_manage', 'inventory_view', 'inventory_adjust', 'inventory_issue',
+      'procurement_manage', 'procurement_view', 'procurement_po_create', 'procurement_grn_process',
       'permissions_manage'
     ]
   },
@@ -214,7 +216,9 @@ export const MODULE_KEYS = [
   'ot',
   'anaesthesia',
   'radiology',
-  'blood_bank'
+  'blood_bank',
+  'inventory',
+  'procurement'
 ] as const;
 
 export type SystemModuleKey = typeof MODULE_KEYS[number];
@@ -540,6 +544,22 @@ export const SYSTEM_MODULES: SystemModuleInfo[] = [
     category: 'clinical',
     description: 'Blood donor registry, component stocks (PRBC, FFP, Platelets), cross-matching & issue logs.',
     associatedPermissions: ['blood_bank_view', 'blood_bank_manage', 'blood_bank_issue', 'all']
+  },
+  {
+    key: 'inventory',
+    name: 'Inventory & Store',
+    href: '/inventory',
+    category: 'admin',
+    description: 'Central hospital inventory, medical supplies, OT consumables, lab reagents, stock matrix & departmental issues.',
+    associatedPermissions: ['inventory_view', 'inventory_manage', 'inventory_adjust', 'inventory_issue', 'all']
+  },
+  {
+    key: 'procurement',
+    name: 'Procurement & Suppliers',
+    href: '/procurement',
+    category: 'finance',
+    description: 'Vendor directories, purchase orders (PO), Goods Received Notes (GRN) & supplier invoice settlements.',
+    associatedPermissions: ['procurement_view', 'procurement_manage', 'procurement_po_create', 'procurement_grn_process', 'all']
   },
   {
     key: 'permissions',

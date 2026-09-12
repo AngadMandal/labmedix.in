@@ -96,7 +96,13 @@ export const STORAGE_KEYS = {
   RADIOLOGY_ORDERS: 'labmedix_radiology_orders_v1',
   BLOOD_UNITS: 'labmedix_blood_units_v1',
   BLOOD_REQUESTS: 'labmedix_blood_requests_v1',
-  BLOOD_DONORS: 'labmedix_blood_donors_v1'
+  BLOOD_DONORS: 'labmedix_blood_donors_v1',
+  // Inventory & Procurement
+  INVENTORY_ITEMS: 'labmedix_inventory_items_v1',
+  SUPPLIERS: 'labmedix_suppliers_v1',
+  PURCHASE_ORDERS: 'labmedix_purchase_orders_v1',
+  GOODS_RECEIVED_NOTES: 'labmedix_grns_v1',
+  INVENTORY_ISSUES: 'labmedix_inventory_issues_v1'
 };
 
 const INITIAL_USERS: User[] = [
