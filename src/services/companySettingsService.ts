@@ -110,6 +110,14 @@ export class CompanySettingsService {
         recommendation: 'Enter Clinical Establishment / State Health Department license number.'
       },
       {
+        id: 'isoCertification',
+        field: 'isoCertification',
+        label: 'Accreditation & Quality Certifications',
+        isCritical: false,
+        isConfigured: Boolean(p.isoCertification && p.isoCertification.trim().length >= 5),
+        recommendation: 'Specify ISO 9001:2015, NABH, or NABL accreditation details for official reports.'
+      },
+      {
         id: 'gstin',
         field: 'gstin',
         label: 'GSTIN / Tax Registration',
@@ -124,6 +132,22 @@ export class CompanySettingsService {
         isCritical: false,
         isConfigured: Boolean(p.clinicalLicenseNo && p.clinicalLicenseNo.trim().length >= 4),
         recommendation: 'Enter pharmacy drug license numbers (e.g. 20B / 21B).'
+      },
+      {
+        id: 'whatsapp',
+        field: 'whatsapp',
+        label: 'Official WhatsApp Number',
+        isCritical: false,
+        isConfigured: Boolean(p.whatsapp && p.whatsapp.trim().length >= 8),
+        recommendation: 'Configure dedicated WhatsApp number for patient report delivery and alerts.'
+      },
+      {
+        id: 'ambulanceHelpline',
+        field: 'ambulanceHelpline',
+        label: 'Ambulance Emergency Dispatch',
+        isCritical: false,
+        isConfigured: Boolean(p.ambulanceHelpline && p.ambulanceHelpline.trim().length >= 8),
+        recommendation: 'Specify 24x7 Ambulance dispatch number.'
       },
       {
         id: 'cardFooterNotice',
@@ -264,8 +288,8 @@ export class CompanySettingsService {
       // 2. Identify modified fields for institutional audit logging
       const changedKeys: string[] = [];
       const keysToCompare: Array<keyof CompanyProfile> = [
-        'name', 'legalName', 'tagline', 'logoUrl', 'address', 'phone', 'helpline',
-        'whatsapp', 'email', 'website', 'registrationNo', 'gstin', 'clinicalLicenseNo'
+        'name', 'legalName', 'tagline', 'logoUrl', 'address', 'pinCode', 'district', 'state', 'phone', 'helpline',
+        'ambulanceHelpline', 'bloodBankHelpline', 'whatsapp', 'email', 'website', 'registrationNo', 'gstin', 'clinicalLicenseNo', 'isoCertification'
       ];
 
       keysToCompare.forEach(k => {
@@ -278,7 +302,7 @@ export class CompanySettingsService {
       AuditService.log(
         'COMPANY_SETTINGS_UPDATED',
         'settings',
-        `Super Admin updated Company Settings & Brand Identity. Status: ${validation.status.toUpperCase()} (${validation.score}% complete). Modified: [${changedKeys.slice(0, 4).join('; ')}${changedKeys.length > 4 ? '...' : ''}]`,
+        `Super Admin updated Central Company Settings & Brand Identity. Status: ${validation.status.toUpperCase()} (${validation.score}% complete). Modified: [${changedKeys.slice(0, 4).join('; ')}${changedKeys.length > 4 ? '...' : ''}]`,
         currentUser?.id,
         {
           operator: currentUser?.fullName || 'Super Administrator',
@@ -287,6 +311,7 @@ export class CompanySettingsService {
           logoChanged: prev.logoUrl !== finalProfile.logoUrl,
           validationScore: validation.score,
           status: validation.status,
+          modifiedFields: changedKeys,
           timestamp: now
         },
         'security'
@@ -295,9 +320,19 @@ export class CompanySettingsService {
       // 4. Multi-device reactive broadcast
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('labmedix_data_synced', {
-          detail: { key: 'labmedix_company_profile_v1', action: 'COMPANY_SETTINGS_SAVED' }
+          detail: { key: 'labmedix_company_profile_v1', action: 'COMPANY_SETTINGS_SAVED', value: finalProfile }
         }));
+        window.dispatchEvent(new CustomEvent('labmedix_company_profile_v1_updated'));
       }
+
+      // 5. Asynchronously synchronize to Express backend central store
+      try {
+        fetch('/api/sync/key/labmedix_company_profile_v1', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ value: finalProfile })
+        }).catch(() => {});
+      } catch {}
 
       return { success: true };
     } catch (err: any) {

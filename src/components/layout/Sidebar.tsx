@@ -47,7 +47,8 @@ import {
   Activity,
   Scan,
   Droplet,
-  Boxes
+  Boxes,
+  HardDrive
 } from 'lucide-react';
 
 import { SystemModuleKey } from '../../constants/roles';
@@ -125,7 +126,9 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onCloseMobile }) => {
     { name: 'Staff & Users', href: '/users', icon: UserCheck, moduleKey: 'users', permission: 'users_manage' },
     { name: 'Role-Based Permissions', href: '/permissions', icon: KeyRound, moduleKey: 'permissions', permission: ['users_manage', 'all'] },
     { name: 'Audit Logs', href: '/activity', icon: History, moduleKey: 'activity', permission: 'audit_view' },
-    { name: 'Super Admin Sovereign', href: '/super-admin', icon: ShieldAlert, moduleKey: 'settings', permission: 'all' }
+    { name: 'Super Admin Sovereign', href: '/super-admin', icon: ShieldAlert, moduleKey: 'settings', permission: 'all' },
+    { name: 'Company Settings & System', href: '/super-admin/company-settings', icon: Building, moduleKey: 'settings', permission: 'all' },
+    { name: 'Backup & Recovery', href: '/super-admin/backup-recovery', icon: HardDrive, moduleKey: 'settings', permission: 'all' }
   ];
 
   const navigation = baseNavigation.filter(item => {

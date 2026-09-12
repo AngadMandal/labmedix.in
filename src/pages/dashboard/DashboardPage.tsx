@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { StorageService } from '../../services/storage';
-import { BackupService } from '../../services/backupService';
 import { ApiSyncService } from '../../services/apiSyncService';
 import { EMRService } from '../../services/emrService';
 import { DoctorMasterService } from '../../services/doctorMasterService';
@@ -230,8 +229,7 @@ export const DashboardPage: React.FC = () => {
   };
 
   const handleQuickSnapshot = () => {
-    BackupService.createSnapshot(`Super Admin Checkpoint (${new Date().toLocaleTimeString()})`);
-    showToast('success', 'Snapshot Saved', 'Database restore point created.');
+    navigate('/super-admin/backup-recovery');
   };
 
   const activeRole = currentUser?.role || 'super_admin';
@@ -317,7 +315,7 @@ export const DashboardPage: React.FC = () => {
                 leftIcon={<Database className="w-4 h-4" />}
                 onClick={handleQuickSnapshot}
               >
-                Quick Snapshot
+                Backup & Recovery Center
               </Button>
             </>
           )}

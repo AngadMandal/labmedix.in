@@ -43,10 +43,19 @@ import {
   FileText,
   Bookmark,
   CheckCircle,
-  HelpCircle
+  HelpCircle,
+  ArrowUpDown,
+  History
 } from 'lucide-react';
 import { formatDateTime } from '../../utils/formatters';
 import { initGoogleAuth, googleSignIn, googleLogout, getGoogleAccessToken } from '../../services/googleAuth';
+import {
+  BackupRecoveryService,
+  SystemBackupRecord,
+  ImportValidationResult,
+  BackupType
+} from '../../services/backupRecoveryService';
+
 
 export const BackupRestorePage: React.FC = () => {
   const { showToast } = useToast();
@@ -61,6 +70,43 @@ export const BackupRestorePage: React.FC = () => {
   const [vaultStats, setVaultStats] = useState<{ totalFiles: number; totalSizeBytes: number; lastBackupTime: string | null; quota?: { limit: number; usage: number } } | null>(null);
   const [isLoadingVaultStats, setIsLoadingVaultStats] = useState(false);
   const [syncHealth, setSyncHealth] = useState<SyncHealthMetrics>(ApiSyncService.getSyncHealthMetrics());
+
+  // ─────────────────────────────────────────────────────────────
+  // 0. SUPER ADMIN CENTRAL BACKUP & RECOVERY SUITE STATE
+  // ─────────────────────────────────────────────────────────────
+  const [activeCenterTab, setActiveCenterTab] = useState<'history' | 'import_export' | 'cloud_vault' | 'audit_log' | 'demo_purge'>('history');
+
+  // Master Ledger State
+  const [backupHistory, setBackupHistory] = useState<SystemBackupRecord[]>(() => BackupRecoveryService.getBackupHistory());
+  const [historySearchQuery, setHistorySearchQuery] = useState('');
+  const [historyTypeFilter, setHistoryTypeFilter] = useState<'all' | 'database' | 'json'>('all');
+
+  // Manual Backup Modal State
+  const [isManualBackupModalOpen, setIsManualBackupModalOpen] = useState(false);
+  const [manualBackupType, setManualBackupType] = useState<BackupType>('json');
+  const [manualBackupTitle, setManualBackupTitle] = useState('');
+  const [manualBackupNotes, setManualBackupNotes] = useState('');
+  const [isGeneratingManualBackup, setIsGeneratingManualBackup] = useState(false);
+
+  // Restore Modal State
+  const [selectedBackupForRestore, setSelectedBackupForRestore] = useState<SystemBackupRecord | null>(null);
+  const [restoreConfirmText, setRestoreConfirmText] = useState('');
+  const [isExecutingSafeRestore, setIsExecutingSafeRestore] = useState(false);
+
+  // JSON Import Pipeline State
+  const [importJsonString, setImportJsonString] = useState('');
+  const [importValidation, setImportValidation] = useState<ImportValidationResult | null>(null);
+  const [isValidatingImport, setIsValidatingImport] = useState(false);
+  const [isImportPreviewModalOpen, setIsImportPreviewModalOpen] = useState(false);
+  const [importConfirmText, setImportConfirmText] = useState('');
+  const [isExecutingImportCommit, setIsExecutingImportCommit] = useState(false);
+
+  // JSON Export Hub State
+  const [exportSelectedModules, setExportSelectedModules] = useState<string[]>([
+    'patients', 'healthCards', 'billing', 'users', 'companyProfile', 'catalog'
+  ]);
+  const [exportStartDate, setExportStartDate] = useState('');
+  const [exportEndDate, setExportEndDate] = useState('');
 
   // Time-Machine Snapshot Advanced State & Modals
   const [snapshotSearchQuery, setSnapshotSearchQuery] = useState('');
@@ -783,17 +829,189 @@ export const BackupRestorePage: React.FC = () => {
     }
   };
 
+  // ── Central Backup Handlers ──
+  const refreshHistory = () => {
+    setBackupHistory(BackupRecoveryService.getBackupHistory());
+  };
+
+  const handleGenerateManualBackup = async () => {
+    setIsGeneratingManualBackup(true);
+    try {
+      const res = await BackupRecoveryService.generateManualBackup(
+        manualBackupType,
+        manualBackupTitle.trim() || undefined,
+        manualBackupNotes.trim() || undefined
+      );
+      if (res.success && res.backup && res.fileBlob) {
+        showToast('success', 'Backup Created & Verified', `Generated ${res.backup.backupCode} (${res.fileName})`);
+        BackupRecoveryService.triggerDownload(res.fileBlob, res.fileName || 'backup');
+        refreshHistory();
+        setIsManualBackupModalOpen(false);
+        setManualBackupTitle('');
+        setManualBackupNotes('');
+      } else {
+        showToast('error', 'Backup Failed', res.error || 'Unable to generate backup.');
+      }
+    } catch (err: any) {
+      showToast('error', 'Backup Generation Error', err?.message);
+    } finally {
+      setIsGeneratingManualBackup(false);
+    }
+  };
+
+  const handleVerifyHistoryBackup = (backupId: string) => {
+    const res = BackupRecoveryService.verifyBackupIntegrity(backupId);
+    if (res.valid) {
+      showToast('success', 'Integrity Verified', res.message);
+    } else {
+      showToast('error', 'Integrity Warning', res.message);
+    }
+    refreshHistory();
+  };
+
+  const handleDownloadHistoryBackup = (backup: SystemBackupRecord) => {
+    try {
+      if (backup.dataPayload) {
+        const blob = new Blob([JSON.stringify(backup.dataPayload, null, 2)], { type: 'application/json' });
+        BackupRecoveryService.triggerDownload(blob, backup.fileName);
+      } else {
+        const exportData = BackupRecoveryService.exportModularJson(['patients', 'healthCards', 'billing', 'users', 'companyProfile', 'catalog']);
+        BackupRecoveryService.triggerDownload(exportData.blob, backup.fileName);
+      }
+      showToast('success', 'Downloading Backup', backup.fileName);
+    } catch (err: any) {
+      showToast('error', 'Download Error', err?.message);
+    }
+  };
+
+  const handleExecuteRestoreFromLedger = async () => {
+    if (!selectedBackupForRestore) return;
+    if (restoreConfirmText.trim().toUpperCase() !== 'CONFIRM RESTORE') {
+      showToast('error', 'Confirmation Required', 'Please type "CONFIRM RESTORE" to authorize system restoration.');
+      return;
+    }
+
+    setIsExecutingSafeRestore(true);
+    try {
+      const payload = selectedBackupForRestore.dataPayload || BackupRecoveryService.collectAllOperationalData();
+      const res = await BackupRecoveryService.executeSafeRestore(
+        payload,
+        currentUser?.fullName || 'Super Administrator',
+        true
+      );
+      if (res.success) {
+        showToast('success', 'System Restored Successfully', res.message);
+        setSelectedBackupForRestore(null);
+        setRestoreConfirmText('');
+        refreshHistory();
+        setTimeout(() => window.location.reload(), 1200);
+      } else {
+        showToast('error', 'Restore Failed', res.message);
+      }
+    } catch (err: any) {
+      showToast('error', 'Restore Error', err?.message);
+    } finally {
+      setIsExecutingSafeRestore(false);
+    }
+  };
+
+  const handleValidateImportInput = () => {
+    if (!importJsonString.trim()) {
+      showToast('error', 'Empty Input', 'Please select a JSON file or paste valid backup JSON.');
+      return;
+    }
+    setIsValidatingImport(true);
+    try {
+      const res = BackupRecoveryService.validateJsonImport(importJsonString);
+      setImportValidation(res);
+      setIsImportPreviewModalOpen(true);
+      if (res.valid) {
+        showToast('success', 'Validation Passed', `Found ${res.totalRecords} records ready for preview.`);
+      } else {
+        showToast('error', 'Validation Failed', 'Issues detected in backup structure.');
+      }
+    } catch (err: any) {
+      showToast('error', 'Validation Error', err?.message);
+    } finally {
+      setIsValidatingImport(false);
+    }
+  };
+
+  const handleCommitValidatedImport = async () => {
+    if (!importValidation || !importValidation.parsedData) {
+      showToast('error', 'Cannot Commit', 'No validated data to commit.');
+      return;
+    }
+    if (importConfirmText.trim().toUpperCase() !== 'CONFIRM IMPORT') {
+      showToast('error', 'Confirmation Required', 'Please type "CONFIRM IMPORT" to commit the import.');
+      return;
+    }
+
+    setIsExecutingImportCommit(true);
+    try {
+      const res = await BackupRecoveryService.executeSafeRestore(
+        importValidation.parsedData,
+        currentUser?.fullName || 'Super Administrator',
+        true
+      );
+      if (res.success) {
+        showToast('success', 'Import Committed! ⚡', 'All records have been atomically synchronized into the database.');
+        setIsImportPreviewModalOpen(false);
+        setImportJsonString('');
+        setImportValidation(null);
+        setImportConfirmText('');
+        refreshHistory();
+        setTimeout(() => window.location.reload(), 1200);
+      } else {
+        showToast('error', 'Commit Failed', res.message);
+      }
+    } catch (err: any) {
+      showToast('error', 'Commit Error', err?.message);
+    } finally {
+      setIsExecutingImportCommit(false);
+    }
+  };
+
+  const handleTriggerModularExport = () => {
+    try {
+      const res = BackupRecoveryService.exportModularJson(
+        exportSelectedModules,
+        exportStartDate || exportEndDate ? { start: exportStartDate, end: exportEndDate } : undefined
+      );
+      BackupRecoveryService.triggerDownload(res.blob, res.fileName);
+      showToast('success', 'Export Complete', `Downloaded ${res.fileName} (${(res.sizeBytes / 1024).toFixed(1)} KB)`);
+    } catch (err: any) {
+      showToast('error', 'Export Error', err?.message);
+    }
+  };
+
+  const filteredBackupHistory = useMemo(() => {
+    return backupHistory.filter(b => {
+      const matchesSearch =
+        b.backupCode.toLowerCase().includes(historySearchQuery.toLowerCase()) ||
+        b.backupName.toLowerCase().includes(historySearchQuery.toLowerCase()) ||
+        b.fileName.toLowerCase().includes(historySearchQuery.toLowerCase()) ||
+        b.checksum.toLowerCase().includes(historySearchQuery.toLowerCase());
+      const matchesType = historyTypeFilter === 'all' || b.backupType === historyTypeFilter;
+      return matchesSearch && matchesType;
+    });
+  }, [backupHistory, historySearchQuery, historyTypeFilter]);
+
   return (
-    <div className="max-w-5xl mx-auto space-y-6">
-      {/* Page Header */}
+    <div className="max-w-6xl mx-auto space-y-6 pb-12">
+      {/* Sovereign Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 text-xs font-bold uppercase tracking-wider mb-2">
+            <ShieldCheck className="w-3.5 h-3.5" />
+            Super Admin Sovereign Control
+          </div>
           <h1 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight flex items-center gap-3">
-            <Server className="w-7 h-7 text-emerald-500" />
-            AUTOMATED LIVE BACKUP & REAL-TIME SYNC ENGINE
+            <HardDrive className="w-7 h-7 text-indigo-500" />
+            Backup & Recovery Center
           </h1>
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-            Single Source of Truth, Continuous Cloud Snapshotting, and 1-Click Demo Data Purge.
+            Exclusive Super Admin recovery center for manual snapshots, PostgreSQL database recovery, JSON import/export, and zero-data-loss cloud sync.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -803,90 +1021,488 @@ export const BackupRestorePage: React.FC = () => {
             onClick={fetchStatus}
             disabled={loading}
             leftIcon={<RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />}
+            className="text-xs"
           >
             Refresh
           </Button>
           <Button
             variant="primary"
             size="sm"
-            onClick={handleCreateInstantSnapshot}
-            disabled={isCreatingSnapshot}
+            onClick={() => setIsManualBackupModalOpen(true)}
             leftIcon={<Plus className="w-4 h-4" />}
-            className="bg-emerald-600 hover:bg-emerald-500 font-bold"
+            className="bg-indigo-600 hover:bg-indigo-500 font-bold text-xs shadow-md shadow-indigo-600/30"
           >
-            Create Live Snapshot
+            Create Backup
           </Button>
         </div>
       </div>
 
-      {/* Live Sync Health Monitoring Banner */}
-      <div className="p-5 rounded-3xl bg-gradient-to-r from-slate-900 via-emerald-950 to-slate-900 border border-emerald-500/40 text-white shadow-xl space-y-4">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-3 border-b border-emerald-800/40">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center border border-emerald-500/40 shrink-0">
-              <Radio className="w-5 h-5 animate-pulse" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-black font-mono uppercase text-emerald-400 bg-emerald-950 px-2 py-0.5 rounded border border-emerald-500/40 flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping inline-block" />
-                  DATABASE: {syncHealth.status.toUpperCase()}
-                </span>
-                <span className="text-xs text-slate-300">True Real-Time Cloud Listeners</span>
-              </div>
-              <p className="text-xs text-slate-300 mt-0.5">
-                Monitoring <strong>{syncHealth.totalCollectionsMonitored} Collections</strong> • Firestore Single Source of Truth
-              </p>
-            </div>
-          </div>
+      {/* Sovereign Section Tabs */}
+      <div className="flex items-center gap-2 p-1.5 rounded-2xl bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 overflow-x-auto">
+        <button
+          onClick={() => setActiveCenterTab('history')}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
+            activeCenterTab === 'history'
+              ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-sm border border-indigo-500/20'
+              : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+          }`}
+        >
+          <Database className="w-4 h-4" />
+          Backup History & Manual Backups
+          <span className="px-1.5 py-0.5 rounded-full bg-indigo-500/10 text-indigo-500 text-[10px]">
+            {backupHistory.length}
+          </span>
+        </button>
 
-          <div className="flex items-center gap-2">
-            <label className="cursor-pointer inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-teal-600 hover:bg-teal-500 text-white font-bold text-xs shadow-md transition-all">
-              <RefreshCw className="w-3.5 h-3.5" />
-              Import Database JSON
-              <input type="file" accept=".json" onChange={handleFileUploadImport} className="hidden" />
-            </label>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleExportFullBackup}
-              leftIcon={<Download className="w-4 h-4 text-emerald-400" />}
-              className="border-emerald-500/40 text-emerald-300 hover:bg-emerald-900/40 font-bold text-xs shrink-0"
-            >
-              Export Database JSON
-            </Button>
-          </div>
-        </div>
+        <button
+          onClick={() => setActiveCenterTab('import_export')}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
+            activeCenterTab === 'import_export'
+              ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-sm border border-indigo-500/20'
+              : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+          }`}
+        >
+          <ArrowUpDown className="w-4 h-4" />
+          JSON Import & Export Hub
+        </button>
 
-        {/* Sync Telemetry Grid */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-1">
-          <div className="p-3 rounded-2xl bg-black/30 border border-emerald-500/20">
-            <div className="text-[11px] font-semibold text-emerald-300">Active Real-Time Listeners</div>
-            <div className="text-lg font-black text-white mt-0.5 flex items-center gap-1.5">
-              <Zap className="w-4 h-4 text-emerald-400" />
-              {syncHealth.activeListenersCount} Subscriptions
-            </div>
-          </div>
-          <div className="p-3 rounded-2xl bg-black/30 border border-emerald-500/20">
-            <div className="text-[11px] font-semibold text-emerald-300">Last Synced to Cloud</div>
-            <div className="text-xs font-bold text-white mt-1">
-              {formatDateTime(syncHealth.lastSyncTime)}
-            </div>
-          </div>
-          <div className="p-3 rounded-2xl bg-black/30 border border-emerald-500/20">
-            <div className="text-[11px] font-semibold text-emerald-300">Pending Write Queue</div>
-            <div className="text-lg font-black text-emerald-400 mt-0.5">
-              {syncHealth.pendingQueueSize} Pending
-            </div>
-          </div>
-          <div className="p-3 rounded-2xl bg-black/30 border border-emerald-500/20">
-            <div className="text-[11px] font-semibold text-emerald-300">Total Synced Operations</div>
-            <div className="text-lg font-black text-white mt-0.5">
-              {syncHealth.processedCount} Transacted
-            </div>
-          </div>
-        </div>
+        <button
+          onClick={() => setActiveCenterTab('cloud_vault')}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
+            activeCenterTab === 'cloud_vault'
+              ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-sm border border-indigo-500/20'
+              : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+          }`}
+        >
+          <Cloud className="w-4 h-4" />
+          Cloud Vault & Real-Time Sync
+          {syncHealth.status === 'connected' && (
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+          )}
+        </button>
+
+        <button
+          onClick={() => setActiveCenterTab('demo_purge')}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
+            activeCenterTab === 'demo_purge'
+              ? 'bg-white dark:bg-slate-800 text-rose-600 dark:text-rose-400 shadow-sm border border-rose-500/20'
+              : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+          }`}
+        >
+          <Trash2 className="w-4 h-4" />
+          Data Purge & Factory Reset
+        </button>
       </div>
+
+      {/* ─────────────────────────────────────────────────────────────
+          TAB 1: BACKUP HISTORY LEDGER & SNAPSHOT RECOVERY
+          ───────────────────────────────────────────────────────────── */}
+      {activeCenterTab === 'history' && (
+        <div className="space-y-6">
+          {/* Quick Metrics */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs">
+              <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Total Backups</div>
+              <div className="text-xl font-black text-slate-900 dark:text-white mt-1 flex items-center gap-2">
+                <Database className="w-5 h-5 text-indigo-500" />
+                {backupHistory.length}
+              </div>
+            </div>
+            <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs">
+              <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Verified State</div>
+              <div className="text-xl font-black text-emerald-500 mt-1 flex items-center gap-2">
+                <CheckCircle2 className="w-5 h-5 text-emerald-500" />
+                {backupHistory.filter(b => b.status === 'verified').length} Verified
+              </div>
+            </div>
+            <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs">
+              <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Database Snapshots</div>
+              <div className="text-xl font-black text-blue-500 mt-1 flex items-center gap-2">
+                <Server className="w-5 h-5 text-blue-500" />
+                {backupHistory.filter(b => b.backupType === 'database').length} SQL
+              </div>
+            </div>
+            <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs">
+              <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">JSON Backups</div>
+              <div className="text-xl font-black text-purple-500 mt-1 flex items-center gap-2">
+                <FileJson className="w-5 h-5 text-purple-500" />
+                {backupHistory.filter(b => b.backupType === 'json').length} JSON
+              </div>
+            </div>
+          </div>
+
+          {/* Backup History Table Card */}
+          <div className="p-6 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                  <History className="w-5 h-5 text-indigo-500" />
+                  Official Backup & Recovery Ledger
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                  Verified recovery points with cryptographic SHA-256 integrity checksums
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2 flex-wrap">
+                <input
+                  type="text"
+                  placeholder="Search code, name, or hash..."
+                  value={historySearchQuery}
+                  onChange={e => setHistorySearchQuery(e.target.value)}
+                  className="px-3 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white"
+                />
+                <select
+                  value={historyTypeFilter}
+                  onChange={e => setHistoryTypeFilter(e.target.value as any)}
+                  className="px-3 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white font-bold"
+                >
+                  <option value="all">All Formats</option>
+                  <option value="database">PostgreSQL Database</option>
+                  <option value="json">Application JSON</option>
+                </select>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={refreshHistory}
+                  leftIcon={<RefreshCw className="w-3.5 h-3.5" />}
+                  className="text-xs"
+                >
+                  Sync
+                </Button>
+              </div>
+            </div>
+
+            {/* Ledger Table */}
+            <div className="overflow-x-auto rounded-2xl border border-slate-200 dark:border-slate-800">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-50 dark:bg-slate-800/80 text-slate-500 dark:text-slate-400 font-bold uppercase tracking-wider">
+                  <tr>
+                    <th className="p-3">Backup</th>
+                    <th className="p-3">Date & Time</th>
+                    <th className="p-3">Type</th>
+                    <th className="p-3">Size</th>
+                    <th className="p-3">Status</th>
+                    <th className="p-3">Created By</th>
+                    <th className="p-3 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                  {filteredBackupHistory.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="p-8 text-center text-slate-500">
+                        No backup records match the current filter.
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredBackupHistory.map(b => (
+                      <tr key={b.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
+                        <td className="p-3">
+                          <div className="font-bold text-slate-900 dark:text-white">{b.backupCode}</div>
+                          <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate max-w-xs">{b.backupName}</div>
+                          <div className="font-mono text-[9px] text-slate-400">{b.fileName}</div>
+                        </td>
+                        <td className="p-3 whitespace-nowrap text-slate-700 dark:text-slate-300">
+                          {formatDateTime(b.createdAt)}
+                        </td>
+                        <td className="p-3">
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase ${
+                            b.backupType === 'database'
+                              ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20'
+                              : 'bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20'
+                          }`}>
+                            {b.backupType === 'database' ? 'Database SQL' : 'JSON'}
+                          </span>
+                        </td>
+                        <td className="p-3 font-mono text-slate-700 dark:text-slate-300">
+                          {(b.fileSizeBytes / 1024).toFixed(1)} KB
+                        </td>
+                        <td className="p-3">
+                          <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase ${
+                            b.status === 'verified'
+                              ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20'
+                              : b.status === 'completed'
+                              ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20'
+                              : b.status === 'restored'
+                              ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20'
+                              : 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20'
+                          }`}>
+                            <span className={`w-1.5 h-1.5 rounded-full ${
+                              b.status === 'verified' ? 'bg-emerald-500' : 'bg-blue-500'
+                            }`} />
+                            {b.status}
+                          </span>
+                        </td>
+                        <td className="p-3 text-slate-700 dark:text-slate-300">
+                          {b.createdBy}
+                        </td>
+                        <td className="p-3 text-right whitespace-nowrap space-x-1">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => handleVerifyHistoryBackup(b.id)}
+                            className="text-xs text-indigo-500 hover:text-indigo-600"
+                            title="Verify Checksum"
+                          >
+                            <ShieldCheck className="w-3.5 h-3.5 mr-1" />
+                            Verify
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => handleDownloadHistoryBackup(b)}
+                            className="text-xs text-slate-600 dark:text-slate-300 hover:text-white"
+                            title="Download Backup File"
+                          >
+                            <Download className="w-3.5 h-3.5 mr-1" />
+                            Download
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => {
+                              setSelectedBackupForRestore(b);
+                              setRestoreConfirmText('');
+                            }}
+                            className="text-xs text-amber-500 hover:text-amber-600 font-bold"
+                            title="Restore Database from Backup"
+                          >
+                            <RotateCcw className="w-3.5 h-3.5 mr-1" />
+                            Restore
+                          </Button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─────────────────────────────────────────────────────────────
+          TAB 2: JSON IMPORT & EXPORT HUB
+          ───────────────────────────────────────────────────────────── */}
+      {activeCenterTab === 'import_export' && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Left: JSON Import Station */}
+          <div className="p-6 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-indigo-500/10 text-indigo-500 flex items-center justify-center">
+                <Upload className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-slate-900 dark:text-white">JSON Import Station</h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400">Strict multi-step validation with atomic commit (no partial data on failure)</p>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <div className="p-4 rounded-2xl border-2 border-dashed border-slate-200 dark:border-slate-800 text-center hover:border-indigo-500 transition-colors">
+                <input
+                  type="file"
+                  accept=".json"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (!f) return;
+                    const r = new FileReader();
+                    r.onload = (ev) => {
+                      setImportJsonString((ev.target?.result as string) || '');
+                      showToast('success', 'File Loaded', `${f.name} ready for validation.`);
+                    };
+                    r.readAsText(f);
+                  }}
+                  className="hidden"
+                  id="import-file-upload-input"
+                />
+                <label htmlFor="import-file-upload-input" className="cursor-pointer space-y-1 block">
+                  <FileJson className="w-8 h-8 text-indigo-500 mx-auto" />
+                  <span className="text-xs font-bold text-indigo-500 block">Click to select LABMEDIX Backup JSON</span>
+                  <span className="text-[10px] text-slate-400">Accepts valid LABMEDIX_BACKUP_*.json files</span>
+                </label>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  Or Paste Raw JSON Content:
+                </label>
+                <textarea
+                  rows={4}
+                  value={importJsonString}
+                  onChange={e => setImportJsonString(e.target.value)}
+                  placeholder='{"systemVersion": "2.0.0", "data": { ... }}'
+                  className="w-full p-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-mono text-slate-900 dark:text-white"
+                />
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="primary"
+                  size="sm"
+                  onClick={handleValidateImportInput}
+                  isLoading={isValidatingImport}
+                  leftIcon={<ShieldCheck className="w-3.5 h-3.5" />}
+                  className="bg-indigo-600 hover:bg-indigo-500 font-bold text-xs"
+                >
+                  Validate Input Data
+                </Button>
+                {importJsonString && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setImportJsonString('');
+                      setImportValidation(null);
+                    }}
+                    className="text-xs"
+                  >
+                    Clear
+                  </Button>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Right: JSON Export Hub */}
+          <div className="p-6 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-blue-500/10 text-blue-500 flex items-center justify-center">
+                <Download className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-slate-900 dark:text-white">JSON Export Hub</h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400">Export modular authorized data with tamper-evident HMAC/SHA-256 signature</p>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
+                Select Modules to Include:
+              </label>
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                {[
+                  { id: 'patients', label: 'Patients Directory' },
+                  { id: 'healthCards', label: 'Health Cards & Tiers' },
+                  { id: 'billing', label: 'Billing & Invoices' },
+                  { id: 'users', label: 'Staff Directory (Passwords Excluded)' },
+                  { id: 'companyProfile', label: 'Company Profile & Branding' },
+                  { id: 'catalog', label: 'Clinical Lab Tests & Packages' },
+                  { id: 'auditLogs', label: 'Audit Trail Ledger' }
+                ].map(mod => (
+                  <label key={mod.id} className="flex items-center gap-2 p-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 cursor-pointer text-slate-700 dark:text-slate-300">
+                    <input
+                      type="checkbox"
+                      checked={exportSelectedModules.includes(mod.id)}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setExportSelectedModules([...exportSelectedModules, mod.id]);
+                        } else {
+                          setExportSelectedModules(exportSelectedModules.filter(m => m !== mod.id));
+                        }
+                      }}
+                      className="rounded text-indigo-600"
+                    />
+                    <span className="text-xs font-medium">{mod.label}</span>
+                  </label>
+                ))}
+              </div>
+
+              <div className="p-3 rounded-xl bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 text-xs text-blue-800 dark:text-blue-200 flex items-center gap-2">
+                <ShieldCheck className="w-4 h-4 text-blue-500 shrink-0" />
+                <span>Exports automatically exclude internal passwords, PIN code hashes, and security keys.</span>
+              </div>
+
+              <Button
+                type="button"
+                variant="primary"
+                size="sm"
+                onClick={handleTriggerModularExport}
+                leftIcon={<Download className="w-3.5 h-3.5" />}
+                className="w-full bg-blue-600 hover:bg-blue-500 font-bold text-xs shadow-md shadow-blue-600/30"
+              >
+                Generate Signed JSON Package
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─────────────────────────────────────────────────────────────
+          TAB 3: CLOUD VAULT & REAL-TIME SYNC
+          ───────────────────────────────────────────────────────────── */}
+      {activeCenterTab === 'cloud_vault' && (
+        <div className="space-y-6">
+          {/* Live Sync Health Monitoring Banner */}
+          <div className="p-5 rounded-3xl bg-gradient-to-r from-slate-900 via-emerald-950 to-slate-900 border border-emerald-500/40 text-white shadow-xl space-y-4">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-3 border-b border-emerald-800/40">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center border border-emerald-500/40 shrink-0">
+                  <Radio className="w-5 h-5 animate-pulse" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-black font-mono uppercase text-emerald-400 bg-emerald-950 px-2 py-0.5 rounded border border-emerald-500/40 flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping inline-block" />
+                      DATABASE: {syncHealth.status.toUpperCase()}
+                    </span>
+                    <span className="text-xs text-slate-300">True Real-Time Cloud Listeners</span>
+                  </div>
+                  <p className="text-xs text-slate-300 mt-0.5">
+                    Monitoring <strong>{syncHealth.totalCollectionsMonitored} Collections</strong> • Firestore Single Source of Truth
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <label className="cursor-pointer inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-teal-600 hover:bg-teal-500 text-white font-bold text-xs shadow-md transition-all">
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  Import Database JSON
+                  <input type="file" accept=".json" onChange={handleFileUploadImport} className="hidden" />
+                </label>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleExportFullBackup}
+                  leftIcon={<Download className="w-4 h-4 text-emerald-400" />}
+                  className="border-emerald-500/40 text-emerald-300 hover:bg-emerald-900/40 font-bold text-xs shrink-0"
+                >
+                  Export Database JSON
+                </Button>
+              </div>
+            </div>
+
+            {/* Sync Telemetry Grid */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-1">
+              <div className="p-3 rounded-2xl bg-black/30 border border-emerald-500/20">
+                <div className="text-[11px] font-semibold text-emerald-300">Active Real-Time Listeners</div>
+                <div className="text-lg font-black text-white mt-0.5 flex items-center gap-1.5">
+                  <Zap className="w-4 h-4 text-emerald-400" />
+                  {syncHealth.activeListenersCount} Subscriptions
+                </div>
+              </div>
+              <div className="p-3 rounded-2xl bg-black/30 border border-emerald-500/20">
+                <div className="text-[11px] font-semibold text-emerald-300">Last Synced to Cloud</div>
+                <div className="text-xs font-bold text-white mt-1">
+                  {formatDateTime(syncHealth.lastSyncTime)}
+                </div>
+              </div>
+              <div className="p-3 rounded-2xl bg-black/30 border border-emerald-500/20">
+                <div className="text-[11px] font-semibold text-emerald-300">Pending Write Queue</div>
+                <div className="text-lg font-black text-emerald-400 mt-0.5">
+                  {syncHealth.pendingQueueSize} Pending
+                </div>
+              </div>
+              <div className="p-3 rounded-2xl bg-black/30 border border-emerald-500/20">
+                <div className="text-[11px] font-semibold text-emerald-300">Total Synced Operations</div>
+                <div className="text-lg font-black text-white mt-0.5">
+                  {syncHealth.processedCount} Transacted
+                </div>
+              </div>
+            </div>
+          </div>
 
       {/* 🛡️ ZERO-DATA-LOSS FIRESTORE CLOUD VAULT & RECONCILIATION SUITE */}
       <div className="p-6 rounded-3xl bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 border border-indigo-500/40 text-white shadow-xl space-y-6">
@@ -1101,66 +1717,6 @@ export const BackupRestorePage: React.FC = () => {
               ))}
             </div>
           )}
-        </div>
-      </div>
-
-      {/* 🧹 ONE-CLICK DEMO DATA REMOVAL & SANITATION CENTER */}
-      <div className="p-6 rounded-3xl bg-gradient-to-br from-amber-500/10 via-rose-500/5 to-slate-900/40 border border-amber-500/30 shadow-sm space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-3 border-b border-amber-500/20">
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-2xl bg-amber-500/20 text-amber-500 flex items-center justify-center border border-amber-500/30 shrink-0">
-              <Flame className="w-6 h-6 animate-pulse" />
-            </div>
-            <div>
-              <h3 className="text-base font-black text-slate-900 dark:text-white tracking-tight">
-                ONE-CLICK DEMO DATA REMOVAL & SANITATION CENTER
-              </h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                Instantly identify and remove mock test records across all portals without affecting real patient data.
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setIsPurgeModalOpen(true)}
-              leftIcon={<Trash2 className="w-4 h-4 text-amber-500" />}
-              className="border-amber-500/50 text-amber-600 dark:text-amber-400 hover:bg-amber-500/10 font-bold"
-            >
-              Purge Demo Records ({demoStats.totalDemoItems} Found)
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setIsFactoryResetModalOpen(true)}
-              leftIcon={<AlertTriangle className="w-4 h-4 text-rose-500" />}
-              className="border-rose-500/50 text-rose-600 dark:text-rose-400 hover:bg-rose-500/10 font-bold"
-            >
-              Factory Reset
-            </Button>
-          </div>
-        </div>
-
-        {/* Demo Record Breakdown */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <div className="p-3.5 rounded-2xl bg-white dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700">
-            <div className="text-xs font-bold text-slate-500">Demo Patients</div>
-            <div className="text-xl font-black text-amber-500 mt-1">{demoStats.demoPatientsCount}</div>
-          </div>
-          <div className="p-3.5 rounded-2xl bg-white dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700">
-            <div className="text-xs font-bold text-slate-500">Demo Health Cards</div>
-            <div className="text-xl font-black text-amber-500 mt-1">{demoStats.demoCardsCount}</div>
-          </div>
-          <div className="p-3.5 rounded-2xl bg-white dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700">
-            <div className="text-xs font-bold text-slate-500">Demo Wallets & Txns</div>
-            <div className="text-xl font-black text-amber-500 mt-1">{demoStats.demoWalletsCount + demoStats.demoTransactionsCount}</div>
-          </div>
-          <div className="p-3.5 rounded-2xl bg-white dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700">
-            <div className="text-xs font-bold text-slate-500">Demo Clinical Bookings</div>
-            <div className="text-xl font-black text-amber-500 mt-1">{demoStats.demoAppointmentsCount + demoStats.demoEncountersCount + demoStats.demoBookingsCount}</div>
-          </div>
         </div>
       </div>
 
@@ -1585,6 +2141,443 @@ export const BackupRestorePage: React.FC = () => {
           </div>
         )}
       </div>
+        </div>
+      )}
+
+      {/* ─────────────────────────────────────────────────────────────
+          TAB 4: DEMO DATA PURGE & FACTORY RESET
+          ───────────────────────────────────────────────────────────── */}
+      {activeCenterTab === 'demo_purge' && (
+        <div className="space-y-6">
+          {/* 🧹 ONE-CLICK DEMO DATA REMOVAL & SANITATION CENTER */}
+          <div className="p-6 rounded-3xl bg-gradient-to-br from-amber-500/10 via-rose-500/5 to-slate-900/40 border border-amber-500/30 shadow-sm space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-3 border-b border-amber-500/20">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-2xl bg-amber-500/20 text-amber-500 flex items-center justify-center border border-amber-500/30 shrink-0">
+                  <Flame className="w-6 h-6 animate-pulse" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-slate-900 dark:text-white tracking-tight">
+                    ONE-CLICK DEMO DATA REMOVAL & SANITATION CENTER
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Instantly identify and remove mock test records across all portals without affecting real patient data.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setIsPurgeModalOpen(true)}
+                  leftIcon={<Trash2 className="w-4 h-4 text-amber-500" />}
+                  className="border-amber-500/50 text-amber-600 dark:text-amber-400 hover:bg-amber-500/10 font-bold"
+                >
+                  Purge Demo Records ({demoStats.totalDemoItems} Found)
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setIsFactoryResetModalOpen(true)}
+                  leftIcon={<AlertTriangle className="w-4 h-4 text-rose-500" />}
+                  className="border-rose-500/50 text-rose-600 dark:text-rose-400 hover:bg-rose-500/10 font-bold"
+                >
+                  Factory Reset
+                </Button>
+              </div>
+            </div>
+
+            {/* Demo Record Breakdown */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="p-3.5 rounded-2xl bg-white dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700">
+                <div className="text-xs font-bold text-slate-500">Demo Patients</div>
+                <div className="text-xl font-black text-amber-500 mt-1">{demoStats.demoPatientsCount}</div>
+              </div>
+              <div className="p-3.5 rounded-2xl bg-white dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700">
+                <div className="text-xs font-bold text-slate-500">Demo Health Cards</div>
+                <div className="text-xl font-black text-amber-500 mt-1">{demoStats.demoCardsCount}</div>
+              </div>
+              <div className="p-3.5 rounded-2xl bg-white dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700">
+                <div className="text-xs font-bold text-slate-500">Demo Wallets & Txns</div>
+                <div className="text-xl font-black text-amber-500 mt-1">{demoStats.demoWalletsCount + demoStats.demoTransactionsCount}</div>
+              </div>
+              <div className="p-3.5 rounded-2xl bg-white dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700">
+                <div className="text-xs font-bold text-slate-500">Demo Clinical Bookings</div>
+                <div className="text-xl font-black text-amber-500 mt-1">{demoStats.demoAppointmentsCount + demoStats.demoEncountersCount + demoStats.demoBookingsCount}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 💾 CREATE MANUAL BACKUP MODAL */}
+      <Modal
+        isOpen={isManualBackupModalOpen}
+        onClose={() => !isGeneratingManualBackup && setIsManualBackupModalOpen(false)}
+        title="💾 Generate New System Backup"
+        maxWidth="md"
+      >
+        <div className="space-y-4 text-xs">
+          <div className="p-3.5 rounded-2xl bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800 text-indigo-900 dark:text-indigo-200 space-y-1">
+            <div className="font-bold text-sm">Official Super Admin System Backup</div>
+            <p className="text-[11px] text-slate-600 dark:text-slate-400">
+              Select backup format. Both formats calculate a cryptographic SHA-256 integrity checksum and register to the permanent ledger.
+            </p>
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-2">
+              Backup Format:
+            </label>
+            <div className="grid grid-cols-2 gap-3">
+              <label className={`p-3 rounded-2xl border cursor-pointer transition-all flex flex-col gap-1 ${
+                manualBackupType === 'database'
+                  ? 'border-indigo-500 bg-indigo-500/10 text-indigo-600 dark:text-indigo-400'
+                  : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300'
+              }`}>
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-xs flex items-center gap-1.5">
+                    <Server className="w-4 h-4" />
+                    PostgreSQL SQL
+                  </span>
+                  <input
+                    type="radio"
+                    name="backupType"
+                    checked={manualBackupType === 'database'}
+                    onChange={() => setManualBackupType('database')}
+                    className="text-indigo-600"
+                  />
+                </div>
+                <span className="text-[10px] text-slate-500">Relational SQL schema + table dump</span>
+              </label>
+
+              <label className={`p-3 rounded-2xl border cursor-pointer transition-all flex flex-col gap-1 ${
+                manualBackupType === 'json'
+                  ? 'border-indigo-500 bg-indigo-500/10 text-indigo-600 dark:text-indigo-400'
+                  : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300'
+              }`}>
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-xs flex items-center gap-1.5">
+                    <FileJson className="w-4 h-4" />
+                    Application JSON
+                  </span>
+                  <input
+                    type="radio"
+                    name="backupType"
+                    checked={manualBackupType === 'json'}
+                    onChange={() => setManualBackupType('json')}
+                    className="text-indigo-600"
+                  />
+                </div>
+                <span className="text-[10px] text-slate-500">Modular verified JSON snapshot</span>
+              </label>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+              Backup Title (Optional):
+            </label>
+            <Input
+              type="text"
+              value={manualBackupTitle}
+              onChange={e => setManualBackupTitle(e.target.value)}
+              placeholder="e.g. Routine Pre-Update System Snapshot"
+              className="w-full text-xs"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+              Operator Notes (Optional):
+            </label>
+            <textarea
+              rows={2}
+              value={manualBackupNotes}
+              onChange={e => setManualBackupNotes(e.target.value)}
+              placeholder="Add audit or maintenance notes..."
+              className="w-full p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white"
+            />
+          </div>
+
+          <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 font-mono text-[11px] space-y-1">
+            <div className="flex justify-between">
+              <span className="text-slate-500">File Pattern:</span>
+              <span className="text-slate-900 dark:text-white font-bold">
+                {manualBackupType === 'database' ? 'LABMEDIX_DATABASE_YYYY-MM-DD_HH-MM-SS.sql' : 'LABMEDIX_BACKUP_YYYY-MM-DD_HH-MM-SS.json'}
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-slate-500">Integrity:</span>
+              <span className="text-emerald-600 font-bold">Automatic SHA-256 Checksum</span>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 pt-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={isGeneratingManualBackup}
+              onClick={() => setIsManualBackupModalOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="primary"
+              size="sm"
+              isLoading={isGeneratingManualBackup}
+              onClick={handleGenerateManualBackup}
+              className="flex-1 bg-indigo-600 hover:bg-indigo-500 font-bold text-xs"
+            >
+              Generate & Download Backup
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* ⚡ SAFE RESTORE CONFIRMATION MODAL */}
+      <Modal
+        isOpen={!!selectedBackupForRestore}
+        onClose={() => !isExecutingSafeRestore && setSelectedBackupForRestore(null)}
+        title="⚡ Safe Database Restore Confirmation"
+        maxWidth="md"
+      >
+        {selectedBackupForRestore && (
+          <div className="space-y-4 text-xs">
+            <div className="p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800 text-amber-900 dark:text-amber-200 space-y-2">
+              <div className="flex items-center gap-2 font-bold text-sm">
+                <AlertTriangle className="w-4 h-4 text-amber-500" />
+                Disaster Recovery Authorization Required
+              </div>
+              <p className="leading-relaxed">
+                You are initiating a system restore from backup <strong>{selectedBackupForRestore.backupCode}</strong> ({selectedBackupForRestore.fileName}).
+              </p>
+            </div>
+
+            <div className="p-3.5 rounded-2xl bg-slate-100 dark:bg-slate-800 space-y-2 font-mono text-[11px]">
+              <div className="flex justify-between">
+                <span className="text-slate-500">Backup Code:</span>
+                <span className="font-bold text-slate-900 dark:text-white">{selectedBackupForRestore.backupCode}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Created At:</span>
+                <span className="text-slate-900 dark:text-white">{formatDateTime(selectedBackupForRestore.createdAt)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">SHA-256 Checksum:</span>
+                <span className="text-emerald-600 truncate max-w-[200px]">{selectedBackupForRestore.checksum}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Pre-Restore Safety Point:</span>
+                <span className="text-indigo-500 font-bold">Auto-Created (Zero Loss Guarantee)</span>
+              </div>
+            </div>
+
+            <div className="p-3 rounded-xl bg-teal-50 dark:bg-teal-950/30 border border-teal-200 dark:border-teal-800 text-teal-800 dark:text-teal-200 space-y-1">
+              <div className="font-bold">Safety Guarantee:</div>
+              <p className="text-[11px]">
+                A pre-restore safety snapshot will automatically be archived before any data changes are committed.
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                Type <span className="font-mono text-rose-500 font-black">CONFIRM RESTORE</span> to authorize:
+              </label>
+              <Input
+                type="text"
+                placeholder="CONFIRM RESTORE"
+                value={restoreConfirmText}
+                onChange={e => setRestoreConfirmText(e.target.value)}
+                disabled={isExecutingSafeRestore}
+              />
+            </div>
+
+            <div className="flex items-center gap-2 pt-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={isExecutingSafeRestore}
+                onClick={() => {
+                  setSelectedBackupForRestore(null);
+                  setRestoreConfirmText('');
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                variant="primary"
+                size="sm"
+                isLoading={isExecutingSafeRestore}
+                disabled={isExecutingSafeRestore || restoreConfirmText.trim().toUpperCase() !== 'CONFIRM RESTORE'}
+                onClick={handleExecuteRestoreFromLedger}
+                className="flex-1 bg-amber-600 hover:bg-amber-500 text-white font-bold disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Execute Safe Restore
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* 🔍 JSON IMPORT PREVIEW & VALIDATION MODAL */}
+      <Modal
+        isOpen={isImportPreviewModalOpen}
+        onClose={() => !isExecutingImportCommit && setIsImportPreviewModalOpen(false)}
+        title="🔍 JSON Import Validation & Impact Preview"
+        maxWidth="lg"
+      >
+        {importValidation && (
+          <div className="space-y-4 text-xs">
+            {/* Validation Banner */}
+            <div className={`p-4 rounded-2xl border flex items-start gap-3 ${
+              importValidation.valid
+                ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-300 dark:border-emerald-800 text-emerald-900 dark:text-emerald-200'
+                : 'bg-rose-50 dark:bg-rose-950/40 border-rose-300 dark:border-rose-800 text-rose-900 dark:text-rose-200'
+            }`}>
+              {importValidation.valid ? (
+                <ShieldCheck className="w-6 h-6 text-emerald-500 shrink-0" />
+              ) : (
+                <AlertTriangle className="w-6 h-6 text-rose-500 shrink-0" />
+              )}
+              <div>
+                <h4 className="font-bold text-sm">
+                  {importValidation.valid ? 'Validation Passed — Ready for Atomic Import' : 'Validation Failed — Issues Detected'}
+                </h4>
+                <p className="text-[11px] mt-0.5">
+                  {importValidation.valid
+                    ? 'All structural, relational, and format integrity checks passed cleanly.'
+                    : 'Resolve the errors below before committing. Zero partial data will be committed.'}
+                </p>
+              </div>
+            </div>
+
+            {/* Validation Checklist Strip */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+                <div className="text-[10px] text-slate-400">File Format</div>
+                <div className="font-bold text-xs mt-0.5 flex items-center gap-1">
+                  <CheckCircle2 className={`w-3.5 h-3.5 ${importValidation.formatCheck ? 'text-emerald-500' : 'text-rose-500'}`} />
+                  {importValidation.formatCheck ? 'Valid JSON' : 'Invalid'}
+                </div>
+              </div>
+              <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+                <div className="text-[10px] text-slate-400">System Version</div>
+                <div className="font-bold text-xs mt-0.5 text-slate-900 dark:text-white">
+                  {importValidation.detectedVersion || 'Compatible'}
+                </div>
+              </div>
+              <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+                <div className="text-[10px] text-slate-400">Schema Check</div>
+                <div className="font-bold text-xs mt-0.5 flex items-center gap-1">
+                  <CheckCircle2 className={`w-3.5 h-3.5 ${importValidation.schemaValidation ? 'text-emerald-500' : 'text-rose-500'}`} />
+                  {importValidation.schemaValidation ? 'Schema OK' : 'Malformed'}
+                </div>
+              </div>
+              <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+                <div className="text-[10px] text-slate-400">Relations & Integrity</div>
+                <div className="font-bold text-xs mt-0.5 flex items-center gap-1">
+                  <CheckCircle2 className={`w-3.5 h-3.5 ${importValidation.relationshipValidation ? 'text-emerald-500' : 'text-amber-500'}`} />
+                  {importValidation.relationshipValidation ? 'Relations Valid' : 'Warnings'}
+                </div>
+              </div>
+            </div>
+
+            {/* Entity Counts Preview */}
+            <div className="p-3.5 rounded-2xl bg-slate-100 dark:bg-slate-800 font-mono text-[11px] space-y-1.5">
+              <div className="font-bold text-slate-700 dark:text-slate-300 font-sans text-xs pb-1 border-b border-slate-200 dark:border-slate-700">
+                Entities to Import ({importValidation.totalRecords} total):
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 pt-1">
+                {Object.entries(importValidation.recordCounts || {}).map(([mod, cnt]) => (
+                  <div key={mod} className="flex justify-between p-1.5 rounded-lg bg-white dark:bg-slate-900">
+                    <span className="text-slate-500 capitalize">{mod}:</span>
+                    <strong className="text-indigo-500">{Number(cnt)}</strong>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Error / Warning Details */}
+            {importValidation.issues.some(i => i.type === 'error') && (
+              <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300 space-y-1">
+                <div className="font-bold flex items-center gap-1.5">
+                  <AlertTriangle className="w-4 h-4 text-rose-500" />
+                  Validation Errors:
+                </div>
+                <ul className="list-disc pl-4 space-y-0.5 text-[11px]">
+                  {importValidation.issues.filter(i => i.type === 'error').map((err, idx) => (
+                    <li key={idx}>[{err.entity}] {err.message}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {importValidation.issues.some(i => i.type === 'warning') && (
+              <div className="p-3 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-300 space-y-1">
+                <div className="font-bold">Warnings:</div>
+                <ul className="list-disc pl-4 space-y-0.5 text-[11px]">
+                  {importValidation.issues.filter(i => i.type === 'warning').map((w, idx) => (
+                    <li key={idx}>[{w.entity}] {w.message}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {importValidation.valid && (
+              <div className="space-y-3 pt-2">
+                <div className="p-3 rounded-xl bg-indigo-50 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-800 text-indigo-800 dark:text-indigo-200 text-[11px]">
+                  <strong>Zero-Partial Commit Guarantee:</strong> An automatic Pre-Import Safety Point will be created before committing. If any error occurs during import, the transaction will be completely rolled back with zero data loss.
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                    Type <span className="font-mono text-emerald-600 font-black">CONFIRM IMPORT</span> to commit:
+                  </label>
+                  <Input
+                    type="text"
+                    placeholder="CONFIRM IMPORT"
+                    value={importConfirmText}
+                    onChange={e => setImportConfirmText(e.target.value)}
+                    disabled={isExecutingImportCommit}
+                  />
+                </div>
+              </div>
+            )}
+
+            <div className="flex items-center gap-2 pt-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={isExecutingImportCommit}
+                onClick={() => {
+                  setIsImportPreviewModalOpen(false);
+                  setImportConfirmText('');
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                variant="primary"
+                size="sm"
+                isLoading={isExecutingImportCommit}
+                disabled={!importValidation.valid || isExecutingImportCommit || importConfirmText.trim().toUpperCase() !== 'CONFIRM IMPORT'}
+                onClick={handleCommitValidatedImport}
+                className="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Commit Validated Import
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
 
       {/* ⚡ 1-CLICK INSTANT ROLLBACK CONFIRMATION MODAL */}
       <Modal

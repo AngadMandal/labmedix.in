@@ -6,7 +6,6 @@ import { ThemeSelectorModal } from '../../components/layout/ThemeSelectorModal';
 import { triggerCelebrationFireworks } from '../../utils/confetti';
 import { StorageService, STORAGE_KEYS } from '../../services/storage';
 import { ApiSyncService } from '../../services/apiSyncService';
-import { BackupService } from '../../services/backupService';
 import { CompanySettingsService, CompanyValidationReport } from '../../services/companySettingsService';
 import { DocumentBrandPreview } from '../../components/settings/DocumentBrandPreview';
 import { DEFAULT_DOCUMENT_BRANDING, DEFAULT_SYSTEM_CONFIG } from '../../constants/defaults';
@@ -516,12 +515,16 @@ export const SettingsPage: React.FC = () => {
       {/* Header Section */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 text-xs font-bold uppercase tracking-wider mb-2">
+            <ShieldCheck className="w-3.5 h-3.5" />
+            Super Admin Sovereign Control
+          </div>
           <h2 className="text-2xl font-black tracking-tight text-slate-900 dark:text-white flex items-center gap-2.5">
             <Building className="w-7 h-7 text-blue-600" />
-            Company Settings & Central Brand System
+            Company Settings & System
           </h2>
           <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1">
-            Single source of truth for all organization identity, uploaded logo, document headers, numbering, and security policies.
+            Central single source of truth for all organization identity, official logo, contact information, legal credentials, document branding, and print layouts.
           </p>
         </div>
 

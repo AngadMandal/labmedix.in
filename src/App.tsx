@@ -394,13 +394,19 @@ export const App: React.FC = () => {
                     {/* Audit Logs (Module 25) */}
                     <Route path="/activity" element={<ModuleGuard moduleKey="activity"><ActivityLogPage /></ModuleGuard>} />
 
-                    {/* System & Super Admin Sovereign Control Center (Modules 26, 27, 28, 29, 30) */}
-                    <Route path="/import-export" element={<SuperAdminGuard><Navigate to="/super-admin?tab=import_export" replace /></SuperAdminGuard>} />
-                    <Route path="/backup-restore" element={<SuperAdminGuard><Navigate to="/super-admin?tab=backup_restore" replace /></SuperAdminGuard>} />
-                    <Route path="/backup" element={<SuperAdminGuard><Navigate to="/super-admin?tab=backup_restore" replace /></SuperAdminGuard>} />
-                    <Route path="/data-integrity" element={<SuperAdminGuard><Navigate to="/super-admin?tab=data_integrity" replace /></SuperAdminGuard>} />
-                    <Route path="/settings" element={<SuperAdminGuard><Navigate to="/super-admin?tab=company_settings" replace /></SuperAdminGuard>} />
+                    {/* System & Super Admin Sovereign Control Center */}
+                    <Route path="/super-admin/company-settings" element={<SuperAdminGuard><SettingsPage /></SuperAdminGuard>} />
+                    <Route path="/super-admin/backup-recovery" element={<SuperAdminGuard><BackupRestorePage /></SuperAdminGuard>} />
                     <Route path="/super-admin" element={<SuperAdminGuard><SuperAdminControlCenterPage /></SuperAdminGuard>} />
+
+                    {/* Central Redirection Aliases */}
+                    <Route path="/settings" element={<Navigate to="/super-admin/company-settings" replace />} />
+                    <Route path="/company-settings" element={<Navigate to="/super-admin/company-settings" replace />} />
+                    <Route path="/backup" element={<Navigate to="/super-admin/backup-recovery" replace />} />
+                    <Route path="/backup-restore" element={<Navigate to="/super-admin/backup-recovery" replace />} />
+                    <Route path="/backup-recovery" element={<Navigate to="/super-admin/backup-recovery" replace />} />
+                    <Route path="/import-export" element={<Navigate to="/super-admin/backup-recovery" replace />} />
+                    <Route path="/data-integrity" element={<SuperAdminGuard><Navigate to="/super-admin?tab=data_integrity" replace /></SuperAdminGuard>} />
 
                     {/* Direct Aliases */}
                     <Route path="/cash-desk-vouchers" element={<Navigate to="/billing" replace />} />

@@ -95,33 +95,53 @@ CREATE TABLE IF NOT EXISTS user_roles (
 );
 
 -- ============================================================================
--- 2. COMPANY PROFILE & INSTITUTIONAL BRANDING
+-- 2. COMPANY PROFILE & INSTITUTIONAL BRANDING (CENTRAL SINGLE SOURCE OF TRUTH)
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS company_settings (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     company_name VARCHAR(255) NOT NULL,
+    legal_name VARCHAR(255),
     tagline VARCHAR(255),
+    estd_year VARCHAR(10) DEFAULT '2025',
     logo_url TEXT,
+    logo_metadata JSONB DEFAULT '{}'::jsonb,
+    favicon_url TEXT,
     logo_size VARCHAR(20) DEFAULT 'md',
     logo_position VARCHAR(20) DEFAULT 'left',
     email VARCHAR(255) NOT NULL,
     phone VARCHAR(50) NOT NULL,
+    helpline VARCHAR(50),
+    ambulance_helpline VARCHAR(50),
+    blood_bank_helpline VARCHAR(50),
     whatsapp_number VARCHAR(50),
     emergency_contact VARCHAR(50),
     website VARCHAR(255),
     address_street TEXT,
     address_city VARCHAR(100),
     address_state VARCHAR(100),
+    address_district VARCHAR(100),
+    address_post_office VARCHAR(100),
+    address_police_station VARCHAR(100),
     address_pincode VARCHAR(20),
     registration_number VARCHAR(100),
+    clinical_license_no VARCHAR(100),
     gst_number VARCHAR(100),
     pan_number VARCHAR(100),
     nabh_nabl_accreditation VARCHAR(150),
+    iso_certification VARCHAR(255),
+    currency_symbol VARCHAR(10) DEFAULT '₹',
     print_settings JSONB NOT NULL DEFAULT '{}'::jsonb,
+    document_branding JSONB NOT NULL DEFAULT '{}'::jsonb,
+    system_config JSONB NOT NULL DEFAULT '{}'::jsonb,
+    validation_status VARCHAR(20) DEFAULT 'complete',
+    is_locked BOOLEAN NOT NULL DEFAULT TRUE,
+    locked_by VARCHAR(150) DEFAULT 'Super Administrator',
+    locked_at TIMESTAMPTZ,
     version INT NOT NULL DEFAULT 1,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
 
 -- ============================================================================
 -- 3. PATIENTS MASTER RELATIONSHIP
@@ -653,7 +673,34 @@ CREATE INDEX IF NOT EXISTS idx_audit_created_at ON audit_logs(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_audit_actor ON audit_logs(actor_id);
 
 -- ============================================================================
--- 11. AUTOMATIC UPDATED_AT TRIGGERS
+-- 11. CENTRAL SYSTEM BACKUPS & DISASTER RECOVERY LEDGER
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS system_backups (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    backup_code VARCHAR(50) NOT NULL UNIQUE, -- e.g. BACKUP-2026-0001
+    backup_name VARCHAR(255) NOT NULL,
+    backup_type VARCHAR(30) NOT NULL CHECK (backup_type IN ('database', 'json')),
+    file_name VARCHAR(255) NOT NULL,
+    file_size_bytes BIGINT NOT NULL DEFAULT 0,
+    checksum VARCHAR(100) NOT NULL,
+    schema_version VARCHAR(50) NOT NULL DEFAULT 'v1.0.0-production',
+    system_version VARCHAR(50) NOT NULL DEFAULT '2.0.0',
+    status VARCHAR(30) NOT NULL DEFAULT 'verified' CHECK (status IN ('creating', 'completed', 'verified', 'failed', 'corrupted', 'restored', 'archived')),
+    record_counts JSONB NOT NULL DEFAULT '{}'::jsonb,
+    is_automated BOOLEAN NOT NULL DEFAULT FALSE,
+    created_by_user_id VARCHAR(100) NOT NULL DEFAULT 'super_admin',
+    created_by_name VARCHAR(200) NOT NULL DEFAULT 'Super Administrator',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    verified_at TIMESTAMPTZ,
+    restored_at TIMESTAMPTZ
+);
+
+CREATE INDEX IF NOT EXISTS idx_system_backups_created_at ON system_backups(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_system_backups_status ON system_backups(status);
+CREATE INDEX IF NOT EXISTS idx_system_backups_type ON system_backups(backup_type);
+
+-- ============================================================================
+-- 12. AUTOMATIC UPDATED_AT TRIGGERS
 -- ============================================================================
 DO $$
 DECLARE

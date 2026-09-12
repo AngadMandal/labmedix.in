@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useSettings } from '../../context/SettingsContext';
 import { useToast } from '../../context/ToastContext';
@@ -83,6 +83,7 @@ export type SuperAdminSection =
   | 'health_card_control';
 
 export const SuperAdminControlCenterPage: React.FC = () => {
+  const navigate = useNavigate();
   const { currentUser } = useAuth();
   const { companyProfile, updateCompanyProfile } = useSettings();
   const { showToast } = useToast();
@@ -110,6 +111,14 @@ export const SuperAdminControlCenterPage: React.FC = () => {
   }, [initialTab]);
 
   const handleTabChange = (tab: SuperAdminSection) => {
+    if (tab === 'company_settings') {
+      navigate('/super-admin/company-settings');
+      return;
+    }
+    if (tab === 'backup_restore' || tab === 'import_export') {
+      navigate('/super-admin/backup-recovery');
+      return;
+    }
     setActiveTab(tab);
     setSearchParams({ tab });
   };
@@ -574,27 +583,11 @@ export const SuperAdminControlCenterPage: React.FC = () => {
         </button>
 
         <button
-          onClick={() => handleTabChange('import_export')}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
-            activeTab === 'import_export'
-              ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-md shadow-indigo-600/30'
-              : 'text-slate-400 hover:text-white hover:bg-slate-900/60'
-          }`}
+          onClick={() => navigate('/super-admin/backup-recovery')}
+          className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer text-slate-400 hover:text-white hover:bg-slate-900/60"
         >
-          <ArrowUpDown className="w-4 h-4" />
-          Data Import / Export
-        </button>
-
-        <button
-          onClick={() => handleTabChange('backup_restore')}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
-            activeTab === 'backup_restore'
-              ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-md shadow-indigo-600/30'
-              : 'text-slate-400 hover:text-white hover:bg-slate-900/60'
-          }`}
-        >
-          <HardDrive className="w-4 h-4" />
-          Backup & Restore
+          <HardDrive className="w-4 h-4 text-purple-400" />
+          Backup & Recovery Center ↗
         </button>
 
         <button
@@ -625,15 +618,11 @@ export const SuperAdminControlCenterPage: React.FC = () => {
         </button>
 
         <button
-          onClick={() => handleTabChange('company_settings')}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
-            activeTab === 'company_settings'
-              ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-md shadow-indigo-600/30'
-              : 'text-slate-400 hover:text-white hover:bg-slate-900/60'
-          }`}
+          onClick={() => navigate('/super-admin/company-settings')}
+          className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer text-slate-400 hover:text-white hover:bg-slate-900/60"
         >
-          <Building className="w-4 h-4" />
-          Company Settings & System
+          <Building className="w-4 h-4 text-indigo-400" />
+          Company Settings & System ↗
         </button>
 
         <button
@@ -723,31 +712,37 @@ export const SuperAdminControlCenterPage: React.FC = () => {
               </div>
 
               <div
-                onClick={() => handleTabChange('import_export')}
-                className="p-5 rounded-2xl bg-slate-900/60 border border-slate-800/80 hover:border-indigo-500/50 transition-all cursor-pointer group"
+                onClick={() => navigate('/super-admin/backup-recovery')}
+                className="p-5 rounded-2xl bg-slate-900/60 border border-slate-800/80 hover:border-purple-500/50 transition-all cursor-pointer group"
               >
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-xl bg-purple-500/20 text-purple-400 flex items-center justify-center group-hover:scale-105 transition-transform">
-                    <ArrowUpDown className="w-5 h-5" />
+                    <HardDrive className="w-5 h-5" />
                   </div>
                   <div>
-                    <h4 className="font-bold text-white group-hover:text-purple-300 transition-colors">Data Import / Export</h4>
-                    <p className="text-xs text-slate-400">Direct CSV commit to Central Firestore with duplicate detection</p>
+                    <h4 className="font-bold text-white group-hover:text-purple-300 transition-colors flex items-center gap-1.5">
+                      Backup & Recovery Center
+                      <span className="text-[10px] px-1.5 py-0.2 rounded bg-purple-500/20 text-purple-300 font-mono">SOVEREIGN</span>
+                    </h4>
+                    <p className="text-xs text-slate-400">PostgreSQL dumps, JSON import/export, and zero-loss restore</p>
                   </div>
                 </div>
               </div>
 
               <div
-                onClick={() => handleTabChange('backup_restore')}
+                onClick={() => navigate('/super-admin/company-settings')}
                 className="p-5 rounded-2xl bg-slate-900/60 border border-slate-800/80 hover:border-indigo-500/50 transition-all cursor-pointer group"
               >
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center group-hover:scale-105 transition-transform">
-                    <HardDrive className="w-5 h-5" />
+                  <div className="w-10 h-10 rounded-xl bg-indigo-500/20 text-indigo-400 flex items-center justify-center group-hover:scale-105 transition-transform">
+                    <Building className="w-5 h-5" />
                   </div>
                   <div>
-                    <h4 className="font-bold text-white group-hover:text-emerald-300 transition-colors">Backup & Restore</h4>
-                    <p className="text-xs text-slate-400">Manual backup creation, SHA-256 verification, and controlled restore</p>
+                    <h4 className="font-bold text-white group-hover:text-indigo-300 transition-colors flex items-center gap-1.5">
+                      Company Settings & System
+                      <span className="text-[10px] px-1.5 py-0.2 rounded bg-indigo-500/20 text-indigo-300 font-mono">CENTRAL</span>
+                    </h4>
+                    <p className="text-xs text-slate-400">Single source of truth for hospital info, logo, GSTIN, and branding</p>
                   </div>
                 </div>
               </div>
@@ -971,307 +966,26 @@ export const SuperAdminControlCenterPage: React.FC = () => {
       )}
 
       {/* ─────────────────────────────────────────────────────────────
-          TAB 3: DATA IMPORT / EXPORT
+          TAB 3 & 4: SOVEREIGN BACKUP & RECOVERY REDIRECT
           ───────────────────────────────────────────────────────────── */}
-      {activeTab === 'import_export' && (
-        <div className="space-y-6">
-          <div className="flex gap-2 p-1.5 rounded-xl bg-slate-950/80 border border-slate-800 w-fit">
-            <button
-              onClick={() => setImportExportTab('import')}
-              className={`px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                importExportTab === 'import' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              Direct Import to Central Firestore
-            </button>
-            <button
-              onClick={() => setImportExportTab('export')}
-              className={`px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                importExportTab === 'export' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              Central Data Exporter
-            </button>
+      {(activeTab === 'import_export' || activeTab === 'backup_restore') && (
+        <div className="p-8 rounded-3xl bg-slate-950/80 border border-slate-800 text-center space-y-4 max-w-xl mx-auto my-8">
+          <div className="w-16 h-16 rounded-2xl bg-purple-500/15 text-purple-400 flex items-center justify-center mx-auto border border-purple-500/30">
+            <HardDrive className="w-8 h-8" />
           </div>
-
-          {importExportTab === 'import' ? (
-            <div className="p-6 rounded-3xl bg-slate-950/60 border border-slate-800 space-y-6">
-              <div>
-                <h3 className="text-base font-bold text-white">Central Data Importer</h3>
-                <p className="text-xs text-slate-400">
-                  Direct atomic write into Central Firestore. Broadcasts live updates instantly to PC, Mobile, and Tablet.
-                </p>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="text-xs font-bold text-slate-400 block mb-1">Target Category</label>
-                  <select
-                    value={importCategory}
-                    onChange={e => {
-                      setImportCategory(e.target.value as MasterDataCategory);
-                      setImportValidation(null);
-                    }}
-                    className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-800 text-xs text-white"
-                  >
-                    <option value="patients">Patients Directory</option>
-                    <option value="cards">Health Cards Master</option>
-                    <option value="medicines">Pharmacy Medicine Catalog</option>
-                    <option value="tests">Lab Test Master</option>
-                    <option value="doctors">Doctor Master</option>
-                    <option value="billing">Patient Invoices</option>
-                    <option value="users">Staff Accounts</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="text-xs font-bold text-slate-400 block mb-1">Duplicate Handling Mode</label>
-                  <select
-                    value={importMode}
-                    onChange={e => setImportMode(e.target.value as 'update' | 'skip')}
-                    className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-800 text-xs text-white"
-                  >
-                    <option value="update">UPDATE EXISTING (Safe Merge)</option>
-                    <option value="skip">SKIP DUPLICATE (Insert New Only)</option>
-                  </select>
-                </div>
-              </div>
-
-              <div>
-                <label className="text-xs font-bold text-slate-400 block mb-1">
-                  Paste CSV / Tab-Delimited Data
-                </label>
-                <textarea
-                  rows={6}
-                  value={rawImportData}
-                  onChange={e => {
-                    setRawImportData(e.target.value);
-                    setImportValidation(null);
-                  }}
-                  placeholder="Paste CSV rows with headers matching the category fields..."
-                  className="w-full p-3 rounded-2xl bg-slate-900 border border-slate-800 text-xs text-white font-mono placeholder-slate-600 focus:outline-none focus:border-indigo-500"
-                />
-              </div>
-
-              <div className="flex items-center gap-3">
-                <Button variant="outline" size="sm" onClick={handleValidateImport} className="text-xs border-slate-700">
-                  <ShieldCheck className="w-3.5 h-3.5 mr-1.5" />
-                  Validate Input Data
-                </Button>
-
-                {importValidation && importValidation.validRows.length > 0 && (
-                  <Button
-                    variant="primary"
-                    size="sm"
-                    onClick={handleCommitImport}
-                    disabled={isExecutingImport}
-                    className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs shadow-md shadow-emerald-600/30"
-                  >
-                    <CheckCircle className="w-3.5 h-3.5 mr-1.5" />
-                    {isExecutingImport ? 'Writing to Firestore...' : `Commit ${importValidation.validRows.length} Valid Records`}
-                  </Button>
-                )}
-              </div>
-
-              {/* Validation Summary */}
-              {importValidation && (
-                <div className="p-4 rounded-2xl bg-slate-900/80 border border-slate-800 space-y-2 text-xs">
-                  <div className="flex items-center justify-between font-bold">
-                    <span className="text-white">Validation Results:</span>
-                    <span className={importValidation.invalidRows.length === 0 ? 'text-emerald-400' : 'text-amber-400'}>
-                      {importValidation.invalidRows.length === 0 ? 'PASS' : 'WARNINGS DETECTED'}
-                    </span>
-                  </div>
-                  <div className="grid grid-cols-4 gap-2 text-center pt-2">
-                    <div className="p-2 rounded-xl bg-slate-950 border border-slate-800">
-                      <div className="font-bold text-white">{importValidation.totalRows}</div>
-                      <div className="text-[10px] text-slate-400">Total Rows</div>
-                    </div>
-                    <div className="p-2 rounded-xl bg-slate-950 border border-emerald-900/40">
-                      <div className="font-bold text-emerald-400">{importValidation.validRows.length}</div>
-                      <div className="text-[10px] text-slate-400">Valid</div>
-                    </div>
-                    <div className="p-2 rounded-xl bg-slate-950 border border-amber-900/40">
-                      <div className="font-bold text-amber-400">{importValidation.duplicateRows.length}</div>
-                      <div className="text-[10px] text-slate-400">Duplicates</div>
-                    </div>
-                    <div className="p-2 rounded-xl bg-slate-950 border border-rose-900/40">
-                      <div className="font-bold text-rose-400">{importValidation.invalidRows.length}</div>
-                      <div className="text-[10px] text-slate-400">Errors</div>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          ) : (
-            /* Export Hub */
-            <div className="p-6 rounded-3xl bg-slate-950/60 border border-slate-800 space-y-6">
-              <div>
-                <h3 className="text-base font-bold text-white">Central Data Exporter</h3>
-                <p className="text-xs text-slate-400">Export master records with cryptographic HMAC signature</p>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div>
-                  <label className="text-xs font-bold text-slate-400 block mb-1">Dataset to Export</label>
-                  <select
-                    value={exportDataset}
-                    onChange={e => setExportDataset(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-800 text-xs text-white"
-                  >
-                    <option value="patients">Patients Directory</option>
-                    <option value="cards">Health Cards</option>
-                    <option value="medicines">Pharmacy Inventory</option>
-                    <option value="tests">Lab Test Catalog</option>
-                    <option value="doctors">Doctors Master</option>
-                    <option value="billing">Patient Invoices</option>
-                    <option value="transactions">Ledger Transactions</option>
-                    <option value="users">Staff Directory</option>
-                    <option value="audit_logs">Audit Trail Ledger</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="text-xs font-bold text-slate-400 block mb-1">Start Date (Optional)</label>
-                  <input
-                    type="date"
-                    value={exportStartDate}
-                    onChange={e => setExportStartDate(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-800 text-xs text-white"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs font-bold text-slate-400 block mb-1">End Date (Optional)</label>
-                  <input
-                    type="date"
-                    value={exportEndDate}
-                    onChange={e => setExportEndDate(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-800 text-xs text-white"
-                  />
-                </div>
-              </div>
-
-              <Button
-                variant="primary"
-                onClick={handleExecuteExport}
-                className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs"
-              >
-                <Download className="w-4 h-4 mr-2" />
-                Generate and Download CSV Export
-              </Button>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* ─────────────────────────────────────────────────────────────
-          TAB 4: BACKUP & RESTORE
-          ───────────────────────────────────────────────────────────── */}
-      {activeTab === 'backup_restore' && (
-        <div className="space-y-6">
-          <div className="p-6 rounded-3xl bg-slate-950/80 border border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div>
-              <div className="flex items-center gap-2">
-                <HardDrive className="w-5 h-5 text-emerald-400" />
-                <h3 className="text-base font-bold text-white">Central Sovereign Backup & Restore</h3>
-              </div>
-              <p className="text-xs text-slate-400 mt-1">
-                Zero-Loss Cloud Firestore Snapshots, Checksum Verification & Controlled Recovery Rollback
-              </p>
-            </div>
-
-            <Button
-              variant="primary"
-              size="sm"
-              onClick={() => setIsBackupModalOpen(true)}
-              disabled={isCreatingBackup}
-              className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs shadow-md shadow-emerald-600/30"
-            >
-              <Plus className="w-3.5 h-3.5 mr-1.5" />
-              CREATE BACKUP NOW
-            </Button>
+          <div>
+            <h3 className="text-lg font-black text-white">Central Sovereign Backup & Recovery Center</h3>
+            <p className="text-xs text-slate-400 mt-1 leading-relaxed">
+              All manual backups, PostgreSQL relational database recovery, atomic JSON imports, and zero-data-loss cloud synchronization are managed exclusively in the dedicated Backup & Recovery module.
+            </p>
           </div>
-
-          {/* Backup History Table */}
-          <div className="rounded-2xl bg-slate-950/60 border border-slate-800 overflow-hidden space-y-3 p-4">
-            <div className="flex items-center justify-between">
-              <h4 className="text-xs font-bold text-slate-300 uppercase tracking-wider">Verified Checkpoint History</h4>
-              <span className="text-xs text-slate-400">{backupHistory.length} total checkpoints</span>
-            </div>
-
-            {backupHistory.length === 0 ? (
-              <div className="p-8 text-center text-slate-400 text-xs">
-                No backups recorded yet. Click "CREATE BACKUP NOW" to capture the initial sovereign checkpoint.
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs">
-                  <thead className="bg-slate-900/80 text-slate-400 font-bold uppercase tracking-wider border-b border-slate-800">
-                    <tr>
-                      <th className="p-3">Backup ID & Label</th>
-                      <th className="p-3">Date & Time</th>
-                      <th className="p-3">Record Scope</th>
-                      <th className="p-3">Status</th>
-                      <th className="p-3">Verification</th>
-                      <th className="p-3 text-right">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-800/60 font-medium text-slate-300">
-                    {backupHistory.map(b => (
-                      <tr key={b.id} className="hover:bg-slate-900/40">
-                        <td className="p-3">
-                          <div className="font-bold text-white">{b.label}</div>
-                          <div className="font-mono text-[10px] text-indigo-400">{b.id}</div>
-                        </td>
-                        <td className="p-3 text-slate-300">{formatDateTime(b.createdAt)}</td>
-                        <td className="p-3 font-mono font-bold text-white">{b.recordCount || 0}</td>
-                        <td className="p-3">
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
-                            {b.status}
-                          </span>
-                        </td>
-                        <td className="p-3">
-                          <span
-                            className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase ${
-                              b.verificationStatus === 'verified'
-                                ? 'bg-emerald-500/20 text-emerald-300'
-                                : 'bg-slate-800 text-slate-400'
-                            }`}
-                          >
-                            {b.verificationStatus}
-                          </span>
-                        </td>
-                        <td className="p-3 text-right space-x-1">
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => handleVerifyBackup(b.id)}
-                            className="text-xs text-indigo-400 hover:text-white"
-                            title="Verify Checksum"
-                          >
-                            <ShieldCheck className="w-3.5 h-3.5 mr-1" />
-                            Verify
-                          </Button>
-                          {b.firestoreSnapshotId && (
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => handleInitiateRestore(b)}
-                              disabled={isRestoringBackup}
-                              className="text-xs text-amber-400 hover:text-white"
-                              title="Restore Database from Snapshot"
-                            >
-                              <RotateCcw className="w-3.5 h-3.5 mr-1" />
-                              Restore
-                            </Button>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
+          <Button
+            variant="primary"
+            onClick={() => navigate('/super-admin/backup-recovery')}
+            className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-bold text-xs shadow-lg shadow-indigo-600/30"
+          >
+            Open Backup & Recovery Center
+          </Button>
         </div>
       )}
 
@@ -1540,178 +1254,26 @@ export const SuperAdminControlCenterPage: React.FC = () => {
       )}
 
       {/* ─────────────────────────────────────────────────────────────
-          TAB 7: COMPANY SETTINGS & SYSTEM
+          TAB 7: CENTRAL COMPANY SETTINGS REDIRECT
           ───────────────────────────────────────────────────────────── */}
       {activeTab === 'company_settings' && (
-        <div className="space-y-6">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Company Branding Profile */}
-            <div className="p-6 rounded-3xl bg-slate-950/70 border border-slate-800 space-y-4">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-indigo-500/20 text-indigo-400 flex items-center justify-center border border-indigo-500/30">
-                  <Building className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="text-base font-bold text-white">Central Company Identity</h3>
-                  <p className="text-xs text-slate-400">Institutional details reflected uniformly across all modules</p>
-                </div>
-              </div>
-
-              <form onSubmit={handleSaveCompany} className="space-y-3 text-xs">
-                <div>
-                  <label className="text-slate-400 block mb-1 font-bold">Hospital / Clinic Name</label>
-                  <input
-                    type="text"
-                    value={companyForm.name}
-                    onChange={e => setCompanyForm({ ...companyForm, name: e.target.value })}
-                    className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-800 text-white focus:outline-none focus:border-indigo-500"
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="text-slate-400 block mb-1 font-bold">Helpline Phone</label>
-                    <input
-                      type="text"
-                      value={companyForm.phone}
-                      onChange={e => setCompanyForm({ ...companyForm, phone: e.target.value })}
-                      className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-800 text-white"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-slate-400 block mb-1 font-bold">Official Email</label>
-                    <input
-                      type="email"
-                      value={companyForm.email}
-                      onChange={e => setCompanyForm({ ...companyForm, email: e.target.value })}
-                      className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-800 text-white"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="text-slate-400 block mb-1 font-bold">Clinical Address</label>
-                  <input
-                    type="text"
-                    value={companyForm.address}
-                    onChange={e => setCompanyForm({ ...companyForm, address: e.target.value })}
-                    className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-800 text-white"
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="text-slate-400 block mb-1 font-bold">GSTIN / Tax ID</label>
-                    <input
-                      type="text"
-                      value={companyForm.gstin || ''}
-                      onChange={e => setCompanyForm({ ...companyForm, gstin: e.target.value })}
-                      className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-800 text-white"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-slate-400 block mb-1 font-bold">Clinical License No</label>
-                    <input
-                      type="text"
-                      value={companyForm.clinicalLicenseNo || ''}
-                      onChange={e => setCompanyForm({ ...companyForm, clinicalLicenseNo: e.target.value })}
-                      className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-800 text-white"
-                    />
-                  </div>
-                </div>
-
-                <Button
-                  type="submit"
-                  variant="primary"
-                  size="sm"
-                  disabled={isSavingCompany}
-                  className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs mt-2"
-                >
-                  <Check className="w-3.5 h-3.5 mr-1.5" />
-                  {isSavingCompany ? 'Saving to Firestore...' : 'Save Company Identity'}
-                </Button>
-              </form>
-            </div>
-
-            {/* System Configurations */}
-            <div className="p-6 rounded-3xl bg-slate-950/70 border border-slate-800 space-y-4">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-purple-500/20 text-purple-400 flex items-center justify-center border border-purple-500/30">
-                  <Lock className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="text-base font-bold text-white">System Level Configurations</h3>
-                  <p className="text-xs text-slate-400">Numbering prefixes, limits, and maintenance controls</p>
-                </div>
-              </div>
-
-              <form onSubmit={handleSaveSystemConfig} className="space-y-3 text-xs">
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="text-slate-400 block mb-1 font-bold">Patient ID Prefix</label>
-                    <input
-                      type="text"
-                      value={systemConfig.patientIdPrefix}
-                      onChange={e => setSystemConfig({ ...systemConfig, patientIdPrefix: e.target.value })}
-                      className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-800 text-white font-mono"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-slate-400 block mb-1 font-bold">Health Card Prefix</label>
-                    <input
-                      type="text"
-                      value={systemConfig.cardNoPrefix}
-                      onChange={e => setSystemConfig({ ...systemConfig, cardNoPrefix: e.target.value })}
-                      className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-800 text-white font-mono"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="text-slate-400 block mb-1 font-bold">Max Family Members / Card</label>
-                    <input
-                      type="number"
-                      value={systemConfig.maxFamilyMembers}
-                      onChange={e => setSystemConfig({ ...systemConfig, maxFamilyMembers: parseInt(e.target.value, 10) || 6 })}
-                      className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-800 text-white"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-slate-400 block mb-1 font-bold">Default Tax %</label>
-                    <input
-                      type="number"
-                      value={systemConfig.defaultTaxPercent}
-                      onChange={e => setSystemConfig({ ...systemConfig, defaultTaxPercent: parseFloat(e.target.value) || 0 })}
-                      className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-800 text-white"
-                    />
-                  </div>
-                </div>
-
-                <div className="pt-2">
-                  <label className="flex items-center gap-2 cursor-pointer text-slate-300">
-                    <input
-                      type="checkbox"
-                      checked={systemConfig.lockdownOperationalRecords}
-                      onChange={e => setSystemConfig({ ...systemConfig, lockdownOperationalRecords: e.target.checked })}
-                      className="rounded bg-slate-900 border-slate-800 text-indigo-600 focus:ring-0"
-                    />
-                    <span className="font-bold">Lockdown Operational Records (Emergency Read-Only Protection)</span>
-                  </label>
-                </div>
-
-                <Button
-                  type="submit"
-                  variant="primary"
-                  size="sm"
-                  className="bg-purple-600 hover:bg-purple-500 text-white text-xs mt-2"
-                >
-                  <Check className="w-3.5 h-3.5 mr-1.5" />
-                  Save System Configurations
-                </Button>
-              </form>
-            </div>
+        <div className="p-8 rounded-3xl bg-slate-950/80 border border-slate-800 text-center space-y-4 max-w-xl mx-auto my-8">
+          <div className="w-16 h-16 rounded-2xl bg-indigo-500/15 text-indigo-400 flex items-center justify-center mx-auto border border-indigo-500/30">
+            <Building className="w-8 h-8" />
           </div>
+          <div>
+            <h3 className="text-lg font-black text-white">Central Company Settings & System</h3>
+            <p className="text-xs text-slate-400 mt-1 leading-relaxed">
+              All institutional information, official logo, clinical licensing, GSTIN, and print/report document branding are governed exclusively from the single central module.
+            </p>
+          </div>
+          <Button
+            variant="primary"
+            onClick={() => navigate('/super-admin/company-settings')}
+            className="bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-lg shadow-indigo-600/30"
+          >
+            Open Company Settings & System
+          </Button>
         </div>
       )}
 
