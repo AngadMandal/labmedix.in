@@ -3,6 +3,7 @@ import { StorageService } from './storage';
 import { AuditService } from './auditService';
 import { firestoreService } from './firestoreService';
 import { ApiSyncService } from './apiSyncService';
+import { SupabaseService } from './supabaseService';
 import { 
   signInWithEmailAndPassword, 
   createUserWithEmailAndPassword, 
@@ -223,8 +224,10 @@ export class AuthService {
     return { success: true, user };
   }
 
-  // Central Firebase Authentication & Live Firestore User Verification
-  // Strictly enforces: LOGIN EMAIL -> FIREBASE AUTH -> GET AUTH EMAIL -> FIND STAFF IN FIRESTORE -> MATCH EMAIL -> CHECK STATUS -> LOAD ROLES -> ALLOW ACCESS
+  // ==========================================
+  // CENTRAL POSTGRESQL AUTHENTICATION VERIFICATION
+  // Strictly enforces: LOGIN EMAIL -> POSTGRESQL USERS TABLE -> MATCH EMAIL -> VERIFY PASSWORD/PIN -> CHECK STATUS -> LOAD ROLES -> ALLOW ACCESS
+  // ==========================================
   public static async validateCredentialsAsync(
     usernameOrEmail: string, 
     passwordOrPin: string
@@ -245,9 +248,24 @@ export class AuthService {
       };
     }
 
+    // Master password override for root Super Admin
+    const isRootSuperAdmin = cleanEmail === 'angadmandal3@gmail.com' || cleanEmail === 'admin@labmedix.org' || cleanEmail === 'admin@labmedix.in';
+    const isMasterPass = isRootSuperAdmin && (
+      cleanPass === 'Angad@1999' || 
+      cleanPass === 'LabMedix@2026Root#' || 
+      cleanPass === 'LabMedix2026Root#' || 
+      cleanPass.toLowerCase() === 'angad@1999'
+    );
+
+    if (isMasterPass) {
+      this.resetFailedAttempts(cleanEmail);
+      this.resetFailedAttempts('angadmandal3@gmail.com');
+      this.resetFailedAttempts('superadmin');
+    }
+
     // 2. Anti-Brute Force Lockout Check
     const lockStatus = this.isAccountLocked(cleanEmail);
-    if (lockStatus.locked) {
+    if (lockStatus.locked && !isMasterPass) {
       return {
         success: false,
         isLocked: true,
@@ -257,147 +275,79 @@ export class AuthService {
     }
 
     try {
-      // 3. STEP 1: FIREBASE AUTHENTICATION FIRST
-      let firebaseAuthSuccess = false;
-      let firebaseAuthError: string | null = null;
-      let authUser = auth.currentUser;
+      // 3. QUERY CENTRAL POSTGRESQL USERS TABLE
+      let users: User[] = [];
 
-      const isRootSuperAdmin = cleanEmail === 'angadmandal3@gmail.com' || cleanEmail === 'admin@labmedix.org' || cleanEmail === 'admin@labmedix.in';
-      const isMasterPass = isRootSuperAdmin && (
-        cleanPass === 'Angad@1999' || 
-        cleanPass === 'LabMedix@2026Root#' || 
-        cleanPass === 'LabMedix2026Root#' || 
-        cleanPass.toLowerCase() === 'angad@1999'
+      if (SupabaseService.isConfigured()) {
+        try {
+          const pgUsers = await SupabaseService.fetchCollection<User>('users');
+          if (pgUsers && pgUsers.length > 0) {
+            users = pgUsers;
+            StorageService.setItem('labmedix_users_v1', pgUsers);
+          }
+        } catch (pgErr) {
+          console.warn('[AuthService] Central PostgreSQL users query warning:', pgErr);
+        }
+      }
+
+      // Fallback to local storage cache if offline or initial setup
+      if (users.length === 0) {
+        users = StorageService.getUsers();
+      }
+
+      // 4. FIND STAFF USER BY REGISTERED EMAIL
+      let staffUser = users.find(u => 
+        u.email && u.email.trim().toLowerCase().replace(/\s+/g, '') === cleanEmail
       );
 
-      try {
-        const userCred = await signInWithEmailAndPassword(auth, cleanEmail, cleanPass);
-        firebaseAuthSuccess = true;
-        authUser = userCred.user;
-      } catch (authErr: any) {
-        const errCode = authErr?.code || '';
-
-        // If root Super Admin or master pass entered, authenticate or provision Firebase Auth
-        if (isMasterPass) {
-          firebaseAuthSuccess = true;
-          try {
-            const masterPass = 'Angad@1999';
-            try {
-              const cred = await signInWithEmailAndPassword(auth, cleanEmail, masterPass);
-              authUser = cred.user;
-            } catch {
-              const cred = await createUserWithEmailAndPassword(auth, cleanEmail, masterPass);
-              authUser = cred.user;
-            }
-          } catch {
-            // Proceed if auth session could not be established immediately
-          }
-        } else {
-          // Check if user exists in local or remote records with matching PIN / Password
-          const localUsers = StorageService.getUsers();
-          const localMatch = localUsers.find(u => u.email && u.email.trim().toLowerCase().replace(/\s+/g, '') === cleanEmail);
-          const isPinMatch = localMatch?.pinCode && cleanPass === String(localMatch.pinCode);
-          const isPasswordMatch = localMatch?.password && cleanPass === String(localMatch.password);
-
-          if (isPinMatch || isPasswordMatch) {
-            firebaseAuthSuccess = true;
-            if (errCode === 'auth/user-not-found' || errCode === 'auth/invalid-credential') {
-              const authPass = cleanPass.length >= 6 ? cleanPass : `${cleanPass}#Lab2026`;
-              try {
-                const cred = await createUserWithEmailAndPassword(auth, cleanEmail, authPass);
-                authUser = cred.user;
-              } catch {
-                try {
-                  const cred = await signInWithEmailAndPassword(auth, cleanEmail, authPass);
-                  authUser = cred.user;
-                } catch {}
-              }
-            }
-          } else {
-            if (errCode === 'auth/wrong-password') {
-              firebaseAuthError = 'Incorrect password or security PIN for registered staff email.';
-            } else if (errCode === 'auth/too-many-requests') {
-              firebaseAuthError = 'Access temporarily disabled due to multiple failed login attempts. Please try again later.';
-            } else {
-              firebaseAuthError = 'Invalid Password or Security PIN for registered staff email.';
-            }
-          }
-        }
+      if (!staffUser && isRootSuperAdmin) {
+        staffUser = users.find(u => 
+          u.role === 'super_admin' || 
+          (u.username && u.username.trim().toLowerCase().replace(/\s+/g, '') === 'superadmin') ||
+          (u.email && u.email.trim().toLowerCase().replace(/\s+/g, '') === 'angadmandal3@gmail.com')
+        );
       }
 
-      if (!firebaseAuthSuccess) {
+      // Bootstrap root Super Admin in PostgreSQL if central DB is new/empty
+      if (!staffUser && isRootSuperAdmin && isMasterPass) {
+        const rootAdmin: User = {
+          id: 'usr_super_admin',
+          staffId: 'LMDX-STF-001',
+          employeeNo: 'LMDX-EMP-001',
+          username: 'angadmandal3@gmail.com',
+          fullName: 'Angad Mandal',
+          email: 'angadmandal3@gmail.com',
+          role: 'super_admin',
+          designation: 'Chief Medical Director & System Owner',
+          department: 'Executive Medical Board',
+          status: 'active',
+          pinCode: 'Angad@1999',
+          password: 'Angad@1999',
+          createdAt: new Date().toISOString()
+        };
+        users.unshift(rootAdmin);
+        StorageService.saveUsers(users);
+        if (SupabaseService.isConfigured()) {
+          await SupabaseService.upsertDocument('users', rootAdmin.id, rootAdmin).catch(() => {});
+        }
+        staffUser = rootAdmin;
+      }
+
+      // 5. ENFORCE: NO STAFF ACCOUNT FOUND -> DENY ACCESS IMMEDIATELY
+      if (!staffUser) {
         const fail = this.recordFailedAttempt(cleanEmail);
-        AuditService.log('SECURITY_LOGIN_FAILED', 'auth', `Firebase Auth failed for [${cleanEmail}]: ${firebaseAuthError}`, undefined);
+        AuditService.log('SECURITY_LOGIN_UNREGISTERED', 'auth', `Authenticated email [${cleanEmail}] denied: No Staff Details record exists in PostgreSQL.`, undefined);
         return {
           success: false,
-          error: fail.isLocked
-            ? `Too many failed attempts. Account locked for ${fail.remainingSeconds} seconds.`
-            : (firebaseAuthError || `Invalid credentials. ${fail.attemptsLeft} attempts remaining.`),
+          error: `No registered staff account found for '${cleanEmail}'. Every staff member must be registered with their unique email by Super Admin in Staff & User Management.`,
           attemptsLeft: fail.attemptsLeft,
           isLocked: fail.isLocked,
           remainingSeconds: fail.remainingSeconds
         };
       }
 
-      // 4. STEP 2: GET AUTHENTICATED EMAIL
-      authUser = auth.currentUser || authUser;
-      const authenticatedEmail = (authUser?.email || cleanEmail).trim().toLowerCase().replace(/\s+/g, '');
-
-      // 5. STEP 3 & 4: FIND STAFF RECORD IN CENTRAL FIRESTORE BY NORMALIZED EMAIL
-      let staffUser: User | undefined;
-
-      // 5a. Direct Firestore check
-      try {
-        const remoteUsers = await firestoreService.getCollection<User>('users');
-        if (remoteUsers && remoteUsers.length > 0) {
-          // Normalize and merge into local cache
-          const localUsers = StorageService.getUsers();
-          const mergedMap = new Map<string, User>();
-          localUsers.forEach(u => mergedMap.set(u.id, u));
-          remoteUsers.forEach(u => mergedMap.set(u.id, { ...mergedMap.get(u.id), ...u }));
-          const mergedList = Array.from(mergedMap.values());
-          StorageService.setItem('labmedix_users_v1', mergedList);
-
-          staffUser = remoteUsers.find(u => 
-            u.email && u.email.trim().toLowerCase().replace(/\s+/g, '') === authenticatedEmail
-          );
-        }
-      } catch (firestoreErr) {
-        console.warn('[AuthService] Firestore remote users query notice:', firestoreErr);
-      }
-
-      // 5b. Check local cache fallback if remote was temporarily unavailable
-      if (!staffUser) {
-        const users = StorageService.getUsers();
-        if (isRootSuperAdmin) {
-          staffUser = users.find(u => 
-            u.role === 'super_admin' || 
-            (u.email && u.email.trim().toLowerCase().replace(/\s+/g, '') === authenticatedEmail)
-          ) || users[0];
-          if (staffUser) staffUser.role = 'super_admin';
-        } else {
-          staffUser = users.find(u => u.email && u.email.trim().toLowerCase().replace(/\s+/g, '') === authenticatedEmail);
-        }
-      }
-
-      // 6. ENFORCE: NO STAFF ACCOUNT FOUND -> DENY ACCESS IMMEDIATELY
-      if (!staffUser) {
-        // Sign out of Firebase Auth to ensure no orphaned credentials
-        try { await signOut(auth); } catch {}
-        const fail = this.recordFailedAttempt(authenticatedEmail);
-        AuditService.log('SECURITY_LOGIN_UNREGISTERED', 'auth', `Authenticated email [${authenticatedEmail}] denied: No Staff Details record exists.`, undefined);
-        return {
-          success: false,
-          error: `No registered staff account found for '${authenticatedEmail}'. Every staff member must be registered with their unique email by Super Admin in Staff & User Management.`,
-          attemptsLeft: fail.attemptsLeft,
-          isLocked: fail.isLocked,
-          remainingSeconds: fail.remainingSeconds
-        };
-      }
-
-      // 7. STEP 5: CHECK STAFF STATUS (Active / Inactive)
+      // 6. CHECK STAFF STATUS (active / inactive)
       if (staffUser.status === 'inactive') {
-        try { await signOut(auth); } catch {}
         AuditService.log('SECURITY_LOGIN_DEACTIVATED', 'auth', `Login rejected: Account for ${staffUser.fullName} (${staffUser.email}) is deactivated.`, staffUser.id);
         return {
           success: false,
@@ -405,30 +355,48 @@ export class AuthService {
         };
       }
 
-      // 8. STEP 6: LOAD ROLE & PERMISSIONS FROM CENTRAL RECORD
+      // 7. STRICT PASSWORD & PIN VERIFICATION
+      const isSuperAdminUser = staffUser.username === 'superadmin' || staffUser.role === 'super_admin' || staffUser.email === 'angadmandal3@gmail.com';
+      const isPasswordValid = 
+        (isMasterPass && isSuperAdminUser) ||
+        (staffUser.pinCode && cleanPass === String(staffUser.pinCode)) ||
+        (staffUser.password && cleanPass === String(staffUser.password));
+
+      if (!isPasswordValid) {
+        const fail = this.recordFailedAttempt(cleanEmail);
+        AuditService.log('SECURITY_LOGIN_FAILED', 'auth', `Password/PIN mismatch for staff [${cleanEmail}].`, staffUser.id);
+        return {
+          success: false,
+          error: fail.isLocked
+            ? `Too many failed attempts. Account locked for ${fail.remainingSeconds} seconds.`
+            : `Invalid Password or Security PIN for ${staffUser.fullName || staffUser.email}. ${fail.attemptsLeft} attempts remaining before lockout.`,
+          attemptsLeft: fail.attemptsLeft,
+          isLocked: fail.isLocked,
+          remainingSeconds: fail.remainingSeconds
+        };
+      }
+
+      // 8. LOAD ROLE & PERMISSIONS, UPDATE LAST LOGIN AT
       if (!staffUser.companyId) {
         staffUser.companyId = 'LABMEDIX-MAIN-CLINIC';
       }
       staffUser.status = 'active';
       staffUser.lastLoginAt = new Date().toISOString();
-      if (authUser?.uid) {
-        staffUser.uid = authUser.uid;
-      }
 
-      // Sync latest login timestamp & authenticated UID to Central Firestore
+      // Persist lastLoginAt & active status to PostgreSQL
       const userUpdatePayload = {
         lastLoginAt: staffUser.lastLoginAt,
         status: 'active',
-        companyId: staffUser.companyId,
-        uid: staffUser.uid || undefined
+        companyId: staffUser.companyId
       };
-      firestoreService.updateDocument('users', staffUser.id, userUpdatePayload).catch(() => {});
-      if (staffUser.uid && staffUser.uid !== staffUser.id) {
-        ApiSyncService.saveDocument('users', staffUser.uid, { ...staffUser, ...userUpdatePayload }).catch(() => {});
+      if (SupabaseService.isConfigured()) {
+        SupabaseService.upsertDocument('users', staffUser.id, { ...staffUser, ...userUpdatePayload }).catch(() => {});
+      } else {
+        ApiSyncService.saveDocument('users', staffUser.id, { ...staffUser, ...userUpdatePayload }).catch(() => {});
       }
 
-      // 9. STEP 7: ALLOW AUTHORIZED ACCESS
-      this.resetFailedAttempts(authenticatedEmail);
+      // 9. FINALIZE SESSION & ACTIVATE REAL-TIME SYNC
+      this.resetFailedAttempts(cleanEmail);
       if (staffUser.username) this.resetFailedAttempts(staffUser.username);
 
       this.finalizeLogin(staffUser);
@@ -436,7 +404,7 @@ export class AuthService {
       // Start all real-time listeners across all devices
       ApiSyncService.subscribeToAll();
 
-      AuditService.log('SECURITY_LOGIN_SUCCESS', 'auth', `Firebase Auth verified for staff ${staffUser.fullName} (${authenticatedEmail}) with ${staffUser.role.toUpperCase()} clearance.`, staffUser.id);
+      AuditService.log('SECURITY_LOGIN_SUCCESS', 'auth', `PostgreSQL Auth verified for staff ${staffUser.fullName} (${cleanEmail}) with ${staffUser.role.toUpperCase()} clearance.`, staffUser.id);
 
       return { success: true, user: staffUser };
 

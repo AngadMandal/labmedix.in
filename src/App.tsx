@@ -268,15 +268,15 @@ export const App: React.FC = () => {
                     {/* Patient Routes */}
                     <Route path="/patients" element={<ModuleGuard moduleKey="patients"><PatientListPage /></ModuleGuard>} />
                     <Route path="/patients/new" element={<ModuleGuard moduleKey="patients"><PatientCreatePage /></ModuleGuard>} />
-                    <Route path="/patients/offline" element={<ModuleGuard moduleKey="patients"><OfflineFormPage /></ModuleGuard>} />
-                    <Route path="/offline-form" element={<ModuleGuard moduleKey="patients"><OfflineFormPage /></ModuleGuard>} />
+                    <Route path="/patients/offline" element={<Navigate to="/patients/new" replace />} />
+                    <Route path="/offline-form" element={<Navigate to="/patients/new" replace />} />
                     <Route path="/patients/:id" element={<ModuleGuard moduleKey="patients"><PatientDetailPage /></ModuleGuard>} />
                     <Route path="/patients/:id/edit" element={<ModuleGuard moduleKey="patients"><PatientEditPage /></ModuleGuard>} />
 
                     {/* Card & Studio Routes */}
                     <Route path="/cards" element={<ModuleGuard moduleKey="cards"><CardListPage /></ModuleGuard>} />
                     <Route path="/card-requests" element={<ModuleGuard moduleKey="card_requests"><CardRequestsPage /></ModuleGuard>} />
-                    <Route path="/card-studio" element={<ModuleGuard moduleKey="card_studio"><CardStudioPage /></ModuleGuard>} />
+                    <Route path="/card-studio" element={<Navigate to="/cards" replace />} />
                     <Route path="/cards/print-sheet" element={<ModuleGuard moduleKey="print_sheet"><CardPrintSheetPage /></ModuleGuard>} />
                     <Route path="/cards/printing-dispatch" element={<ModuleGuard moduleKey="card_dispatch"><CardPrintingDispatchPage /></ModuleGuard>} />
                     <Route path="/card-dispatch" element={<Navigate to="/cards/printing-dispatch" replace />} />
@@ -325,31 +325,25 @@ export const App: React.FC = () => {
                     {/* Permissions & RBAC Matrix */}
                     <Route path="/permissions" element={<ModuleGuard moduleKey="permissions"><PermissionsPage /></ModuleGuard>} />
 
-                    {/* Super Admin Sovereign Cash Desk Voucher Engine */}
-                    <Route path="/cash-desk-vouchers" element={<ModuleGuard moduleKey="cash_desk_vouchers"><CashDeskBillVouchersPage /></ModuleGuard>} />
+                    {/* Audit Logs */}
+                    <Route path="/activity" element={<ModuleGuard moduleKey="activity"><ActivityLogPage /></ModuleGuard>} />
 
-                    {/* 3D Website Customizer & CMS Studio (Super Admin Exclusive) */}
-                    <Route path="/website-cms" element={<ModuleGuard moduleKey="website_cms"><WebsiteCmsPage /></ModuleGuard>} />
-
-                    {/* NGO & CSR Welfare Hub */}
-                    <Route path="/ngo-welfare" element={<ModuleGuard moduleKey="ngo_welfare"><NgoWelfare /></ModuleGuard>} />
-
-                    {/* System & Audit — Consolidated into Super Admin Sovereign Control Center */}
-                    <Route path="/activity" element={<Navigate to="/super-admin?tab=audit_logs" replace />} />
-                    <Route path="/system-monitoring" element={<SuperAdminGuard><ModuleGuard moduleKey="system_monitoring"><SystemMonitoringPage /></ModuleGuard></SuperAdminGuard>} />
-                    <Route path="/monitoring" element={<Navigate to="/system-monitoring" replace />} />
-                    <Route path="/multi-device" element={<ModuleGuard moduleKey="system_monitoring"><MultiDeviceManagementPage /></ModuleGuard>} />
-                    <Route path="/devices" element={<Navigate to="/multi-device" replace />} />
-                    <Route path="/backup" element={<SuperAdminGuard><Navigate to="/super-admin?tab=backup" replace /></SuperAdminGuard>} />
-                    <Route path="/integrations" element={<ModuleGuard moduleKey="integrations"><IntegrationsPage /></ModuleGuard>} />
-                    <Route path="/gmail-integration" element={<ModuleGuard moduleKey="integrations"><GmailIntegrationPage /></ModuleGuard>} />
-                    <Route path="/settings" element={<ModuleGuard moduleKey="settings"><SettingsPage /></ModuleGuard>} />
+                    {/* Consolidated System, Diagnostics & Central Company Settings */}
+                    <Route path="/settings" element={<Navigate to="/super-admin?tab=company_settings" replace />} />
+                    <Route path="/cash-desk-vouchers" element={<Navigate to="/billing" replace />} />
+                    <Route path="/website-cms" element={<Navigate to="/super-admin" replace />} />
+                    <Route path="/ngo-welfare" element={<Navigate to="/dashboard" replace />} />
+                    <Route path="/system-monitoring" element={<Navigate to="/super-admin?tab=diagnostics" replace />} />
+                    <Route path="/monitoring" element={<Navigate to="/super-admin?tab=diagnostics" replace />} />
+                    <Route path="/multi-device" element={<Navigate to="/super-admin?tab=diagnostics" replace />} />
+                    <Route path="/devices" element={<Navigate to="/super-admin?tab=diagnostics" replace />} />
+                    <Route path="/backup" element={<Navigate to="/super-admin?tab=backup" replace />} />
+                    <Route path="/integrations" element={<Navigate to="/super-admin" replace />} />
+                    <Route path="/gmail-integration" element={<Navigate to="/super-admin" replace />} />
+                    <Route path="/super-admin/ngo-impact-report" element={<Navigate to="/reports" replace />} />
 
                     {/* Super Admin Sovereign Control Center */}
                     <Route path="/super-admin" element={<SuperAdminGuard><SuperAdminControlCenterPage /></SuperAdminGuard>} />
-
-                    {/* Super Admin — Health Card Impact & Beneficiary Report (NGO / CSR) */}
-                    <Route path="/super-admin/ngo-impact-report" element={<SuperAdminGuard><HealthCardImpactReportPage /></SuperAdminGuard>} />
 
                   </Route>
 

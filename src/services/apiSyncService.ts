@@ -29,6 +29,7 @@ import {
 import { BloodTestBooking, MedicineOrder } from './portalService';
 import { FirestoreBackupService } from './firestoreBackupService';
 import { MultiDeviceSyncService } from './multiDeviceSyncService';
+import { SupabaseService, isSupabaseConfigured, getSupabaseClient } from './supabaseService';
 
 export interface DiagnosticLogEntry {
   id: string;
@@ -137,8 +138,20 @@ export class ApiSyncService {
     };
   }
 
-  /** Run a live latency ping round-trip test against Firestore */
+  /** Run a live latency ping round-trip test against Firestore or Supabase PostgreSQL */
   public static async pingFirestore(): Promise<{ success: boolean; latencyMs: number; error?: string }> {
+    if (isSupabaseConfigured()) {
+      const res = await SupabaseService.ping();
+      this.addDiagnosticLog({
+        type: res.success ? 'PING' : 'ERROR',
+        pathOrCollection: 'supabase/postgresql',
+        details: res.success
+          ? `Supabase PostgreSQL latency test successful: ${res.latencyMs}ms roundtrip`
+          : `Supabase PostgreSQL ping failed (${res.latencyMs}ms): ${res.error}`
+      });
+      return res;
+    }
+
     const start = performance.now();
     try {
       const pingId = `ping_${Date.now()}`;
@@ -193,8 +206,15 @@ export class ApiSyncService {
     return false;
   }
 
-  /** Generic fetch collection from Firestore */
+  /** Generic fetch collection from Firestore or Supabase PostgreSQL */
   public static async fetchCollection<T>(collectionName: string): Promise<T[]> {
+    if (isSupabaseConfigured()) {
+      const items = await SupabaseService.fetchCollection<T>(collectionName);
+      this.lastSyncTimestamp = new Date().toISOString();
+      this.isConnected = true;
+      return items;
+    }
+
     if (this.quotaExceeded) return [];
     try {
       const q = query(collection(db, collectionName));
@@ -224,8 +244,17 @@ export class ApiSyncService {
     return doc(db, docPath);
   }
 
-  /** Generic fetch document from Firestore */
+  /** Generic fetch document from Firestore or Supabase PostgreSQL */
   public static async fetchDocument<T>(docPath: string): Promise<T | null> {
+    if (isSupabaseConfigured()) {
+      const docData = await SupabaseService.fetchDocument<T>(docPath);
+      if (docData) {
+        this.lastSyncTimestamp = new Date().toISOString();
+        this.isConnected = true;
+      }
+      return docData;
+    }
+
     if (this.quotaExceeded) return null;
     try {
       const docRef = this.getDocRef(docPath);
@@ -244,7 +273,7 @@ export class ApiSyncService {
   }
 
   /** Generic save or update document in Firestore with Zero-Data-Loss WAL Protection & Idempotency */
-  public static async saveDocument<T extends { id?: string }>(collectionName: string, id: string, data: T): Promise<boolean> {
+  public static async saveDocument<T = any>(collectionName: string, id: string, data: T): Promise<boolean> {
     if (!collectionName || !id) {
       console.warn('[ApiSync] saveDocument rejected: collectionName and id are required.');
       return false;
@@ -274,6 +303,25 @@ export class ApiSyncService {
 
     // 1. Stage in persistent Write-Ahead Log in IndexedDB first for Zero-Data-Loss guarantee
     const walId = await FirestoreBackupService.enqueueWal(collectionName, id, 'set', sanitized).catch(() => '');
+
+    // If Supabase PostgreSQL is configured, save directly to PostgreSQL
+    if (isSupabaseConfigured()) {
+      const success = await SupabaseService.saveDocument(collectionName, id, sanitized);
+      if (success) {
+        if (walId) {
+          FirestoreBackupService.commitWal(walId).catch(() => {});
+        }
+        MultiDeviceSyncService.recordSyncEvent(collectionName, id, 'upsert').catch(() => {});
+        this.lastSyncTimestamp = nowIso;
+        this.isConnected = true;
+        this.addDiagnosticLog({
+          type: 'WRITE',
+          pathOrCollection: `${collectionName}/${id}`,
+          details: `Saved document ${id} to PostgreSQL (Supabase)`
+        });
+        return true;
+      }
+    }
 
     if (this.quotaExceeded) {
       return false;
@@ -317,6 +365,24 @@ export class ApiSyncService {
   public static async deleteDocument(collectionName: string, id: string): Promise<boolean> {
     const walId = await FirestoreBackupService.enqueueWal(collectionName, id, 'delete', null).catch(() => '');
 
+    // If Supabase PostgreSQL is configured, delete directly from PostgreSQL
+    if (isSupabaseConfigured()) {
+      const success = await SupabaseService.deleteDocument(collectionName, id);
+      if (success) {
+        if (walId) {
+          FirestoreBackupService.commitWal(walId).catch(() => {});
+        }
+        MultiDeviceSyncService.recordSyncEvent(collectionName, id, 'delete').catch(() => {});
+        this.lastSyncTimestamp = new Date().toISOString();
+        this.addDiagnosticLog({
+          type: 'DELETE',
+          pathOrCollection: `${collectionName}/${id}`,
+          details: `Deleted document ${id} from PostgreSQL (Supabase)`
+        });
+        return true;
+      }
+    }
+
     if (this.quotaExceeded) {
       return false;
     }
@@ -352,6 +418,11 @@ export class ApiSyncService {
 
   /** Purge entire collection in Firestore (Batch Deletion) */
   public static async purgeCollection(collectionName: string): Promise<number> {
+    if (isSupabaseConfigured()) {
+      const count = await SupabaseService.purgeCollection(collectionName);
+      this.lastSyncTimestamp = new Date().toISOString();
+      return count;
+    }
     if (this.quotaExceeded) return 0;
     try {
       const q = query(collection(db, collectionName));
@@ -378,6 +449,36 @@ export class ApiSyncService {
 
   /** Real-time listener for multi-device sync */
   public static subscribeToCollection<T>(collectionName: string, callback: (items: T[]) => void): () => void {
+    if (isSupabaseConfigured()) {
+      return SupabaseService.subscribeToCollection<T>(collectionName, (items) => {
+        this.lastSyncTimestamp = new Date().toISOString();
+        this.isConnected = true;
+
+        for (const [key, conf] of Object.entries(this.KEY_TO_FIRESTORE_MAP)) {
+          if (conf.type === 'collection' && (conf.path === collectionName || (collectionName === 'audit_logs' && conf.path === 'auditLogs'))) {
+            try {
+              if (typeof window !== 'undefined' && (window as any).__labmedix_update_cache) {
+                (window as any).__labmedix_update_cache(key, items);
+                if (key === 'labmedix_membership_tiers_v1' && items.length > 0) {
+                  (window as any).__labmedix_update_cache('labmedix_memberships_v1', items);
+                }
+              } else if (typeof window !== 'undefined') {
+                localStorage.setItem(key, JSON.stringify(items));
+                sessionStorage.setItem(key, JSON.stringify(items));
+                if (key === 'labmedix_membership_tiers_v1' && items.length > 0) {
+                  localStorage.setItem('labmedix_memberships_v1', JSON.stringify(items));
+                  sessionStorage.setItem('labmedix_memberships_v1', JSON.stringify(items));
+                }
+                window.dispatchEvent(new CustomEvent('labmedix_data_synced', { detail: { key, value: items } }));
+              }
+            } catch {}
+            break;
+          }
+        }
+        callback(items);
+      });
+    }
+
     if (this.quotaExceeded) return () => {};
     try {
       const q = query(collection(db, collectionName));
@@ -438,6 +539,7 @@ export class ApiSyncService {
     'labmedix_families_v1': { type: 'collection', path: 'families' },
     'labmedix_wallets_v1': { type: 'collection', path: 'wallets' },
     'labmedix_transactions_v1': { type: 'collection', path: 'transactions' },
+    'labmedix_central_transactions_v1': { type: 'collection', path: 'centralTransactions' },
     'labmedix_audit_logs_v1': { type: 'collection', path: 'audit_logs' },
     'labmedix_audit_logs_v2': { type: 'collection', path: 'auditLogs' },
     'labmedix_clinical_encounters': { type: 'collection', path: 'emrEncounters' },
@@ -520,8 +622,12 @@ export class ApiSyncService {
     }
   }
 
-  /** Direct Fetch Company Profile from Central Firestore */
+  /** Direct Fetch Company Profile from Central Firestore or Supabase */
   public static async fetchCompanyProfile(): Promise<CompanyProfile | null> {
+    if (isSupabaseConfigured()) {
+      const data = await SupabaseService.fetchDocument<CompanyProfile>('settings/companyProfile');
+      if (data && data.name) return data;
+    }
     try {
       const docRef = doc(db, 'settings', 'companyProfile');
       const docSnap = await getDoc(docRef);
@@ -540,6 +646,19 @@ export class ApiSyncService {
 
   /** Direct Save Company Profile to Central Firestore with high-priority dual path & audit log */
   public static async saveCompanyProfile(profile: CompanyProfile): Promise<boolean> {
+    if (isSupabaseConfigured()) {
+      const ok = await SupabaseService.saveDocument('settings', 'companyProfile', profile);
+      if (ok) {
+        this.lastSyncTimestamp = new Date().toISOString();
+        this.isConnected = true;
+        this.addDiagnosticLog({
+          type: 'WRITE',
+          pathOrCollection: 'settings/companyProfile',
+          details: `Saved Company Profile (${profile.name}) to Supabase PostgreSQL`
+        });
+        return true;
+      }
+    }
     try {
       const sanitized = JSON.parse(JSON.stringify(profile));
       const payload = {
@@ -579,6 +698,29 @@ export class ApiSyncService {
     if (key.startsWith('labmedix_patient_vitals_')) {
       const patientId = key.replace('labmedix_patient_vitals_', '').trim();
       if (!patientId) return;
+
+      if (isSupabaseConfigured()) {
+        try {
+          const sanitizedRecords = JSON.parse(JSON.stringify(Array.isArray(value) ? value : []));
+          await SupabaseService.saveDocument('patientVitals', patientId, {
+            patientId,
+            records: sanitizedRecords,
+            count: sanitizedRecords.length,
+            updatedAt: new Date().toISOString()
+          });
+          this.lastSyncTimestamp = new Date().toISOString();
+          this.isConnected = true;
+          this.addDiagnosticLog({
+            type: 'WRITE',
+            pathOrCollection: `patientVitals/${patientId}`,
+            details: `Synced vitals to PostgreSQL for patient ${patientId} (${sanitizedRecords.length} records)`
+          });
+        } catch (e) {
+          console.warn(`[ApiSync] Supabase sync failed for vitals ${patientId}:`, e);
+        }
+        return;
+      }
+
       try {
         const docRef = doc(db, 'patientVitals', patientId);
         const sanitizedRecords = JSON.parse(JSON.stringify(Array.isArray(value) ? value : []));
@@ -604,6 +746,28 @@ export class ApiSyncService {
 
     const config = this.KEY_TO_FIRESTORE_MAP[key];
     if (!config) return;
+
+    if (isSupabaseConfigured()) {
+      try {
+        if (config.type === 'collection' && Array.isArray(value)) {
+          for (const item of value) {
+            if (item && item.id) {
+              await SupabaseService.saveDocument(config.path, String(item.id), item);
+            }
+          }
+        } else if (config.type === 'doc' && typeof value === 'object') {
+          const parts = config.path.split('/');
+          const coll = parts[0];
+          const docId = parts.length > 1 ? parts.slice(1).join('/') : 'default';
+          await SupabaseService.saveDocument(coll, docId, value);
+        }
+        this.lastSyncTimestamp = new Date().toISOString();
+        this.isConnected = true;
+      } catch (e) {
+        console.warn(`[ApiSync] Supabase sync failed for ${key}:`, e);
+      }
+      return;
+    }
 
     try {
       if (config.type === 'collection' && Array.isArray(value)) {
@@ -807,8 +971,158 @@ export class ApiSyncService {
     }
   }
 
-  /** Subscribe to all Firestore collections for real-time multi-device sync */
+  /** Subscribe to all PostgreSQL collections via Supabase Realtime Replication */
+  private static subscribeToAllSupabase(onUpdate?: (key: string, value: any) => void): () => void {
+    const client = getSupabaseClient();
+    if (!client) return () => {};
+
+    // Unsubscribe existing listeners
+    this.activeUnsubscribers.forEach(u => {
+      try { u(); } catch {}
+    });
+    this.activeUnsubscribers = [];
+
+    const handleDataUpdate = (key: string, data: any) => {
+      try {
+        if (typeof window !== 'undefined' && (window as any).__labmedix_update_cache) {
+          (window as any).__labmedix_update_cache(key, data);
+          if (key === 'labmedix_membership_tiers_v1' && Array.isArray(data) && data.length > 0) {
+            (window as any).__labmedix_update_cache('labmedix_memberships_v1', data);
+          }
+        } else if (typeof window !== 'undefined') {
+          localStorage.setItem(key, JSON.stringify(data));
+          sessionStorage.setItem(key, JSON.stringify(data));
+          if (key === 'labmedix_membership_tiers_v1' && Array.isArray(data) && data.length > 0) {
+            localStorage.setItem('labmedix_memberships_v1', JSON.stringify(data));
+            sessionStorage.setItem('labmedix_memberships_v1', JSON.stringify(data));
+          }
+          window.dispatchEvent(new CustomEvent('labmedix_data_synced', { detail: { key, value: data } }));
+        }
+      } catch (err) {
+        console.warn(`[ApiSync] Failed local persist for ${key}:`, err);
+      }
+
+      if (onUpdate && !(window as any)?.__labmedix_update_cache) {
+        onUpdate(key, data);
+      }
+    };
+
+    // 1. Initial snapshot fetch for all configured collections/docs from PostgreSQL
+    for (const [key, config] of Object.entries(this.KEY_TO_FIRESTORE_MAP)) {
+      if (config.type === 'collection') {
+        SupabaseService.fetchCollection(config.path).then(items => {
+          if (items && items.length > 0) {
+            handleDataUpdate(key, items);
+          }
+        }).catch(() => {});
+      } else {
+        SupabaseService.fetchDocument(config.path).then(data => {
+          if (data) {
+            handleDataUpdate(key, data);
+          }
+        }).catch(() => {});
+      }
+    }
+
+    // 2. Real-time listener for patient vitals in PostgreSQL
+    SupabaseService.fetchCollection<any>('patientVitals').then(items => {
+      if (Array.isArray(items)) {
+        items.forEach(docItem => {
+          const patientId = docItem.id || docItem.patientId;
+          if (patientId && docItem.records) {
+            const vKey = `labmedix_patient_vitals_${patientId}`;
+            try {
+              if (typeof window !== 'undefined' && (window as any).__labmedix_update_cache) {
+                (window as any).__labmedix_update_cache(vKey, docItem.records);
+              } else if (typeof window !== 'undefined') {
+                localStorage.setItem(vKey, JSON.stringify(docItem.records));
+                sessionStorage.setItem(vKey, JSON.stringify(docItem.records));
+              }
+            } catch {}
+          }
+        });
+      }
+    }).catch(() => {});
+
+    // 3. Global real-time WebSocket channel listening to 'labmedix_store' changes
+    const channelName = `labmedix_global_postgres_${Date.now()}`;
+    const channel = client
+      .channel(channelName)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'labmedix_store' },
+        (payload: any) => {
+          const collName = payload?.new?.collection_name || payload?.old?.collection_name;
+          if (!collName) return;
+
+          if (collName === 'patientVitals') {
+            SupabaseService.fetchCollection<any>('patientVitals').then(items => {
+              items.forEach(docItem => {
+                const patientId = docItem.id || docItem.patientId;
+                if (patientId && docItem.records) {
+                  const vKey = `labmedix_patient_vitals_${patientId}`;
+                  handleDataUpdate(vKey, docItem.records);
+                }
+              });
+            }).catch(() => {});
+            return;
+          }
+
+          // Find mapped storage key
+          for (const [key, config] of Object.entries(this.KEY_TO_FIRESTORE_MAP)) {
+            if (config.path === collName || (collName === 'audit_logs' && config.path === 'auditLogs')) {
+              if (config.type === 'collection') {
+                SupabaseService.fetchCollection(collName).then(items => {
+                  handleDataUpdate(key, items);
+                  this.addDiagnosticLog({
+                    type: 'SNAPSHOT',
+                    pathOrCollection: collName,
+                    details: `[PostgreSQL Realtime] Refreshed ${collName} (${items.length} items)`
+                  });
+                }).catch(() => {});
+              } else {
+                SupabaseService.fetchDocument(collName).then(data => {
+                  if (data) {
+                    handleDataUpdate(key, data);
+                    this.addDiagnosticLog({
+                      type: 'SNAPSHOT',
+                      pathOrCollection: collName,
+                      details: `[PostgreSQL Realtime] Refreshed doc ${collName}`
+                    });
+                  }
+                }).catch(() => {});
+              }
+              break;
+            }
+          }
+        }
+      )
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          this.isConnected = true;
+          this.addDiagnosticLog({
+            type: 'INFO',
+            pathOrCollection: 'supabase/realtime',
+            details: 'Supabase PostgreSQL Realtime stream connected and broadcasting.'
+          });
+        }
+      });
+
+    const unsub = () => {
+      try {
+        client.removeChannel(channel);
+      } catch {}
+    };
+    this.activeUnsubscribers.push(unsub);
+    return unsub;
+  }
+
+  /** Subscribe to all PostgreSQL/Firestore collections for real-time multi-device sync */
   public static subscribeToAll(onUpdate?: (key: string, value: any) => void): () => void {
+    if (isSupabaseConfigured()) {
+      return this.subscribeToAllSupabase(onUpdate);
+    }
+
     if (this.quotaExceeded) return () => {};
 
     // Unsubscribe existing listeners
@@ -1315,8 +1629,8 @@ export class ApiSyncService {
     return {
       status: !isOnline ? 'offline' : (this.isConnected ? 'connected' : 'connecting'),
       liveState,
-      projectId: firebaseConfig.projectId || 'gen-lang-client-0076489895',
-      databaseId: (firebaseConfig as any).firestoreDatabaseId || 'ai-studio-labmedixautoheal-1ac13548-bbcc-4f91-96bd-c8c990bec0c8',
+      projectId: isSupabaseConfigured() ? 'Supabase-PostgreSQL' : (firebaseConfig.projectId || 'gen-lang-client-0076489895'),
+      databaseId: isSupabaseConfigured() ? 'postgres (cloud)' : ((firebaseConfig as any).firestoreDatabaseId || 'ai-studio-labmedixautoheal-1ac13548-bbcc-4f91-96bd-c8c990bec0c8'),
       activeListenersCount: this.activeUnsubscribers.length || Object.keys(this.KEY_TO_FIRESTORE_MAP).length,
       lastSyncTime: this.lastSyncTimestamp,
       pendingQueueSize: this.workerQueue.length,
@@ -1332,8 +1646,16 @@ export class ApiSyncService {
       processedCount: this.processedQueueCount,
       lastSyncTime: this.lastSyncTimestamp,
       isWorking: this.workerRunning,
-      projectId: firebaseConfig.projectId || 'gen-lang-client-0076489895',
-      databaseId: (firebaseConfig as any).firestoreDatabaseId || 'ai-studio-labmedixautoheal-1ac13548-bbcc-4f91-96bd-c8c990bec0c8'
+      projectId: isSupabaseConfigured() ? 'Supabase-PostgreSQL' : (firebaseConfig.projectId || 'gen-lang-client-0076489895'),
+      databaseId: isSupabaseConfigured() ? 'postgres (cloud)' : ((firebaseConfig as any).firestoreDatabaseId || 'ai-studio-labmedixautoheal-1ac13548-bbcc-4f91-96bd-c8c990bec0c8')
     };
+  }
+
+  public static isUsingPostgres(): boolean {
+    return isSupabaseConfigured();
+  }
+
+  public static getActiveDatabaseName(): string {
+    return isSupabaseConfigured() ? 'PostgreSQL (Supabase Online)' : 'Google Cloud Firestore';
   }
 }

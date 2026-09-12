@@ -10,6 +10,8 @@ import { PatientBill, Patient, HealthCard, CompanyProfile } from '../../types';
 import { formatCurrency, formatDate, formatDateTime } from '../../utils/formatters';
 import { Modal } from '../../components/common/Modal';
 import { RealBarcode } from '../../components/common/RealBarcode';
+import { StandardHalfPageBill } from '../../components/billing/StandardHalfPageBill';
+import { InvoiceRenderService } from '../../services/invoiceRenderService';
 import {
   Receipt,
   Search,
@@ -761,125 +763,51 @@ export const BillingPage: React.FC = () => {
         </Modal>
       )}
 
-      {/* Professional Printable Bill Modal */}
+      {/* Official A4 Half-Page Standard Bill Modal */}
       {printBill && (
         <Modal
           isOpen={!!printBill}
           onClose={() => setPrintBill(null)}
-          title="Hospital Tax Invoice Slip"
-          maxWidth="xl"
+          title="Official A4 Half-Page Tax Invoice Slip"
+          maxWidth="2xl"
         >
-          <div className="p-6 bg-white text-slate-900 rounded-2xl space-y-4 shadow-inner text-xs font-sans">
-            {/* Header */}
-            <div className="border-b border-slate-200 pb-4 text-center space-y-1">
-              <h2 className="text-xl font-black tracking-tight text-slate-900">{company.name || 'LABMEDIX HEALTHCARE'}</h2>
-              <p className="text-slate-500">{company.address || 'Central Healthcare Facility & Diagnostic Center'}</p>
-              <p className="text-[11px] text-slate-400">GSTIN: {company.gstin || '19AAACL1234F1Z5'} • Helpline: {company.helpline || company.phone || '+91 98300 00000'}</p>
-            </div>
-
-            {/* Bill Details */}
-            <div className="grid grid-cols-2 gap-4 py-2 border-b border-slate-200">
-              <div>
-                <span className="text-slate-500">Invoice No:</span>
-                <strong className="block text-slate-900 font-mono text-sm">{printBill.billNumber}</strong>
-                <span className="text-slate-500">Date:</span>
-                <span className="block text-slate-700">{formatDateTime(printBill.createdAt || printBill.date)}</span>
-              </div>
-              <div className="text-right">
-                <span className="text-slate-500">Patient:</span>
-                <strong className="block text-slate-900 text-sm">{printBill.patientName}</strong>
-                <span className="text-slate-500">Mobile:</span>
-                <span className="block text-slate-700">{printBill.patientMobile}</span>
-                {printBill.healthCardNumber && (
-                  <span className="text-amber-700 font-mono font-bold block text-[11px]">
-                    Card: {printBill.healthCardNumber}
-                  </span>
-                )}
-              </div>
-            </div>
-
-            {/* Breakdown */}
-            <div className="space-y-2">
-              <h4 className="font-bold text-slate-800 uppercase tracking-wider text-[11px]">Itemized Particulars</h4>
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="border-b border-slate-200 text-slate-500 text-[10px] uppercase">
-                    <th className="py-1">Description</th>
-                    <th className="py-1 text-center">Qty</th>
-                    <th className="py-1 text-right">Rate</th>
-                    <th className="py-1 text-right">Amount</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {printBill.items && printBill.items.length > 0 ? (
-                    printBill.items.map((item, idx) => (
-                      <tr key={idx}>
-                        <td className="py-1.5 text-slate-800 font-medium">{item.description}</td>
-                        <td className="py-1.5 text-center text-slate-600">{item.quantity}</td>
-                        <td className="py-1.5 text-right text-slate-600 font-mono">{formatCurrency(item.unitPrice)}</td>
-                        <td className="py-1.5 text-right text-slate-900 font-bold font-mono">{formatCurrency(item.total)}</td>
-                      </tr>
-                    ))
-                  ) : (
-                    <tr>
-                      <td className="py-1.5 text-slate-800 font-medium">
-                        {printBill.isCardIssued ? 'Smart Health Card Registration & Membership' : 'Patient Registration Fee'}
-                      </td>
-                      <td className="py-1.5 text-center text-slate-600">1</td>
-                      <td className="py-1.5 text-right text-slate-600 font-mono">{formatCurrency(printBill.baseCardCharge || printBill.netPayable)}</td>
-                      <td className="py-1.5 text-right text-slate-900 font-bold font-mono">{formatCurrency(printBill.baseCardCharge || printBill.netPayable)}</td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-
-            {/* Total Footer */}
-            <div className="border-t border-slate-200 pt-3 space-y-1 text-right">
-              {printBill.discountAmount > 0 && (
-                <div className="flex justify-between text-slate-500">
-                  <span>Discount:</span>
-                  <span className="font-mono text-emerald-700 font-bold">- {formatCurrency(printBill.discountAmount)}</span>
-                </div>
-              )}
-              <div className="flex justify-between text-sm font-black text-slate-900 border-t border-slate-200 pt-2">
-                <span>Net Total Amount:</span>
-                <span className="font-mono text-amber-700">{formatCurrency(printBill.netPayable)}</span>
-              </div>
-              <div className="flex justify-between text-[11px] text-slate-500 pt-1">
-                <span>Payment Mode:</span>
-                <span className="font-bold uppercase text-slate-700">{printBill.paymentMethod} (PAID)</span>
-              </div>
-            </div>
-
-            {/* Authorized Signature & QR */}
-            <div className="pt-4 border-t border-slate-200 flex items-center justify-between text-[10px] text-slate-400">
-              <div>
-                <span>Billed by: <strong className="text-slate-700">{printBill.authorizedStaff?.name}</strong></span>
-                <div className="mt-1">Computer Generated Tax Receipt</div>
-              </div>
-              <div className="text-right">
-                <span className="border-t border-slate-400 px-4 pt-1 inline-block text-slate-600 font-bold">
-                  Authorized Signatory
-                </span>
-              </div>
-            </div>
-
-            <div className="pt-3 flex items-center justify-center gap-3">
-              <button
-                onClick={() => window.print()}
-                className="px-5 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs shadow-md"
-              >
-                Print Invoice
-              </button>
-              <button
-                onClick={() => setPrintBill(null)}
-                className="px-4 py-2 rounded-xl bg-slate-200 text-slate-700 font-bold text-xs"
-              >
-                Close
-              </button>
-            </div>
-          </div>
+          <StandardHalfPageBill
+            bill={{
+              billNumber: printBill.billNumber,
+              date: printBill.createdAt || printBill.date,
+              patientName: printBill.patientName,
+              patientId: printBill.patientId,
+              patientMobile: printBill.patientMobile,
+              healthCardNumber: printBill.healthCardNumber,
+              category: printBill.billCategory || 'Hospital Invoice',
+              items: printBill.items && printBill.items.length > 0 ? printBill.items.map(it => ({
+                description: it.description,
+                quantity: it.quantity,
+                unitPrice: it.unitPrice,
+                discount: 0,
+                total: it.total
+              })) : [{
+                description: printBill.isCardIssued ? 'Health Card Registration & Membership' : 'Hospital Service Fee',
+                quantity: 1,
+                unitPrice: printBill.baseCardCharge || printBill.netPayable,
+                discount: printBill.discountAmount || 0,
+                total: printBill.netPayable
+              }],
+              subtotal: (printBill as any).subtotal || (printBill.baseCardCharge ? printBill.baseCardCharge + (printBill.additionalMemberCharge || 0) : printBill.netPayable),
+              discountAmount: printBill.discountAmount || 0,
+              taxAmount: (printBill as any).taxAmount || 0,
+              netPayable: printBill.netPayable,
+              paidAmount: printBill.paidAmount || printBill.netPayable,
+              dueAmount: Math.max(0, printBill.netPayable - (printBill.paidAmount || printBill.netPayable)),
+              paymentMethod: printBill.paymentMethod,
+              authorizedStaffName: printBill.authorizedStaff?.name || currentUser?.fullName || 'Cashier Desk',
+              notes: printBill.notes
+            }}
+            company={company}
+            onPrint={() => window.print()}
+            onDownloadPdf={() => InvoiceRenderService.downloadHalfPagePdf('standard-half-page-invoice-root', printBill.billNumber)}
+            onClose={() => setPrintBill(null)}
+          />
         </Modal>
       )}
     </div>

@@ -17,6 +17,7 @@
     "deploy:cf": "vite build && npx wrangler deploy"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.109.0",
     "@types/jsbarcode": "^3.11.4",
     "@types/nodemailer": "^8.0.1",
     "canvas-confetti": "^1.9.4",

@@ -421,13 +421,14 @@ export const SuperAdminControlCenterPage: React.FC = () => {
 
   const handlePingTest = async () => {
     setIsPinging(true);
+    const dbName = ApiSyncService.getActiveDatabaseName();
     try {
       const res = await ApiSyncService.pingFirestore();
       setPingResult(res);
       if (res.success) {
-        showToast('success', 'Round-trip Ping', `Firestore responded in ${res.latencyMs}ms.`);
+        showToast('success', 'Round-trip Ping', `${dbName} responded in ${res.latencyMs}ms.`);
       } else {
-        showToast('error', 'Ping Failed', res.error || 'Failed to reach Firestore endpoint.');
+        showToast('error', 'Ping Failed', res.error || `Failed to reach ${dbName} endpoint.`);
       }
     } finally {
       setIsPinging(false);
@@ -1319,25 +1320,25 @@ export const SuperAdminControlCenterPage: React.FC = () => {
             {/* Diagnostic Matrix Table */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 pt-2">
               <div className="p-3.5 rounded-2xl bg-slate-900/80 border border-slate-800">
-                <div className="text-[11px] font-bold text-slate-400">Firestore Connection</div>
+                <div className="text-[11px] font-bold text-slate-400">Database Engine</div>
                 <div className="text-sm font-black text-emerald-400 mt-1 flex items-center gap-1.5">
                   <CheckCircle2 className="w-4 h-4" />
-                  <span>CONNECTED</span>
+                  <span>{ApiSyncService.isUsingPostgres() ? 'PostgreSQL' : 'Firestore'}</span>
                 </div>
               </div>
 
               <div className="p-3.5 rounded-2xl bg-slate-900/80 border border-slate-800">
-                <div className="text-[11px] font-bold text-slate-400">Authentication Status</div>
+                <div className="text-[11px] font-bold text-slate-400">Sync Provider</div>
                 <div className="text-sm font-black text-emerald-400 mt-1 flex items-center gap-1.5">
                   <CheckCircle2 className="w-4 h-4" />
-                  <span>CONNECTED</span>
+                  <span>{ApiSyncService.isUsingPostgres() ? 'Supabase Realtime' : 'Firestore SDK'}</span>
                 </div>
               </div>
 
               <div className="p-3.5 rounded-2xl bg-slate-900/80 border border-slate-800">
-                <div className="text-[11px] font-bold text-slate-400">Current Firebase Project</div>
-                <div className="text-xs font-mono font-bold text-indigo-300 mt-1 truncate" title={firebaseConfig.projectId}>
-                  {firebaseConfig.projectId}
+                <div className="text-[11px] font-bold text-slate-400">Connected Instance</div>
+                <div className="text-xs font-mono font-bold text-indigo-300 mt-1 truncate" title={syncMetrics.projectId}>
+                  {syncMetrics.projectId}
                 </div>
               </div>
 
