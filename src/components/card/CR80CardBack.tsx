@@ -1,8 +1,8 @@
-import { AuthService } from '../../services/authService';
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Patient, HealthCard, Membership, CompanyProfile } from '../../types';
-import { StorageService } from '../../services/storage';
-import { Phone, Globe, Shield, Stethoscope, FlaskConical, Pill, Home, Lock, CheckCircle2, Users2, Crown, Wifi } from 'lucide-react';
+import { generateQrDataUrl, buildVerificationUrl } from '../../utils/qr';
+import { Phone, MessageSquare, Globe, Lock, ShieldCheck } from 'lucide-react';
+import { APPROVED_GOLD_PRIVILEGE_TERMS } from '../../constants/cardTerms';
 
 interface CR80CardBackProps {
   patient: Patient;
@@ -28,28 +28,30 @@ export const CR80CardBack: React.FC<CR80CardBackProps> = ({
   previewOnly = false,
   showBleedGuides = false,
   mousePosition = null,
-  onOpenFamilyModal,
-  maskCvv: passedMaskCvv
+  maskCvv = false
 }) => {
+  const [backQrUrl, setBackQrUrl] = useState<string>('');
+
+  useEffect(() => {
+    if (card?.verificationCode) {
+      const url = buildVerificationUrl(card.verificationCode);
+      generateQrDataUrl(url, 200).then(setBackQrUrl);
+    }
+  }, [card?.verificationCode]);
+
   const cfg = card?.designConfig || {};
-  const currentUser = AuthService.getCurrentUser();
-  const maskCvv = passedMaskCvv !== undefined ? passedMaskCvv : (currentUser ? currentUser.role !== 'super_admin' : false);
-  const preset = cfg.preset || 'executive_navy';
+  const preset = cfg.preset || 'royal_gold';
   const material = cfg.material || 'gloss';
-  const showFamilyBadge = cfg.showFamilyBadge !== false;
+  const tierTitle = cfg.cardTierTitle || membership?.name || 'GOLD PRIVILEGE';
 
-  // Check if patient belongs to a family group
-  const families = StorageService.getFamilies();
-  const family = families.find(f =>
-    f.primaryPatientId === patient.id ||
-    f.members.some(m => m.patientId === patient.id) ||
-    patient.familyId === f.id
-  );
-
-  const isFamilyHead = family ? family.primaryPatientId === patient.id : false;
-  const familyMemberCount = family ? family.members.length + 1 : 0;
-
+  // Card theme styling
   const themeStyles: Record<string, { bg: string; text: string; accent: string; border: string }> = {
+    royal_gold: {
+      bg: 'linear-gradient(135deg, #0F0701 0%, #2A1404 60%, #150F08 100%)',
+      text: '#FEF3C7',
+      accent: '#FBBF24',
+      border: 'border-amber-500/40'
+    },
     executive_navy: {
       bg: 'linear-gradient(135deg, #021226 0%, #062E5F 60%, #03132B 100%)',
       text: '#FFFFFF',
@@ -61,12 +63,6 @@ export const CR80CardBack: React.FC<CR80CardBackProps> = ({
       text: '#FFFFFF',
       accent: '#6EE7B7',
       border: 'border-emerald-500/40'
-    },
-    royal_gold: {
-      bg: 'linear-gradient(135deg, #0F0701 0%, #3B1602 60%, #150F08 100%)',
-      text: '#FEF3C7',
-      accent: '#FBBF24',
-      border: 'border-amber-500/40'
     },
     platinum_elite: {
       bg: 'linear-gradient(135deg, #080C14 0%, #1A2436 60%, #020617 100%)',
@@ -88,14 +84,33 @@ export const CR80CardBack: React.FC<CR80CardBackProps> = ({
     }
   };
 
-  const theme = themeStyles[preset] || themeStyles.executive_navy;
+  const theme = themeStyles[preset] || themeStyles.royal_gold;
+
+  // Concise approved 15-point English terms for crisp physical printing
+  const compactTerms = [
+    '1. Non-transferable; valid exclusively for cardholder & registered dependents.',
+    '2. Validity: Exactly 365 days (1 year) from issuance; annual renewal required.',
+    '3. Verification: Must be presented at reception prior to service billing.',
+    '4. OPD Doctor consultation discounts apply to hospital scheduled roster.',
+    '5. Complimentary routine BP, Pulse, and body weight screening on visits.',
+    '6. Privileged savings on genuine hospital counter prescribed pharmacy.',
+    '7. Concessional rates across all in-house diagnostic laboratory tests.',
+    '8. Subsidized comprehensive preventive master health screening packages.',
+    '9. Home phlebotomy collection available within standard operating zones.',
+    '10. Excludes outsourced esoteric diagnostics and blood bank processing.',
+    '11. Cannot be combined with third-party insurance TPA or special offers.',
+    '12. Replacement card available for lost/damaged cards with nominal PVC fee.',
+    '13. Card tampering or fraudulent presentation results in cancellation.',
+    '14. Family Shield covers up to 5 family members under single registration.',
+    '15. LABMEDIX Hospital reserves policy, doctor roster & tariff revision rights.'
+  ];
 
   return (
     <div
       id={id}
       style={{
         width: '500px',
-        height: '315px',
+        height: '315px', // Exact CR80 PVC standard ratio: 85.60 mm x 53.98 mm = 1.586
         background: theme.bg,
         transform: `scale(${scale})`,
         transformOrigin: 'top left',
@@ -119,7 +134,7 @@ export const CR80CardBack: React.FC<CR80CardBackProps> = ({
         />
       )}
 
-      {/* Safe Bleed Margins */}
+      {/* Safe Bleed Margins (3mm standard for PVC printing) */}
       {showBleedGuides && (
         <div className="absolute inset-2 border-2 border-dashed border-red-400/70 rounded-[14px] pointer-events-none z-30 flex items-start justify-between p-1">
           <span className="text-[7px] font-mono bg-red-600 text-white px-1 rounded">SAFE 3mm ZONE</span>
@@ -127,113 +142,95 @@ export const CR80CardBack: React.FC<CR80CardBackProps> = ({
         </div>
       )}
 
-      {/* 1. TOP: Magnetic Stripe */}
+      {/* 1. TOP: Magnetic Stripe & Signature/CVV Security Panel */}
       <div>
-        <div className="w-full h-11 bg-black shadow-inner flex items-center px-4 justify-between">
-          <span className="text-[8px] font-mono text-slate-400 tracking-widest uppercase">HiCo 2750 Oe Magnetic Track 1/2/3</span>
-          <span className="text-[8px] font-mono text-slate-500 font-bold">{card.verificationCode}</span>
+        <div className="w-full h-10 bg-black shadow-inner flex items-center px-4 justify-between">
+          <span className="text-[7.5px] font-mono text-slate-400 tracking-widest uppercase">HiCo 2750 Oe Magnetic Track 1/2/3</span>
+          <span className="text-[8px] font-mono text-amber-300 font-bold">{card.verificationCode}</span>
         </div>
 
-        {/* 2. Authorized Signature Panel & Security CVV Code */}
-        <div className="px-5 mt-2 flex items-center gap-3">
-          <div className="flex-1 h-7 bg-white rounded flex items-center px-3 border border-slate-300 justify-between shadow-inner">
-            <span className="font-serif italic text-slate-800 text-[11px] select-none font-bold">
+        {/* Authorized Signature Panel & Security CVV Code */}
+        <div className="px-5 mt-1.5 flex items-center gap-3">
+          <div className="flex-1 h-6 bg-white rounded flex items-center px-3 border border-slate-300 justify-between shadow-inner">
+            <span className="font-serif italic text-slate-800 text-[10px] select-none font-bold">
               {patient.fullName}
             </span>
             <span className="text-[7px] font-mono text-slate-400 uppercase">Authorized Signature</span>
           </div>
 
-          <div className="h-7 px-3 bg-slate-900 text-white rounded flex items-center justify-center border border-slate-700 font-mono text-xs font-black shadow-sm gap-1">
-            <span className="text-[7.5px] text-slate-400 font-bold uppercase">CVV:</span>
+          <div className="h-6 px-2.5 bg-slate-900 text-white rounded flex items-center justify-center border border-slate-700 font-mono text-xs font-black shadow-sm gap-1">
+            <span className="text-[7px] text-slate-400 font-bold uppercase">CVV:</span>
             {maskCvv ? (
               <span className="text-amber-400 font-mono tracking-widest flex items-center gap-0.5">
                 <Lock className="w-2.5 h-2.5 text-amber-400" /> •••
               </span>
             ) : (
-              <span className="text-amber-300">{card.cvv || (card.verificationCode ? card.verificationCode.slice(-3) : '821')}</span>
+              <span className="text-amber-300">{card.cvv || card.verificationCode.slice(-3)}</span>
             )}
           </div>
         </div>
       </div>
 
-      {/* 3. FAMILY LINKAGE EMBEDDED BANNER ON CARD BACK */}
-      {showFamilyBadge && family && (
-        <div
-          onClick={(e) => {
-            e.stopPropagation();
-            onOpenFamilyModal?.();
-          }}
-          className="mx-5 my-0.5 p-1.5 px-3 rounded-xl bg-gradient-to-r from-blue-950/80 via-indigo-950/80 to-blue-950/80 border border-blue-400/50 flex items-center justify-between text-[8.5px] cursor-pointer hover:border-amber-300 transition-all shadow-xs"
-          title="Click to view Family Linkage Group Modal"
-        >
-          <div className="flex items-center gap-1.5 font-bold text-white">
-            <Users2 className="w-3.5 h-3.5 text-amber-300" />
-            <span className="text-amber-200">Family Shield:</span>
-            <strong className="text-white">{family.familyName}</strong>
-            <span className="text-[7.5px] text-blue-300">({familyMemberCount} Covered)</span>
+      {/* 2. MAIN BODY: 2-Column Layout (Terms on Left, Verification & Support on Right) */}
+      <div className="px-5 py-1 grid grid-cols-12 gap-3 items-center flex-1">
+        {/* Left Column (8 cols): GOLD PRIVILEGE — TERMS & CONDITIONS */}
+        <div className="col-span-8 space-y-1">
+          <div className="flex items-center gap-1.5 border-b border-white/20 pb-0.5">
+            <ShieldCheck className="w-3 h-3 text-amber-400" />
+            <h3 className="text-[9px] font-black uppercase tracking-wider text-amber-300 drop-shadow-xs">
+              {tierTitle} — TERMS & CONDITIONS
+            </h3>
           </div>
-          <div className="flex items-center gap-1.5 text-[8px] font-bold">
-            {isFamilyHead ? (
-              <span className="px-1.5 py-0.2 rounded bg-amber-500/30 text-amber-300 border border-amber-400/40 flex items-center gap-0.5">
-                <Crown className="w-2.5 h-2.5 text-yellow-300" /> Head
-              </span>
-            ) : (
-              <span className="px-1.5 py-0.2 rounded bg-blue-500/30 text-blue-200 border border-blue-400/40">
-                Dependent
-              </span>
-            )}
-            <span className="text-amber-300 text-[10px]">↗</span>
+
+          <div className="grid grid-cols-1 gap-y-[1.5px] text-[6.8px] leading-[8.8px] text-slate-200 opacity-95">
+            {compactTerms.map((term, idx) => (
+              <p key={idx} className="truncate">
+                {term}
+              </p>
+            ))}
           </div>
         </div>
-      )}
 
-      {/* 4. 4 CORE HEALTHCARE PILLARS WITH LIVE DISCOUNTS */}
-      <div className="px-5 py-0.5">
-        <div className="grid grid-cols-4 gap-1.5 p-1.5 rounded-xl bg-black/35 border border-white/10 text-center">
-          <div className="flex flex-col items-center">
-            <Stethoscope className="w-3.5 h-3.5 text-blue-400 mb-0.5" />
-            <span className="text-[8.5px] font-bold tracking-tight">OPD Doctor</span>
-            <span className="text-[7.5px] text-emerald-300 font-black">{membership?.opdDiscount || 20}% Discount</span>
-          </div>
-          <div className="flex flex-col items-center">
-            <FlaskConical className="w-3.5 h-3.5 text-emerald-400 mb-0.5" />
-            <span className="text-[8.5px] font-bold tracking-tight">Diagnostics</span>
-            <span className="text-[7.5px] text-emerald-300 font-black">{membership?.labDiscount || 20}% Discount</span>
-          </div>
-          <div className="flex flex-col items-center">
-            <Pill className="w-3.5 h-3.5 text-amber-400 mb-0.5" />
-            <span className="text-[8.5px] font-bold tracking-tight">Pharmacy</span>
-            <span className="text-[7.5px] text-emerald-300 font-black">{membership?.pharmacyDiscount || 10}% Discount</span>
-          </div>
-          <div className="flex flex-col items-center">
-            <Home className="w-3.5 h-3.5 text-cyan-400 mb-0.5" />
-            <span className="text-[8.5px] font-bold tracking-tight">Home Blood</span>
-            <span className="text-[7.5px] text-emerald-300 font-black">{membership?.homeCollectionDiscount === 100 ? 'Free' : `${membership?.homeCollectionDiscount || 15}% Off`}</span>
-          </div>
-        </div>
-      </div>
-
-      {/* 5. Terms of Use & NFC Tag Identification */}
-      <div className="px-5 text-[8px] opacity-85 space-y-0.5">
-        <div className="flex items-center justify-between font-mono text-[7.5px] text-teal-300">
-          <span className="flex items-center gap-1">
-            <Wifi className="w-2.5 h-2.5 rotate-90" />
-            NFC UID: {card.nfcUid || '04:E2:89:1A:B5:4C:80'}
+        {/* Right Column (4 cols): VERIFICATION AREA & QR CODE */}
+        <div className="col-span-4 flex flex-col items-center justify-center p-2 rounded-xl bg-black/40 border border-amber-400/30 text-center shadow-inner">
+          <span className="text-[7.5px] font-black uppercase tracking-wider text-amber-300 mb-1">
+            SCAN QR TO VERIFY CARD
           </span>
-          <span className="text-slate-400">13.56 MHz ISO 14443-A</span>
+
+          <div className="w-16 h-16 bg-white p-1 rounded-lg shadow-md flex items-center justify-center overflow-hidden border border-slate-300">
+            {backQrUrl ? (
+              <img src={backQrUrl} alt="Scan QR" className="w-full h-full object-contain" />
+            ) : (
+              <div className="w-full h-full bg-slate-100 animate-pulse" />
+            )}
+          </div>
+
+          <span className="text-[7.5px] font-bold text-white mt-1 leading-tight">
+            LABMEDIX
+          </span>
+          <span className="text-[6.5px] text-amber-200 italic font-serif">
+            Confident in Care
+          </span>
         </div>
-        <p>• Present this card, NFC tap, or QR at LABMEDIX front desk to redeem medical discounts.</p>
-        <p>• Non-transferable. If found, please return to any LABMEDIX healthcare facility.</p>
       </div>
 
-      {/* 6. Emergency Helpline & Organization Footer */}
-      <div className="px-5 pb-3 pt-1.5 border-t border-white/15 flex items-center justify-between text-[9px]">
-        <div className="flex items-center gap-1.5 font-bold">
-          <Phone className="w-3 h-3 text-emerald-400" />
-          <span>24x7 Helpline: <strong className="text-white">{company.helpline}</strong></span>
+      {/* 3. BOTTOM FOOTER: Support Helpline, WhatsApp & Web from Company Settings */}
+      <div className="px-5 pb-2.5 pt-1 border-t border-white/15 flex items-center justify-between text-[8px]">
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1 font-bold text-emerald-300">
+            <Phone className="w-2.5 h-2.5 text-emerald-400" />
+            <span>Support: {company.helpline || company.phone}</span>
+          </div>
+
+          {company.whatsapp && (
+            <div className="flex items-center gap-1 font-bold text-teal-300">
+              <MessageSquare className="w-2.5 h-2.5 text-teal-400" />
+              <span>WhatsApp: {company.whatsapp}</span>
+            </div>
+          )}
         </div>
 
-        <div className="flex items-center gap-2 text-[8px] opacity-85 font-mono">
+        <div className="flex items-center gap-2 text-[7.5px] opacity-85 font-mono">
           <span>Reg: {company.registrationNo}</span>
           <span>•</span>
           <span>{company.website}</span>

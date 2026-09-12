@@ -107,6 +107,18 @@ export const CardCustomizer: React.FC<CardCustomizerProps> = ({
         </span>
       </div>
 
+      {/* Central Super Admin Design Authority Notice */}
+      <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-2xl flex items-start gap-2.5">
+        <Sparkles className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+        <div className="text-[11px] text-amber-900 dark:text-amber-200">
+          <span className="font-bold block">Centrally Governed CR80 Card Standards</span>
+          Company branding, terms, validity rules, and versioning are managed centrally under{' '}
+          <a href="/super-admin?tab=health_card_control" className="font-bold underline text-amber-600 dark:text-amber-400 hover:opacity-80">
+            Super Admin → Health Card Control Center
+          </a>.
+        </div>
+      </div>
+
       {/* 1. Theme Presets */}
       <div className="space-y-2.5">
         <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block uppercase tracking-wider">

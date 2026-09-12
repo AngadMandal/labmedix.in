@@ -361,6 +361,39 @@ export interface CardDesignConfig {
   showSignatureStrip: boolean;
   showFamilyBadge?: boolean;
   customTagline?: string;
+
+  // Central Super Admin Controls
+  cardTitle?: string;
+  cardTierTitle?: string;
+  cardPrefix?: string;
+  validityDays?: number;
+  logoSize?: 'sm' | 'md' | 'lg';
+  logoPosition?: 'left' | 'center' | 'right';
+  qrPosition?: 'bottom-right' | 'bottom-left';
+  showBackQrVerification?: boolean;
+  activeVersion?: string;
+  cardholderFields?: {
+    showDob?: boolean;
+    showAge?: boolean;
+    showBloodGroup?: boolean;
+    showPatientId?: boolean;
+    showIssueDate?: boolean;
+    showValidUntil?: boolean;
+    showStatusBadge?: boolean;
+  };
+}
+
+export interface CardDesignVersion {
+  id: string;
+  version: string;
+  status: 'draft' | 'published' | 'archived';
+  publishedAt?: string;
+  publishedBy?: string;
+  createdAt: string;
+  createdBy: string;
+  changesSummary: string;
+  config: CardDesignConfig;
+  termsAndConditions: string[];
 }
 
 export interface CardStatusHistory {

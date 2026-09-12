@@ -21,6 +21,7 @@ import { MultiDeviceSyncService } from '../../services/multiDeviceSyncService';
 import { useFirestoreLiveData } from '../../hooks/useFirestoreLiveData';
 import { FirestoreConnectionStatus } from '../../components/common/FirestoreConnectionStatus';
 import { StaffIDCard } from '../../components/card/StaffIDCard';
+import { SuperAdminHealthCardControl } from '../../components/admin/SuperAdminHealthCardControl';
 import { firebaseConfig } from '../../services/firebaseService';
 import {
   User,
@@ -78,7 +79,8 @@ export type SuperAdminSection =
   | 'backup_restore'
   | 'data_integrity'
   | 'audit_logs'
-  | 'company_settings';
+  | 'company_settings'
+  | 'health_card_control';
 
 export const SuperAdminControlCenterPage: React.FC = () => {
   const { currentUser } = useAuth();
@@ -87,7 +89,7 @@ export const SuperAdminControlCenterPage: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
 
   // ─────────────────────────────────────────────────────────────
-  // 1. ROUTING & TAB SYNCHRONIZATION (Strictly 7 Core Modules)
+  // 1. ROUTING & TAB SYNCHRONIZATION (Core Super Admin Modules)
   // ─────────────────────────────────────────────────────────────
   const initialTab = useMemo<SuperAdminSection>(() => {
     const tabParam = searchParams.get('tab');
@@ -97,6 +99,7 @@ export const SuperAdminControlCenterPage: React.FC = () => {
     if (tabParam === 'integrity' || tabParam === 'system_check' || tabParam === 'diagnostics' || tabParam === 'data_integrity' || tabParam === 'data_quality') return 'data_integrity';
     if (tabParam === 'audit' || tabParam === 'audit_logs' || tabParam === 'activity') return 'audit_logs';
     if (tabParam === 'company' || tabParam === 'settings' || tabParam === 'system_config' || tabParam === 'company_settings') return 'company_settings';
+    if (tabParam === 'cards' || tabParam === 'health_card' || tabParam === 'health_card_control' || tabParam === 'card_design') return 'health_card_control';
     return 'dashboard';
   }, [searchParams]);
 
@@ -631,6 +634,19 @@ export const SuperAdminControlCenterPage: React.FC = () => {
         >
           <Building className="w-4 h-4" />
           Company Settings & System
+        </button>
+
+        <button
+          onClick={() => handleTabChange('health_card_control')}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
+            activeTab === 'health_card_control'
+              ? 'bg-gradient-to-r from-amber-500 via-amber-600 to-yellow-500 text-slate-950 shadow-md shadow-amber-500/30 font-extrabold'
+              : 'text-amber-400/90 hover:text-amber-300 hover:bg-amber-950/40 border border-amber-500/20'
+          }`}
+        >
+          <CreditCard className="w-4 h-4 text-amber-400" />
+          Health Card Control Center
+          <span className="px-1.5 py-0.5 rounded text-[9px] bg-amber-400/20 text-amber-300 font-mono font-bold">GOLD</span>
         </button>
       </div>
 
@@ -1697,6 +1713,13 @@ export const SuperAdminControlCenterPage: React.FC = () => {
             </div>
           </div>
         </div>
+      )}
+
+      {/* ─────────────────────────────────────────────────────────────
+          TAB 8: HEALTH CARD CONTROL CENTER (CENTRAL DESIGN & ADMIN)
+          ───────────────────────────────────────────────────────────── */}
+      {activeTab === 'health_card_control' && (
+        <SuperAdminHealthCardControl />
       )}
 
       {/* ─────────────────────────────────────────────────────────────
