@@ -110,21 +110,34 @@ export class CardholderAuthService {
     const patients = StorageService.getPatients();
     const cards = StorageService.getCards();
 
-    // 1. Try matching patient by ID, email, mobile, or card number
-    let patient = patients.find(p => 
-      !p.isDeleted &&
-      (p.id.toLowerCase() === cleanLoginId || 
-       p.email?.toLowerCase() === cleanLoginId || 
-       p.mobile === cleanLoginId ||
-       p.mobile?.replace(/\D/g, '') === cleanLoginId.replace(/\D/g, ''))
+    // 1. Try matching patient by Card Number, Mobile, Patient ID, or Email
+    const normalizedInput = cleanLoginId.replace(/[\s-]/g, '');
+    const mobileDigitsInput = cleanLoginId.replace(/\D/g, '');
+
+    // Search by Card Number first (recommended)
+    let matchedCard = cards.find(c => 
+      !c.isDeleted &&
+      (c.cardNumber.toLowerCase() === cleanLoginId ||
+       c.cardNumber.replace(/[\s-]/g, '').toLowerCase() === normalizedInput)
     );
 
-    // If not found directly on patient, search if cleanLoginId matches a HealthCard number
+    let patient: Patient | undefined = matchedCard
+      ? patients.find(p => p.id === matchedCard!.patientId && !p.isDeleted)
+      : undefined;
+
+    // Search by Registered Mobile Number (recommended) or Patient ID / Email
     if (!patient) {
-      const cardByNo = cards.find(c => c.cardNumber.toLowerCase() === cleanLoginId);
-      if (cardByNo) {
-        patient = patients.find(p => p.id === cardByNo.patientId && !p.isDeleted);
-      }
+      patient = patients.find(p => {
+        if (p.isDeleted) return false;
+        const pMobileDigits = (p.mobile || '').replace(/\D/g, '');
+        return (
+          p.id.toLowerCase() === cleanLoginId ||
+          p.email?.toLowerCase() === cleanLoginId ||
+          p.mobile === cleanLoginId ||
+          (mobileDigitsInput.length >= 10 && pMobileDigits === mobileDigitsInput) ||
+          (mobileDigitsInput.length >= 10 && pMobileDigits.endsWith(mobileDigitsInput.slice(-10)))
+        );
+      });
     }
 
     if (!patient) {
@@ -139,17 +152,36 @@ export class CardholderAuthService {
         success: false, 
         isLocked: lockRes.locked,
         remainingSeconds: lockRes.remainingSeconds,
-        error: 'Invalid Credentials: No registered Patient or Health Card found matching this identifier.' 
+        error: 'Invalid Credentials: No registered Patient or Health Card found matching this Card Number or Mobile.' 
       };
     }
 
-    // 2. Strict Credential / PIN / Password check
+    // Retrieve all active and existing cards for this patient
+    const patientCards = cards.filter(c => c.patientId === patient!.id && !c.isDeleted);
+    if (!matchedCard) {
+      matchedCard = patientCards.find(c => c.status === 'active') || patientCards[0];
+    }
+
+    // 2. Strict Credential / CVV / PIN / Password check
     const expectedPass = patient.portalPassword || '1234';
     const patientDob = patient.dob ? patient.dob.replace(/-/g, '') : '';
     const mobileDigits = (patient.mobile || '').replace(/\D/g, '');
     const mobileLast4 = mobileDigits.slice(-4);
 
+    // Check if entered password matches the 3-digit CVV or Verification Code from patient's card(s)
+    const isCvvMatch = patientCards.some(c => {
+      const cvvClean = (c.cvv || '').trim().toLowerCase();
+      const verifClean = (c.verificationCode || '').trim().toLowerCase();
+      const verifLast3 = verifClean.slice(-3);
+      return (
+        (cvvClean && cvvClean === cleanPassword.toLowerCase()) ||
+        (verifClean && verifClean === cleanPassword.toLowerCase()) ||
+        (verifLast3 && verifLast3 === cleanPassword.toLowerCase())
+      );
+    });
+
     const isPasswordValid = 
+      isCvvMatch ||
       cleanPassword === expectedPass ||
       cleanPassword === '1234' ||
       cleanPassword === patient.portalPassword ||
@@ -162,19 +194,19 @@ export class CardholderAuthService {
       AuditService.log(
         'CARDHOLDER_AUTH_FAILED',
         'security',
-        `Incorrect password/PIN attempt for Patient ${patient.fullName} (${patient.id}).`,
+        `Incorrect password/CVV attempt for Patient ${patient.fullName} (${patient.id}).`,
         patient.id
       );
       return { 
         success: false, 
         isLocked: lockRes.locked,
         remainingSeconds: lockRes.remainingSeconds,
-        error: 'Invalid Password or Security PIN. Please verify your credentials or contact reception.' 
+        error: 'Invalid CVV Code or Password. Please enter the 3-digit CVV from the back of your card (e.g. 888) or your portal PIN.' 
       };
     }
 
     // 3. Match or auto-provision active card
-    let matchedCard = cards.find(c => c.patientId === patient!.id && c.status === 'active');
+    matchedCard = cards.find(c => c.patientId === patient!.id && c.status === 'active');
     
     // Check if patient's card is inactive, expired, or cancelled
     const existingCard = cards.find(c => c.patientId === patient!.id);

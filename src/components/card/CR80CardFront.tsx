@@ -146,12 +146,23 @@ export const CR80CardFront: React.FC<CR80CardFrontProps> = ({
 
       {/* 1. TOP HEADER: Official Logo, Organization Brand & Tier Badge */}
       <div className="relative z-10 flex items-start justify-between gap-2">
-        <div className="flex items-center gap-2.5">
-          <LabMedixLogo logoUrl={company.logoUrl} variant="monogram" size="sm" theme="white" />
-          <div>
+        <div className="flex items-center gap-2.5 min-w-0">
+          <div className="w-10 h-10 rounded-xl bg-white p-1 border border-white/80 shadow-md flex items-center justify-center shrink-0 overflow-hidden">
+            <img
+              src={company?.logoUrl || '/logo.jpg'}
+              alt={company?.name || 'Company Logo'}
+              className="w-full h-full object-contain"
+              onError={(e) => {
+                if (e.currentTarget.src !== window.location.origin + '/logo.jpg') {
+                  e.currentTarget.src = '/logo.jpg';
+                }
+              }}
+            />
+          </div>
+          <div className="min-w-0">
             <div className="flex items-center gap-2">
-              <h1 className="text-lg font-black tracking-wider text-white drop-shadow leading-none">
-                {company.name}
+              <h1 className="text-sm sm:text-base font-black tracking-wider text-white drop-shadow leading-tight line-clamp-1">
+                {company?.name || 'LABMEDIX MULTI-SPECIALITY HEALTHCARE'}
               </h1>
             </div>
             <p className="text-[9.5px] font-bold tracking-wider uppercase text-amber-200 drop-shadow-xs mt-0.5">

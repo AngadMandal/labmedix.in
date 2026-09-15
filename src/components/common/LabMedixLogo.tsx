@@ -90,19 +90,19 @@ export const LabMedixLogo: React.FC<LabMedixLogoProps> = ({
 
   const currentTheme = themeColors[theme];
 
-  // Render Custom Uploaded Image if available & valid, else vector monogram
+  // Render Custom Uploaded Image or /logo.jpg if available & valid, else vector monogram
   const renderIconOrImage = (dimension: number) => {
-    if (logoUrl && !imageError && !logoUrl.includes('/logo.jpg')) {
+    const activeLogoUrl = logoUrl || '/logo.jpg';
+    if (activeLogoUrl && !imageError) {
       return (
         <div
           className="rounded-xl overflow-hidden shadow-sm flex items-center justify-center bg-white p-0.5 border border-white/40 shrink-0"
           style={{ width: dimension, height: dimension }}
         >
           <img
-            src={logoUrl}
+            src={activeLogoUrl}
             alt="LabMedix Logo"
             className="w-full h-full object-contain"
-            crossOrigin="anonymous"
             onError={() => setImageError(true)}
           />
         </div>

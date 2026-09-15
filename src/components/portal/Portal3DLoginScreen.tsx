@@ -322,11 +322,20 @@ export const Portal3DLoginScreen: React.FC<Portal3DLoginScreenProps> = ({
                   {/* Card Header: Brand & Chip */}
                   <div className="flex items-start justify-between">
                     <div className="flex items-center gap-2.5">
-                      <div className="w-9 h-9 rounded-xl bg-white/10 backdrop-blur-md p-1 border border-white/20 flex items-center justify-center shadow-md">
-                        <LabMedixLogo logoUrl={company.logoUrl} variant="monogram" size="sm" theme="teal" />
+                      <div className="w-9 h-9 rounded-xl bg-white p-1 border border-white/40 flex items-center justify-center shadow-md shrink-0 overflow-hidden">
+                        <img
+                          src={company?.logoUrl || '/logo.jpg'}
+                          alt="Logo"
+                          className="w-full h-full object-contain"
+                          onError={(e) => {
+                            if (e.currentTarget.src !== window.location.origin + '/logo.jpg') {
+                              e.currentTarget.src = '/logo.jpg';
+                            }
+                          }}
+                        />
                       </div>
                       <div className="text-left">
-                        <span className="text-xs font-black tracking-wider uppercase block text-white">
+                        <span className="text-xs font-black tracking-wider uppercase block text-white truncate max-w-[170px]">
                           {company.name || 'LABMEDIX'}
                         </span>
                         <span className="text-[9px] font-bold text-teal-300 uppercase tracking-widest block">
@@ -393,12 +402,18 @@ export const Portal3DLoginScreen: React.FC<Portal3DLoginScreenProps> = ({
 
                   {/* CVV Signature Bar */}
                   <div className="space-y-1 my-auto">
-                    <div className="text-[9px] text-slate-400 font-bold uppercase">Authorized Signature / Security CVV</div>
-                    <div className="h-8 bg-white/90 rounded-md px-3 flex items-center justify-between text-slate-900 font-mono">
-                      <span className="italic text-xs font-serif font-bold text-slate-600">LabMedix Security Seal</span>
-                      <strong className="bg-slate-900 text-white px-2 py-0.5 rounded text-xs font-bold tracking-widest">
-                        821
-                      </strong>
+                    <div className="text-[9px] text-slate-400 font-bold uppercase flex items-center justify-between">
+                      <span>Authorized Signature & CVV Code</span>
+                      <span className="text-amber-300 text-[8px] font-bold">⭐ CVV = PORTAL PASSWORD</span>
+                    </div>
+                    <div className="h-8 bg-white/95 rounded-md px-3 flex items-center justify-between text-slate-900 font-mono border border-slate-300">
+                      <span className="italic text-xs font-serif font-bold text-slate-700">LabMedix Authorized</span>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[8px] text-slate-500 uppercase font-sans font-bold">CVV:</span>
+                        <strong className="bg-slate-950 text-amber-300 px-2.5 py-0.5 rounded text-xs font-black tracking-widest border border-amber-400/50 shadow-sm">
+                          888
+                        </strong>
+                      </div>
                     </div>
                   </div>
 
@@ -479,12 +494,12 @@ export const Portal3DLoginScreen: React.FC<Portal3DLoginScreenProps> = ({
                 onClick={() => setAuthMode('card')}
                 className={`py-1.5 rounded-lg transition-all flex items-center justify-center gap-1.5 ${
                   authMode === 'card'
-                    ? 'bg-teal-500 text-slate-950 shadow-md font-black'
+                    ? 'bg-gradient-to-r from-teal-500 to-emerald-500 text-slate-950 shadow-md font-black'
                     : 'text-slate-400 hover:text-white'
                 }`}
               >
                 <CreditCard className="w-3.5 h-3.5" />
-                <span>Card No</span>
+                <span>Card Number</span>
               </button>
 
               <button
@@ -492,12 +507,12 @@ export const Portal3DLoginScreen: React.FC<Portal3DLoginScreenProps> = ({
                 onClick={() => setAuthMode('mobile')}
                 className={`py-1.5 rounded-lg transition-all flex items-center justify-center gap-1.5 ${
                   authMode === 'mobile'
-                    ? 'bg-teal-500 text-slate-950 shadow-md font-black'
+                    ? 'bg-gradient-to-r from-teal-500 to-emerald-500 text-slate-950 shadow-md font-black'
                     : 'text-slate-400 hover:text-white'
                 }`}
               >
                 <Smartphone className="w-3.5 h-3.5" />
-                <span>Mobile</span>
+                <span>Mobile Number</span>
               </button>
 
               <button
@@ -521,14 +536,22 @@ export const Portal3DLoginScreen: React.FC<Portal3DLoginScreenProps> = ({
               <div className="space-y-1.5">
                 <label className="text-xs font-bold text-slate-300 flex items-center justify-between">
                   <span className="flex items-center gap-1.5">
-                    <CreditCard className="w-3.5 h-3.5 text-teal-400" />
+                    {authMode === 'card' ? (
+                      <CreditCard className="w-3.5 h-3.5 text-teal-400" />
+                    ) : authMode === 'mobile' ? (
+                      <Smartphone className="w-3.5 h-3.5 text-teal-400" />
+                    ) : (
+                      <User className="w-3.5 h-3.5 text-teal-400" />
+                    )}
                     {authMode === 'card'
                       ? '1. Health Card Number:'
                       : authMode === 'mobile'
                       ? '1. Registered Mobile Number:'
-                      : '1. Patient Medical ID / Email:'}
+                      : '1. Patient ID / Email:'}
                   </span>
-                  <span className="text-[10px] text-slate-400 font-mono">Required</span>
+                  <span className="text-[10px] text-amber-300 font-mono font-bold bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/30">
+                    ⭐ Recommended
+                  </span>
                 </label>
                 <div className="relative">
                   <input
@@ -540,10 +563,10 @@ export const Portal3DLoginScreen: React.FC<Portal3DLoginScreenProps> = ({
                     }}
                     placeholder={
                       authMode === 'card'
-                        ? 'e.g. LHC-2026-000001'
+                        ? 'Enter Card No (e.g. LHC-2026-000001)'
                         : authMode === 'mobile'
-                        ? 'e.g. 9830012345'
-                        : 'e.g. PAT-2026-001'
+                        ? 'Enter 10-digit Mobile (e.g. 9830012345)'
+                        : 'Enter Patient ID (e.g. PAT-2026-001)'
                     }
                     disabled={lockoutSeconds > 0}
                     className="w-full px-4 py-3 rounded-2xl bg-slate-950 border-2 border-slate-700/80 focus:border-teal-400 focus:ring-4 focus:ring-teal-500/20 text-white font-mono text-sm tracking-wider placeholder:text-slate-600 outline-none transition-all"
@@ -552,11 +575,16 @@ export const Portal3DLoginScreen: React.FC<Portal3DLoginScreenProps> = ({
                 </div>
               </div>
 
-              {/* Field 2: Portal Password or PIN */}
+              {/* Field 2: Portal Password or CVV */}
               <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
-                  <Lock className="w-3.5 h-3.5 text-amber-400" />
-                  2. Portal Password / Security PIN:
+                <label className="text-xs font-bold text-slate-300 flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <Lock className="w-3.5 h-3.5 text-amber-400" />
+                    2. Card CVV Code / Password:
+                  </span>
+                  <span className="text-[10px] text-amber-300 font-mono font-bold bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/30">
+                    ⭐ Recommended: 3-Digit CVV
+                  </span>
                 </label>
                 <div className="relative">
                   <input
@@ -566,7 +594,7 @@ export const Portal3DLoginScreen: React.FC<Portal3DLoginScreenProps> = ({
                       setPassword(e.target.value);
                       setError('');
                     }}
-                    placeholder="Enter your PIN or portal password"
+                    placeholder="Enter 3-Digit CVV from Card Back (e.g. 888) or PIN"
                     disabled={lockoutSeconds > 0}
                     className="w-full pl-4 pr-12 py-3 rounded-2xl bg-slate-950 border-2 border-slate-700/80 focus:border-amber-400 focus:ring-4 focus:ring-amber-500/20 text-white font-mono text-sm tracking-widest placeholder:text-slate-600 outline-none transition-all"
                     required
@@ -580,6 +608,10 @@ export const Portal3DLoginScreen: React.FC<Portal3DLoginScreenProps> = ({
                     {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
                 </div>
+                <p className="text-[10.5px] text-slate-400 flex items-center gap-1 pt-0.5">
+                  <span className="text-amber-400 font-bold">💡 Tip:</span>
+                  <span>Flip your card or check the back strip for the 3-digit CVV security code to log in.</span>
+                </p>
               </div>
 
               {/* Field 3: 3D Anti-Bot Mathematical Verification Gate */}

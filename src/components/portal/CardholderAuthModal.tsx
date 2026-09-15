@@ -221,21 +221,23 @@ export const CardholderAuthModal: React.FC<CardholderAuthModalProps> = ({
             <div className="p-3.5 rounded-2xl bg-slate-950 border border-teal-500/30 text-teal-200 text-xs flex items-center gap-3">
               <ShieldCheck className="w-5 h-5 text-emerald-400 shrink-0" />
               <div className="text-[11px] leading-relaxed">
-                Enter your <strong>Email / Mobile / Staff ID</strong> and your <strong>Portal Password</strong> provided by Super Admin.
+                Log in with your <strong>Health Card Number</strong> or <strong>Registered Mobile</strong>, and use your <strong>Card CVV Code</strong> (from card back) or password to access your cashless portal.
               </div>
             </div>
 
             <form onSubmit={handleLoginSubmit} className="space-y-4">
-              {/* Field 1: Health Card Number */}
+              {/* Field 1: Health Card Number or Registered Mobile */}
               <div className="space-y-1">
                 <label className="font-bold text-slate-300 flex items-center justify-between">
-                  <span>1. Email / Mobile / Staff ID:</span>
-                  <span className="text-[10px] text-teal-400 font-mono">Format: LHC-YYYY-XXXXXX</span>
+                  <span>1. Card Number or Mobile:</span>
+                  <span className="text-[10px] text-amber-300 font-mono font-bold bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/30">
+                    ⭐ Recommended
+                  </span>
                 </label>
                 <Input
                   value={loginId}
                   onChange={(e) => handleCardNumberChange(e.target.value)}
-                  placeholder="e.g. staff@labmedix.com"
+                  placeholder="e.g. LHC-2026-000001 or 9830012345"
                   leftIcon={<CreditCard className="w-4 h-4 text-teal-400" />}
                   disabled={lockoutSeconds > 0}
                   required
@@ -245,23 +247,28 @@ export const CardholderAuthModal: React.FC<CardholderAuthModalProps> = ({
               {/* Field 2: 3-Digit Card CVV Security Code */}
               <div className="space-y-1">
                 <label className="font-bold text-slate-300 flex items-center justify-between">
-                  <span>2. Portal Password:</span>
-                  <span className="text-[10px] text-amber-300 font-mono">Found on card back strip</span>
+                  <span>2. Card CVV Code / Password:</span>
+                  <span className="text-[10px] text-amber-300 font-mono font-bold bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/30">
+                    ⭐ 3-Digit CVV on Card Back
+                  </span>
                 </label>
                 <Input
                   type="password"
-                  
                   value={portalPassword}
                   onChange={(e) => {
                     setPortalPassword(e.target.value);
                     setError('');
                   }}
-                  placeholder="Enter password"
+                  placeholder="Enter 3-digit CVV (e.g. 888) or password"
                   leftIcon={<Lock className="w-4 h-4 text-amber-400" />}
                   className="font-mono tracking-widest"
                   disabled={lockoutSeconds > 0}
                   required
                 />
+                <p className="text-[10.5px] text-slate-400 flex items-center gap-1 pt-0.5">
+                  <span className="text-amber-400 font-bold">💡 Tip:</span>
+                  <span>The 3-digit CVV printed on the back of your Health Card serves as your default portal password.</span>
+                </p>
               </div>
 
               {/* Field 3: Anti-Bot Mathematical Security Captcha */}

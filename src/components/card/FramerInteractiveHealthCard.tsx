@@ -67,6 +67,8 @@ export const FramerInteractiveHealthCard: React.FC<FramerInteractiveHealthCardPr
   const opdDiscount = membership?.opdDiscount ?? 30;
   const labDiscount = membership?.labDiscount ?? 50;
   const pharmacyDiscount = membership?.pharmacyDiscount ?? 20;
+  const homeCollectionDiscount = membership?.homeCollectionDiscount ?? 100;
+  const ipdDiscount = membership?.ipdDiscount ?? 15;
 
   const triggerHaptic = (pattern: number | number[] = [35, 25, 45]) => {
     if (typeof window !== 'undefined' && 'vibrate' in navigator) {
@@ -141,10 +143,21 @@ Card Number: ${card?.cardNumber || 'N/A'}
 
             {/* Header: Brand Logo & NFC Indicator */}
             <div className="relative z-10 flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
-                <LabMedixLogo logoUrl={logoUrl} variant="monogram" size="sm" theme="white" />
-                <div>
-                  <h4 className="text-xs sm:text-sm font-black tracking-wider uppercase text-white leading-tight">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="w-9 h-9 rounded-xl bg-white p-1 border border-white/80 shadow-md flex items-center justify-center shrink-0 overflow-hidden">
+                  <img
+                    src={logoUrl || '/logo.jpg'}
+                    alt="Logo"
+                    className="w-full h-full object-contain"
+                    onError={(e) => {
+                      if (e.currentTarget.src !== window.location.origin + '/logo.jpg') {
+                        e.currentTarget.src = '/logo.jpg';
+                      }
+                    }}
+                  />
+                </div>
+                <div className="min-w-0">
+                  <h4 className="text-xs sm:text-sm font-black tracking-wider uppercase text-white leading-tight truncate max-w-[200px]">
                     {companyName}
                   </h4>
                   <span className="text-[8px] sm:text-[9px] text-teal-300 font-bold tracking-widest uppercase block">
@@ -275,11 +288,15 @@ Card Number: ${card?.cardNumber || 'N/A'}
                 </div>
 
                 <div className="p-2 rounded-xl bg-slate-800/60 border border-slate-700/60">
-                  <span className="text-slate-400 font-bold uppercase block text-[8px]">Active Discounts</span>
-                  <div className="flex items-center gap-1.5 text-emerald-300 font-black font-mono mt-0.5">
+                  <span className="text-slate-400 font-bold uppercase block text-[8px]">Cashless Privileges</span>
+                  <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-emerald-300 font-black font-mono text-[8.5px] mt-0.5">
                     <span>OPD {opdDiscount}%</span>
                     <span>•</span>
                     <span>Lab {labDiscount}%</span>
+                    <span>•</span>
+                    <span>Rx {pharmacyDiscount}%</span>
+                    <span>•</span>
+                    <span>Home {homeCollectionDiscount >= 100 ? 'FREE' : `${homeCollectionDiscount}%`}</span>
                   </div>
                 </div>
               </div>
