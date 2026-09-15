@@ -5,6 +5,8 @@ import { StorageService } from '../../services/storage';
 import { ApiSyncService } from '../../services/apiSyncService';
 import { AuditService } from '../../services/auditService';
 import { StandardHalfPageBill, StandardBillData } from '../../components/billing/StandardHalfPageBill';
+import { UniversalInvoiceModal } from '../../components/billing/UniversalInvoiceModal';
+import { UniversalInvoiceService } from '../../services/universalInvoiceService';
 import {
   PatientBill,
   CompanyProfile,
@@ -557,13 +559,13 @@ export const PrintCenterPage: React.FC = () => {
         </Modal>
       )}
 
-      {/* Bill Preview Modal using StandardHalfPageBill */}
+      {/* Bill Preview Modal using Universal A4 Half-Page Engine */}
       {previewBill && (
         <Modal
           isOpen={!!previewBill}
           onClose={() => setPreviewBill(null)}
-          title={`Bill Preview • ${previewBill.billNumber}`}
-          maxWidth="2xl"
+          title={`Standard A4 Half-Page Bill Preview • ${previewBill.billNumber}`}
+          maxWidth="5xl"
         >
           <StandardHalfPageBill
             bill={previewBill}

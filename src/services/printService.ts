@@ -344,4 +344,91 @@ export class PrintService {
       window.print();
     }
   }
-}
+
+  /**
+   * Directly prints an official Universal LABMEDIX A4 Half-Page Tax Invoice in an isolated clean window.
+   * Guarantees strict A4 portrait scaling, zero unwanted blank pages, and exact screen preview parity.
+   */
+  public static printUniversalA4HalfPage(
+    invoiceElement: HTMLElement,
+    title = 'LABMEDIX Official Tax Invoice'
+  ): void {
+    try {
+      const printWindow = window.open('', '_blank', 'width=950,height=800');
+      if (!printWindow) {
+        window.print();
+        return;
+      }
+
+      const styleElements = Array.from(document.querySelectorAll('style, link[rel="stylesheet"]'))
+        .map(el => el.outerHTML)
+        .join('\n');
+
+      const invoiceHtml = invoiceElement.outerHTML;
+
+      const htmlContent = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <title>${title}</title>
+          ${styleElements}
+          <style>
+            @page {
+              size: A4 portrait;
+              margin: 4mm 6mm;
+            }
+            body {
+              margin: 0;
+              padding: 0;
+              background: #ffffff !important;
+              color: #000000 !important;
+              font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+              -webkit-print-color-adjust: exact !important;
+              print-color-adjust: exact !important;
+            }
+            .universal-half-page-bill {
+              border: none !important;
+              box-shadow: none !important;
+              margin: 0 auto !important;
+              padding: 8px 12px !important;
+              width: 100% !important;
+              max-width: 200mm !important;
+            }
+            @media print {
+              .no-print, .print\\:hidden {
+                display: none !important;
+              }
+              body * {
+                visibility: visible !important;
+              }
+            }
+          </style>
+        </head>
+        <body>
+          <div style="width: 100%; max-width: 200mm; margin: 0 auto;">
+            ${invoiceHtml}
+          </div>
+          <script>
+            window.onload = function() {
+              setTimeout(function() {
+                window.focus();
+                window.print();
+                window.close();
+              }, 350);
+            };
+          </script>
+        </body>
+        </html>
+      `;
+
+      printWindow.document.open();
+      printWindow.document.write(htmlContent);
+      printWindow.document.close();
+
+      AuditService.log('BILL_PRINTED', 'billing', `Printed Universal Half-Page Invoice: ${title}`);
+    } catch (err) {
+      console.error('Error in printUniversalA4HalfPage:', err);
+      window.print();
+    }
+  }
+}

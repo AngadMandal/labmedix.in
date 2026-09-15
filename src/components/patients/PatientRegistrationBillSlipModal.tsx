@@ -23,6 +23,9 @@ import {
   X
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { UniversalA4HalfPageInvoice } from '../billing/UniversalA4HalfPageInvoice';
+import { UniversalInvoiceService } from '../../services/universalInvoiceService';
+import { PrintService } from '../../services/printService';
 
 interface PatientRegistrationBillSlipModalProps {
   isOpen: boolean;
@@ -233,211 +236,17 @@ export const PatientRegistrationBillSlipModal: React.FC<PatientRegistrationBillS
             id="print-document-container"
             className="w-full max-w-2xl bg-white text-slate-900 shadow-xl border border-slate-200 rounded-2xl p-6 sm:p-8 space-y-6"
           >
-            {/* 1. Printable Bill / Tax Invoice View */}
+            {/* 1. Universal A4 Half-Page Tax Invoice View */}
             {(activeTab === 'bill' || printTarget === 'bill' || printTarget === 'both') && (
-              <div id="labmedix-printable-bill" className="space-y-6">
-                {/* Clinical Header */}
-                <div className="border-b-2 border-slate-800 pb-4 flex items-start justify-between">
-                  <div>
-                    <h1 className="text-xl font-black tracking-tight text-slate-900 uppercase">
-                      {company.name}
-                    </h1>
-                    <p className="text-[11px] font-semibold text-slate-600">
-                      {company.subtitle || 'ISO 9001:2015 Accredited Healthcare & Multi-Speciality Diagnostic Centre'}
-                    </p>
-                    <p className="text-[10px] text-slate-500 mt-1">
-                      {company.address}, {company.postOffice}, {company.district} - {company.pinCode}
-                    </p>
-                    <p className="text-[10px] text-slate-500">
-                      Helpline: <strong className="text-slate-800">{company.helpline}</strong> • Email: {company.email}
-                    </p>
-                  </div>
-                  <div className="text-right shrink-0">
-                    <div className="inline-block px-2.5 py-1 rounded bg-slate-900 text-white font-mono font-bold text-[10px] tracking-wider uppercase">
-                      PATIENT ENROLLMENT BILL
-                    </div>
-                    <p className="text-[10px] font-mono text-slate-500 mt-1">
-                      GSTIN: {company.gstin || '19AAACL1234F1Z5'}
-                    </p>
-                    <p className="text-[10px] font-mono text-slate-500">
-                      Lic: {company.clinicalLicenseNo || 'CEA/WB/MLD/2026/1102'}
-                    </p>
-                  </div>
-                </div>
-
-                {/* Bill & Patient Meta Grid */}
-                <div className="grid grid-cols-2 gap-4 text-xs bg-slate-50 p-4 rounded-xl border border-slate-200">
-                  <div className="space-y-1">
-                    <div>
-                      <span className="text-slate-500 font-medium">Bill Number:</span>{' '}
-                      <span className="font-mono font-bold text-slate-900">{bill.billNumber}</span>
-                    </div>
-                    <div>
-                      <span className="text-slate-500 font-medium">Date & Time:</span>{' '}
-                      <span className="font-semibold text-slate-800">{formatDate(bill.date)}</span>
-                    </div>
-                    <div>
-                      <span className="text-slate-500 font-medium">Cashier / Staff:</span>{' '}
-                      <span className="font-semibold text-slate-800">
-                        {bill.authorizedStaff?.name} ({bill.authorizedStaff?.role})
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="space-y-1 text-right sm:text-left">
-                    <div>
-                      <span className="text-slate-500 font-medium">Patient Name:</span>{' '}
-                      <span className="font-bold text-slate-900">{patient.fullName}</span>
-                    </div>
-                    <div>
-                      <span className="text-slate-500 font-medium">Patient ID:</span>{' '}
-                      <span className="font-mono font-bold text-slate-900">{patient.id}</span>
-                    </div>
-                    <div>
-                      <span className="text-slate-500 font-medium">Mobile:</span>{' '}
-                      <span className="font-mono text-slate-800">{patient.mobile}</span>
-                    </div>
-                    <div>
-                      <span className="text-slate-500 font-medium">Blood Group:</span>{' '}
-                      <span className="font-bold text-slate-800">{patient.bloodGroup || 'Unknown'}</span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Health Card Enrollment Specifics Banner */}
-                {isCardIssued && card && (
-                  <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl flex items-center justify-between text-xs">
-                    <div className="flex items-center gap-2.5">
-                      <CreditCard className="w-5 h-5 text-blue-600" />
-                      <div>
-                        <span className="font-bold text-blue-900 block">
-                          Smart Health Card Provisioned ({bill.membershipName || 'Health Shield'})
-                        </span>
-                        <span className="font-mono text-[11px] text-blue-700">
-                          Card No: {card.cardNumber} • Valid to: {card.expiryDate}
-                        </span>
-                      </div>
-                    </div>
-                    <Badge variant="blue">ACTIVE CARD</Badge>
-                  </div>
-                )}
-
-                {/* Itemized Billing Table */}
-                <div className="border border-slate-200 rounded-xl overflow-hidden">
-                  <table className="w-full text-xs text-left">
-                    <thead className="bg-slate-100 border-b border-slate-200 text-slate-700 font-bold uppercase tracking-wider text-[10px]">
-                      <tr>
-                        <th className="p-3">#</th>
-                        <th className="p-3">Description of Services / Card Enrollment</th>
-                        <th className="p-3 text-center">Qty / Members</th>
-                        <th className="p-3 text-right">Amount (₹)</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      <tr>
-                        <td className="p-3 text-slate-400 font-mono">01</td>
-                        <td className="p-3 font-medium text-slate-900">
-                          {isCardIssued
-                            ? `Smart Health Card Enrollment Fee (${bill.membershipName || 'Annual Plan'})`
-                            : 'Primary Patient Clinical Registration & Digital Health Record'}
-                          <span className="block text-[10px] text-slate-500">
-                            {isCardIssued
-                              ? 'Includes OPD & Lab diagnostic rate benefits, up to 5 family members.'
-                              : 'Lifetime patient digital portal and clinic profile registration.'}
-                          </span>
-                        </td>
-                        <td className="p-3 text-center font-mono">1</td>
-                        <td className="p-3 text-right font-mono font-bold text-slate-900">
-                          {formatCurrency(bill.baseCardCharge)}
-                        </td>
-                      </tr>
-
-                      {bill.familyMemberCount > 0 && (
-                        <tr>
-                          <td className="p-3 text-slate-400 font-mono">02</td>
-                          <td className="p-3 font-medium text-slate-900">
-                            Family Health Shield Allowance (Up to 5 Family Members)
-                            <span className="block text-[10px] text-slate-500">
-                              {Math.min(bill.familyMemberCount, bill.includedMembers)} dependent(s) included in standard card allowance.
-                            </span>
-                          </td>
-                          <td className="p-3 text-center font-mono">{bill.includedMembers}</td>
-                          <td className="p-3 text-right font-mono font-bold text-emerald-600">₹0.00</td>
-                        </tr>
-                      )}
-
-                      {bill.additionalMembers > 0 && (
-                        <tr className="bg-amber-50/50">
-                          <td className="p-3 text-slate-400 font-mono">03</td>
-                          <td className="p-3 font-medium text-amber-900">
-                            Additional Family Member Card Charges
-                            <span className="block text-[10px] text-amber-700">
-                              {bill.additionalMembers} extra dependent(s) beyond the 5 included members allowance.
-                            </span>
-                          </td>
-                          <td className="p-3 text-center font-mono text-amber-900 font-bold">
-                            {bill.additionalMembers}
-                          </td>
-                          <td className="p-3 text-right font-mono font-bold text-amber-900">
-                            {formatCurrency(bill.additionalMemberCharge)}
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                    <tfoot className="bg-slate-50 border-t border-slate-200 font-semibold text-xs">
-                      {bill.discountAmount > 0 && (
-                        <tr>
-                          <td colSpan={3} className="p-2.5 text-right text-slate-600">
-                            Discount / Promotional Subsidy:
-                          </td>
-                          <td className="p-2.5 text-right font-mono text-rose-600">
-                            - {formatCurrency(bill.discountAmount)}
-                          </td>
-                        </tr>
-                      )}
-                      <tr>
-                        <td colSpan={3} className="p-3 text-right text-slate-900 font-black text-sm uppercase">
-                          Net Amount Payable:
-                        </td>
-                        <td className="p-3 text-right font-mono font-black text-base text-blue-600">
-                          {formatCurrency(bill.netPayable)}
-                        </td>
-                      </tr>
-                      <tr className="border-t border-slate-200/60 bg-emerald-50/60 text-emerald-900 font-bold">
-                        <td colSpan={3} className="p-2.5 text-right">
-                          Amount Received via {bill.paymentMethod.toUpperCase()}:
-                        </td>
-                        <td className="p-2.5 text-right font-mono text-emerald-700 font-black">
-                          {formatCurrency(bill.paidAmount)}
-                        </td>
-                      </tr>
-                    </tfoot>
-                  </table>
-                </div>
-
-                {/* Payment & Signatures Footer */}
-                <div className="pt-4 border-t border-slate-200 flex items-center justify-between text-xs">
-                  <div className="flex items-center gap-3">
-                    {qrCodeDataUrl && (
-                      <img
-                        src={qrCodeDataUrl}
-                        alt="QR Verification"
-                        className="w-16 h-16 rounded border border-slate-300 p-0.5"
-                      />
-                    )}
-                    <div className="space-y-0.5 text-[10px] text-slate-500">
-                      <p className="font-bold text-slate-700">Digital Bill Verification</p>
-                      <p>Scan with any camera to verify authenticity.</p>
-                      <p className="font-mono text-[9px] text-slate-400">Txn Ref: {bill.transactionId}</p>
-                    </div>
-                  </div>
-
-                  <div className="text-right space-y-1">
-                    <div className="h-10 border-b border-dashed border-slate-400 w-40 ml-auto"></div>
-                    <p className="text-[10px] font-bold text-slate-800 uppercase">Authorized Signature</p>
-                    <p className="text-[9px] text-slate-500">{company.name}</p>
-                  </div>
-                </div>
+              <div id="labmedix-printable-bill" className="w-full">
+                <UniversalA4HalfPageInvoice
+                  invoice={UniversalInvoiceService.fromPatientBill(bill, company, {
+                    patient,
+                    card,
+                    staffName: bill.authorizedStaff?.name
+                  })}
+                  company={company}
+                />
               </div>
             )}
 

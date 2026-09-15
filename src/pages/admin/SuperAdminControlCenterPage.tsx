@@ -19,10 +19,11 @@ import { AuditService } from '../../services/auditService';
 import { ApiSyncService, SyncHealthMetrics } from '../../services/apiSyncService';
 import { MultiDeviceSyncService } from '../../services/multiDeviceSyncService';
 import { useFirestoreLiveData } from '../../hooks/useFirestoreLiveData';
-import { FirestoreConnectionStatus } from '../../components/common/FirestoreConnectionStatus';
+import { PostgresConnectionStatus } from '../../components/common/FirestoreConnectionStatus';
 import { StaffIDCard } from '../../components/card/StaffIDCard';
 import { SuperAdminHealthCardControl } from '../../components/admin/SuperAdminHealthCardControl';
 import { firebaseConfig } from '../../services/firebaseService';
+import { isSupabaseConfigured } from '../../services/supabaseService';
 import {
   User,
   Role,
@@ -541,12 +542,12 @@ export const SuperAdminControlCenterPage: React.FC = () => {
           </div>
         </div>
 
-        {/* Live Firestore Connection Status Header Badge */}
+        {/* Live Central PostgreSQL Connection Status Header Badge */}
         <div className="flex flex-wrap items-center gap-3">
-          <FirestoreConnectionStatus />
+          <PostgresConnectionStatus />
           <div className="hidden lg:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-900/90 border border-slate-800 text-[11px] font-mono text-slate-300">
             <Server className="w-3.5 h-3.5 text-indigo-400" />
-            <span>DB: <strong className="text-white font-bold">{firebaseConfig.projectId}</strong></span>
+            <span>DB: <strong className="text-white font-bold">{isSupabaseConfigured() ? 'PostgreSQL (Supabase)' : firebaseConfig.projectId}</strong></span>
           </div>
         </div>
       </div>

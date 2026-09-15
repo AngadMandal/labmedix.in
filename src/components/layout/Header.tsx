@@ -10,7 +10,7 @@ import { CommandPaletteModal } from '../common/CommandPaletteModal';
 import { NotificationDrawer } from '../common/NotificationDrawer';
 import { SecurityShieldModal } from '../common/SecurityShieldModal';
 import { SyncHealthIndicator } from '../common/SyncHealthIndicator';
-import { FirestoreConnectionStatus } from '../common/FirestoreConnectionStatus';
+import { PostgresConnectionStatus } from '../common/FirestoreConnectionStatus';
 import { ThemeSelectorModal } from './ThemeSelectorModal';
 import {
   Menu,
@@ -134,8 +134,8 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
           <span className="hidden lg:inline">Offline Form</span>
         </Link>
 
-        {/* Firestore Live Connection Status */}
-        <FirestoreConnectionStatus />
+        {/* Central PostgreSQL Live Connection Status */}
+        <PostgresConnectionStatus />
 
         {/* Persistent Sync Health Traffic-Light Indicator */}
         <SyncHealthIndicator />

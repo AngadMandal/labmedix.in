@@ -11,6 +11,8 @@ import { formatCurrency, formatDate, formatDateTime } from '../../utils/formatte
 import { Modal } from '../../components/common/Modal';
 import { RealBarcode } from '../../components/common/RealBarcode';
 import { StandardHalfPageBill } from '../../components/billing/StandardHalfPageBill';
+import { UniversalInvoiceModal } from '../../components/billing/UniversalInvoiceModal';
+import { UniversalInvoiceService } from '../../services/universalInvoiceService';
 import { InvoiceRenderService } from '../../services/invoiceRenderService';
 import {
   Receipt,
@@ -763,53 +765,24 @@ export const BillingPage: React.FC = () => {
         </Modal>
       )}
 
-      {/* Official A4 Half-Page Standard Bill Modal */}
+      {/* Official Universal A4 Half-Page Tax Invoice Modal */}
       {printBill && (
-        <Modal
+        <UniversalInvoiceModal
           isOpen={!!printBill}
           onClose={() => setPrintBill(null)}
-          title="Official A4 Half-Page Tax Invoice Slip"
-          maxWidth="2xl"
-        >
-          <StandardHalfPageBill
-            bill={{
-              billNumber: printBill.billNumber,
-              date: printBill.createdAt || printBill.date,
-              patientName: printBill.patientName,
-              patientId: printBill.patientId,
-              patientMobile: printBill.patientMobile,
-              healthCardNumber: printBill.healthCardNumber,
-              category: printBill.billCategory || 'Hospital Invoice',
-              items: printBill.items && printBill.items.length > 0 ? printBill.items.map(it => ({
-                description: it.description,
-                quantity: it.quantity,
-                unitPrice: it.unitPrice,
-                discount: 0,
-                total: it.total
-              })) : [{
-                description: printBill.isCardIssued ? 'Health Card Registration & Membership' : 'Hospital Service Fee',
-                quantity: 1,
-                unitPrice: printBill.baseCardCharge || printBill.netPayable,
-                discount: printBill.discountAmount || 0,
-                total: printBill.netPayable
-              }],
-              subtotal: (printBill as any).subtotal || (printBill.baseCardCharge ? printBill.baseCardCharge + (printBill.additionalMemberCharge || 0) : printBill.netPayable),
-              discountAmount: printBill.discountAmount || 0,
-              taxAmount: (printBill as any).taxAmount || 0,
-              netPayable: printBill.netPayable,
-              paidAmount: printBill.paidAmount || printBill.netPayable,
-              dueAmount: Math.max(0, printBill.netPayable - (printBill.paidAmount || printBill.netPayable)),
-              paymentMethod: printBill.paymentMethod,
-              authorizedStaffName: printBill.authorizedStaff?.name || currentUser?.fullName || 'Cashier Desk',
-              notes: printBill.notes
-            }}
-            company={company}
-            onPrint={() => window.print()}
-            onDownloadPdf={() => InvoiceRenderService.downloadHalfPagePdf('standard-half-page-invoice-root', printBill.billNumber)}
-            onClose={() => setPrintBill(null)}
-          />
-        </Modal>
+          invoice={UniversalInvoiceService.fromPatientBill(
+            printBill,
+            company,
+            {
+              patient: patients.find(p => p.id === printBill.patientId),
+              card: cards.find(c => c.cardNumber === printBill.healthCardNumber),
+              staffName: currentUser?.fullName
+            }
+          )}
+          company={company}
+        />
       )}
     </div>
   );
 };
+

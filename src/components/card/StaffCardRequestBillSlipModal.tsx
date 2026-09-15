@@ -24,6 +24,8 @@ import {
   AlertCircle,
   Receipt
 } from 'lucide-react';
+import { UniversalA4HalfPageInvoice } from '../billing/UniversalA4HalfPageInvoice';
+import { UniversalInvoiceService } from '../../services/universalInvoiceService';
 
 export interface StaffCardRequestBillSlipModalProps {
   isOpen: boolean;
@@ -249,189 +251,17 @@ export const StaffCardRequestBillSlipModal: React.FC<StaffCardRequestBillSlipMod
             {/* ═════════════════════════════════════════════════════════ */}
             {(activeTab === 'bill' || printTarget === 'bill' || printTarget === 'both') && (
               <div
-                className={`bg-white text-slate-900 p-6 sm:p-8 rounded-2xl border border-slate-200 shadow-sm space-y-6 ${
+                className={`w-full ${
                   printTarget === 'slip' ? 'no-print' : ''
                 }`}
               >
-                {/* Clinic Letterhead Header */}
-                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center pb-6 border-b-2 border-slate-900 gap-4">
-                  <div className="flex items-center gap-4">
-                    <img
-                      src={company.logoUrl || '/logo.jpg'}
-                      alt={company.name}
-                      className="w-16 h-16 rounded-xl object-contain border border-slate-200"
-                    />
-                    <div>
-                      <h1 className="text-base sm:text-lg font-black text-slate-900 tracking-tight uppercase">
-                        {company.name}
-                      </h1>
-                      <p className="text-[11px] font-bold text-teal-700 uppercase tracking-wide">
-                        {company.tagline || 'Angad Mandal • Confident In Care'}
-                      </p>
-                      <p className="text-[10px] text-slate-500 max-w-md mt-0.5">
-                        {company.address} • P.O.: {company.postOffice} • Dist: {company.district}, {company.state} - {company.pinCode}
-                      </p>
-                      <p className="text-[10px] text-slate-500 font-mono">
-                        GSTIN: {company.gstin} • Reg No: {company.registrationNo} • Phone: {company.phone}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="text-left sm:text-right font-mono shrink-0">
-                    <span className="px-2.5 py-1 bg-slate-900 text-white text-[11px] font-bold uppercase rounded-md tracking-wider inline-block">
-                      TAX INVOICE / ENROLLMENT BILL
-                    </span>
-                    <div className="mt-2 space-y-0.5 text-xs">
-                      <div><strong className="text-slate-500">Bill No:</strong> <span className="font-bold text-slate-900">{bill ? bill.billNumber : `BILL-${new Date().getFullYear()}-${application.applicationNo.slice(-6)}`}</span></div>
-                      <div><strong className="text-slate-500">Request ID:</strong> <span className="font-bold text-teal-700">{application.applicationNo || application.trackingId}</span></div>
-                      <div><strong className="text-slate-500">Date & Time:</strong> {formatDateTime(application.createdAt)}</div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Patient & Staff Submitter Meta Box */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 rounded-xl bg-slate-50 border border-slate-200 text-xs">
-                  <div className="space-y-1">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Patient Details</span>
-                    <strong className="text-sm font-black text-slate-900 block">{application.fullName}</strong>
-                    <p className="text-slate-600"><strong>Mobile:</strong> {application.mobile} {application.email ? `• ${application.email}` : ''}</p>
-                    <p className="text-slate-600"><strong>Demographics:</strong> {application.gender.toUpperCase()} • {application.age} Yrs • Blood: <span className="font-bold text-rose-600">{application.bloodGroup}</span></p>
-                    <p className="text-slate-600"><strong>Address:</strong> {application.address.fullAddress}</p>
-                  </div>
-
-                  <div className="space-y-1 sm:text-right">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Authorized Staff & Submission</span>
-                    <strong className="text-sm font-bold text-slate-900 block">
-                      Submitted By: {application.submittedByStaffName || 'Staff Member'}
-                    </strong>
-                    <p className="text-slate-600">
-                      <strong>Staff ID:</strong> {application.submittedByStaffId || 'N/A'} • <strong>Role:</strong> {application.submittedByStaffRole?.toUpperCase() || 'RECEPTION'}
-                    </p>
-                    <p className="text-slate-600">
-                      <strong>Urgency:</strong> <span className="uppercase font-bold text-teal-700">{application.urgency || 'Normal'}</span> • <strong>Dispatch:</strong> {application.dispatchPreference?.replace(/_/g, ' ').toUpperCase() || 'COLLECT AT CLINIC'}
-                    </p>
-                    <p className="text-slate-600 font-mono">
-                      <strong>Transaction Ref:</strong> {application.paymentReference || 'CASH-POS'}
-                    </p>
-                  </div>
-                </div>
-
-                {/* Itemized Table */}
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-xs border-collapse">
-                    <thead>
-                      <tr className="border-b-2 border-slate-900 bg-slate-100 text-slate-700 font-bold uppercase text-[10px]">
-                        <th className="py-2.5 px-3">#</th>
-                        <th className="py-2.5 px-3">Description & Service Items</th>
-                        <th className="py-2.5 px-3 text-center">Family Count</th>
-                        <th className="py-2.5 px-3 text-right">Standard Rate</th>
-                        <th className="py-2.5 px-3 text-right">Net Amount</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-200">
-                      <tr>
-                        <td className="py-3 px-3 font-mono">01</td>
-                        <td className="py-3 px-3">
-                          <strong className="font-bold text-slate-900 block text-xs">{application.membershipName} Enrollment</strong>
-                          <span className="text-[10px] text-slate-500">Includes Primary Cardholder + up to {maxIncluded} dependents coverage</span>
-                        </td>
-                        <td className="py-3 px-3 text-center font-bold">1 + {includedCount}</td>
-                        <td className="py-3 px-3 text-right font-mono">{formatCurrency(baseCardFee)}</td>
-                        <td className="py-3 px-3 text-right font-mono font-bold text-slate-900">{formatCurrency(baseCardFee)}</td>
-                      </tr>
-
-                      {extraCount > 0 && (
-                        <tr>
-                          <td className="py-3 px-3 font-mono">02</td>
-                          <td className="py-3 px-3">
-                            <strong className="font-bold text-amber-900 block text-xs">
-                              Additional Family Dependents ({extraCount} Extra Members)
-                            </strong>
-                            <span className="text-[10px] text-slate-500">
-                              Exceeded {maxIncluded}-member shield allowance • ₹{company.registrationSettings?.additionalMemberFee || 299} per additional member
-                            </span>
-                          </td>
-                          <td className="py-3 px-3 text-center font-bold text-amber-700">+{extraCount}</td>
-                          <td className="py-3 px-3 text-right font-mono">{formatCurrency(company.registrationSettings?.additionalMemberFee || 299)} / mem</td>
-                          <td className="py-3 px-3 text-right font-mono font-bold text-slate-900">{formatCurrency(extraFee)}</td>
-                        </tr>
-                      )}
-
-                      {application.initialDeposit && application.initialDeposit > 0 ? (
-                        <tr>
-                          <td className="py-3 px-3 font-mono">03</td>
-                          <td className="py-3 px-3">
-                            <strong className="font-bold text-teal-900 block text-xs">Initial Health Wallet Recharge Float</strong>
-                            <span className="text-[10px] text-slate-500">Credit added to patient digital health wallet upon card approval</span>
-                          </td>
-                          <td className="py-3 px-3 text-center font-mono">-</td>
-                          <td className="py-3 px-3 text-right font-mono">{formatCurrency(application.initialDeposit)}</td>
-                          <td className="py-3 px-3 text-right font-mono font-bold text-slate-900">{formatCurrency(application.initialDeposit)}</td>
-                        </tr>
-                      ) : null}
-                    </tbody>
-                  </table>
-                </div>
-
-                {/* Financial Summary & Balance Due */}
-                <div className="flex flex-col sm:flex-row justify-between items-start gap-6 pt-4 border-t border-slate-200">
-                  <div className="space-y-2 text-xs max-w-sm">
-                    <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
-                      <span className="text-[10px] font-bold text-slate-500 uppercase block">Payment Method & Reference</span>
-                      <strong className="text-slate-900 font-bold block">{application.paymentMethod}</strong>
-                      <span className="font-mono text-[11px] text-slate-600 block">Ref / UTR: {application.paymentReference}</span>
-                    </div>
-
-                    <p className="text-[10px] text-slate-400">
-                      * This bill is generated upon authorized staff submission. The physical/digital Health Card is minted upon Super Administrator verification.
-                    </p>
-                  </div>
-
-                  <div className="w-full sm:w-64 space-y-1.5 text-xs font-mono">
-                    <div className="flex justify-between text-slate-600">
-                      <span>Subtotal:</span>
-                      <span>{formatCurrency(baseCardFee + extraFee)}</span>
-                    </div>
-                    {application.initialDeposit && application.initialDeposit > 0 ? (
-                      <div className="flex justify-between text-slate-600">
-                        <span>Wallet Float:</span>
-                        <span>+{formatCurrency(application.initialDeposit)}</span>
-                      </div>
-                    ) : null}
-                    <div className="flex justify-between text-slate-900 font-bold pt-2 border-t-2 border-slate-900 text-sm">
-                      <span>Total Amount:</span>
-                      <span>{formatCurrency(totalAmount)}</span>
-                    </div>
-                    <div className="flex justify-between text-emerald-700 font-bold">
-                      <span>Amount Paid:</span>
-                      <span>{formatCurrency(paidAmount)}</span>
-                    </div>
-                    <div className={`flex justify-between font-bold pt-1 border-t border-slate-200 ${dueAmount > 0 ? 'text-rose-600' : 'text-slate-500'}`}>
-                      <span>Balance Due:</span>
-                      <span>{formatCurrency(dueAmount)}</span>
-                    </div>
-                    <div className="pt-2">
-                      <span className={`w-full py-1 text-center font-bold text-[10px] uppercase rounded-md tracking-wider block ${
-                        dueAmount === 0 ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
-                      }`}>
-                        STATUS: {dueAmount === 0 ? 'FULL PAYMENT RECEIVED' : 'PARTIAL / BALANCE DUE'}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Sign-off & Footer */}
-                <div className="pt-8 flex justify-between items-end text-xs border-t border-slate-200">
-                  <div className="text-[10px] text-slate-400 font-mono">
-                    Computer Generated Tax Invoice • No Physical Signature Required<br />
-                    Labmedix Digital Healthcare System • www.labmedix.in
-                  </div>
-                  <div className="text-right">
-                    <div className="w-40 border-b border-slate-900 mb-1"></div>
-                    <span className="text-[10px] font-bold text-slate-700 uppercase block">Authorized Signatory</span>
-                    <span className="text-[10px] text-slate-500 font-mono">{company.name}</span>
-                  </div>
-                </div>
+                <UniversalA4HalfPageInvoice
+                  invoice={UniversalInvoiceService.fromCardRequest(application, company, {
+                    bill,
+                    staffName: application.submittedByStaffName
+                  })}
+                  company={company}
+                />
               </div>
             )}
 

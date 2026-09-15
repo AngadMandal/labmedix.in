@@ -130,7 +130,7 @@ export const SyncHealthIndicator: React.FC = () => {
               </div>
               <div>
                 <h4 className="text-xs font-black text-slate-900 dark:text-white uppercase tracking-wider">Sync & Cloud Telemetry</h4>
-                <p className="text-[10px] text-slate-500 dark:text-slate-400">Single Source of Truth: Central Firestore</p>
+                <p className="text-[10px] text-slate-500 dark:text-slate-400">Single Source of Truth: Central PostgreSQL</p>
               </div>
             </div>
             <button
@@ -148,7 +148,7 @@ export const SyncHealthIndicator: React.FC = () => {
             <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800">
               <span className="text-[10px] text-slate-400 block font-sans">Active Listeners</span>
               <span className="text-sm font-black text-emerald-600 dark:text-emerald-400">
-                {syncMetrics.activeListenersCount} Collections
+                {syncMetrics.activeListenersCount} Tables
               </span>
             </div>
             <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800">
@@ -161,7 +161,7 @@ export const SyncHealthIndicator: React.FC = () => {
 
           {/* Detailed Connection List */}
           <div className="space-y-2 text-xs">
-            {/* 1. Central Firestore Connection */}
+            {/* 1. Central PostgreSQL Connection */}
             <div className="flex items-center justify-between p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800">
               <div className="flex items-center gap-2">
                 {isOnline ? (
@@ -170,9 +170,9 @@ export const SyncHealthIndicator: React.FC = () => {
                   <WifiOff className="w-4 h-4 text-rose-500 shrink-0" />
                 )}
                 <div>
-                  <p className="text-xs font-bold text-slate-800 dark:text-slate-200">Central Firestore</p>
+                  <p className="text-xs font-bold text-slate-800 dark:text-slate-200">Central PostgreSQL</p>
                   <p className="text-[10px] text-slate-400 font-mono truncate max-w-[150px]">
-                    {syncMetrics.projectId}
+                    Authoritative Database
                   </p>
                 </div>
               </div>

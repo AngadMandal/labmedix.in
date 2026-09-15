@@ -46,9 +46,9 @@ export const PharmacyBillPrintModal: React.FC<PharmacyBillPrintModalProps> = ({
 
   const handlePrint = () => {
     if (printAreaRef.current) {
-      PrintService.printPharmacyA4HalfPageBill(
+      PrintService.printUniversalA4HalfPage(
         printAreaRef.current,
-        `Pharmacy Invoice - ${currentSale.invoiceNumber}`
+        `LABMEDIX Pharmacy Invoice - ${currentSale.invoiceNumber}`
       );
     } else {
       window.print();
@@ -67,7 +67,7 @@ export const PharmacyBillPrintModal: React.FC<PharmacyBillPrintModalProps> = ({
       // Immediately open print window for the reprint
       setTimeout(() => {
         if (printAreaRef.current) {
-          PrintService.printPharmacyA4HalfPageBill(
+          PrintService.printUniversalA4HalfPage(
             printAreaRef.current,
             `REPRINT - Pharmacy Invoice - ${updated.invoiceNumber}`
           );
