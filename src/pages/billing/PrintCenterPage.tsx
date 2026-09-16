@@ -565,7 +565,7 @@ export const PrintCenterPage: React.FC = () => {
           isOpen={!!previewBill}
           onClose={() => setPreviewBill(null)}
           title={`Standard A4 Half-Page Bill Preview • ${previewBill.billNumber}`}
-          maxWidth="5xl"
+          maxWidth="6xl"
         >
           <StandardHalfPageBill
             bill={previewBill}

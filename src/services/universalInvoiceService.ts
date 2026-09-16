@@ -88,8 +88,9 @@ export class UniversalInvoiceService {
     const dueAmount = Math.max(0, bill.netPayable - paidAmount);
 
     let paymentStatus: UniversalInvoiceData['paymentStatus'] = 'paid';
-    if (bill.paymentStatus === 'refunded') paymentStatus = 'refunded';
-    else if (bill.paymentStatus === 'cancelled') paymentStatus = 'cancelled';
+    const rawStatus = bill.paymentStatus as string;
+    if (rawStatus === 'refunded') paymentStatus = 'refunded';
+    else if (rawStatus === 'cancelled') paymentStatus = 'cancelled';
     else if (dueAmount > 0 && paidAmount > 0) paymentStatus = 'partially_paid';
     else if (dueAmount > 0 && paidAmount === 0) paymentStatus = 'due';
 

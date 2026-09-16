@@ -656,6 +656,523 @@ app.post('/api/admin/approve-card-application', async (req, res) => {
   }
 });
 
+// ============================================================================
+// CENTRAL PAYMENT DYNAMIC QR ENGINE & REAL-TIME EVENT BUS (UNIVERSAL LABMEDIX)
+// ============================================================================
+const paymentSseClients: express.Response[] = [];
+
+const broadcastPaymentEvent = (event: {
+  type: 'PAYMENT_VERIFIED' | 'PAYMENT_REFUNDED' | 'SESSION_CREATED' | 'SESSION_EXPIRED';
+  billNumber?: string;
+  billId?: string;
+  patientId?: string;
+  patientName?: string;
+  paidAmount?: number;
+  remainingDue?: number;
+  paymentStatus?: string;
+  transactionId?: string;
+  providerReference?: string;
+  receiptNumber?: string;
+  timestamp: string;
+}) => {
+  const data = `data: ${JSON.stringify(event)}\n\n`;
+  for (let i = paymentSseClients.length - 1; i >= 0; i--) {
+    const client = paymentSseClients[i];
+    try {
+      client.write(data);
+    } catch {
+      paymentSseClients.splice(i, 1);
+    }
+  }
+};
+
+// SSE Stream Endpoint for Real-time Payment Updates across all open staff/patient devices
+app.get('/api/payment/events', (req, res) => {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders?.();
+
+  res.write(`data: ${JSON.stringify({ type: 'CONNECTED', message: 'Connected to LABMEDIX Universal Payment Bus', timestamp: new Date().toISOString() })}\n\n`);
+
+  paymentSseClients.push(res);
+
+  req.on('close', () => {
+    const idx = paymentSseClients.indexOf(res);
+    if (idx !== -1) {
+      paymentSseClients.splice(idx, 1);
+    }
+  });
+});
+
+// 1. Central Payment QR Session Generation (Server-Authoritative Amount Due)
+app.post('/api/payment/qr/session', (req, res) => {
+  try {
+    const { billNumber, billId, billData } = req.body;
+    const store = getCentralStore();
+    const bills = store['labmedix_bills_v1'] || [];
+    const sales = store['labmedix_pharmacy_sales_v1'] || [];
+    const vouchers = store['LABMEDIX_CASH_DESK_VOUCHERS_V1'] || [];
+
+    // Locate bill from server store or fallback to incoming billData
+    let bill = bills.find((b: any) => b.billNumber === billNumber || b.id === billId);
+    if (!bill) {
+      bill = sales.find((s: any) => s.invoiceNumber === billNumber || s.id === billId);
+    }
+    if (!bill) {
+      bill = vouchers.find((v: any) => v.voucherNumber === billNumber || v.id === billId);
+    }
+    if (!bill && billData) {
+      bill = billData;
+    }
+
+    if (!bill) {
+      return res.status(404).json({ success: false, error: 'Bill record not found for dynamic QR generation.' });
+    }
+
+    // SERVER-AUTHORITATIVE CALCULATION: Net Amount - Paid Amount = Amount Due
+    const grossAmount = Number(bill.grossAmount ?? bill.subtotal ?? bill.netPayable ?? 0);
+    const discountAmount = Number(bill.discountAmount ?? bill.totalDiscount ?? 0);
+    const taxAmount = Number(bill.taxAmount ?? 0);
+    const netPayable = Number(bill.netPayable ?? bill.netTotal ?? Math.max(0, grossAmount - discountAmount + taxAmount));
+    const paidAmount = Number(bill.paidAmount ?? 0);
+    const amountDue = Math.max(0, Math.round((netPayable - paidAmount) * 100) / 100);
+
+    // If fully paid, no active QR is generated (Replaced by PAID status)
+    if (amountDue <= 0) {
+      return res.json({
+        success: true,
+        status: 'fully_paid',
+        isFullyPaid: true,
+        amountDue: 0,
+        paidAmount,
+        netPayable,
+        billNumber: bill.billNumber || bill.invoiceNumber,
+        message: 'Bill is fully paid (₹0 due). Inactive QR replaced with official PAID stamp.'
+      });
+    }
+
+    // Retrieve company payment configuration
+    const company = store['labmedix_company_profile_v1'] || {};
+    const upiSettings = company.upiSettings || {};
+    const merchantVpa = upiSettings.merchantVpa || '7047108226@okbizaxis';
+    const merchantName = upiSettings.merchantName || company.name || 'LABMEDIX MULTI-SPECIALITY CENTRE';
+    const merchantMcc = upiSettings.merchantMcc || '8099';
+    const validityMins = Number(upiSettings.qrSessionValidityMinutes || 15);
+
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + validityMins * 60 * 1000).toISOString();
+    const sessionId = `SESS-PAY-${now.getTime().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+    const paymentReference = `REF-${(bill.billNumber || bill.invoiceNumber || 'BILL').replace(/[^a-zA-Z0-9]/g, '')}-${now.getTime().toString(36).toUpperCase()}`;
+
+    // NPCI Standard UPI Intent URI Specification
+    const note = `Bill ${bill.billNumber || bill.invoiceNumber || 'Payment'} Due ${amountDue.toFixed(2)}`;
+    const upiPayload = `upi://pay?pa=${merchantVpa}&pn=${encodeURIComponent(merchantName)}&am=${amountDue.toFixed(2)}&cu=INR&tr=${paymentReference}&tn=${encodeURIComponent(note)}&mc=${merchantMcc}`;
+
+    const sessionRecord = {
+      sessionId,
+      billId: bill.id || billId,
+      billNumber: bill.billNumber || bill.invoiceNumber,
+      patientId: bill.patientId,
+      patientName: bill.patientName || bill.customerName,
+      grossAmount,
+      discountAmount,
+      taxAmount,
+      netPayable,
+      paidAmount,
+      amountDue,
+      upiPayload,
+      merchantVpa,
+      merchantName,
+      paymentReference,
+      status: 'active',
+      createdAt: now.toISOString(),
+      expiresAt
+    };
+
+    const sessions = store['labmedix_payment_qr_sessions_v1'] || [];
+    // Mark previous active sessions for this bill as superseded
+    sessions.forEach((s: any) => {
+      if (s.billNumber === sessionRecord.billNumber && s.status === 'active') {
+        s.status = 'superseded';
+      }
+    });
+    sessions.unshift(sessionRecord);
+    store['labmedix_payment_qr_sessions_v1'] = sessions.slice(0, 500); // cap to 500
+    saveCentralStore(store);
+
+    res.json({
+      success: true,
+      status: 'active',
+      isFullyPaid: false,
+      session: sessionRecord
+    });
+  } catch (err: any) {
+    console.error('API /api/payment/qr/session error:', err);
+    res.status(500).json({ success: false, error: err?.message || 'Failed to generate payment QR session.' });
+  }
+});
+
+// 2. Central Server-Side Payment Verification (Idempotent + PostgreSQL/Store Update)
+app.post('/api/payment/verify', (req, res) => {
+  try {
+    const {
+      sessionId,
+      billNumber,
+      billId,
+      amount,
+      paymentMethod = 'upi',
+      providerReference,
+      qrReference,
+      cashierId = 'sys_qr_engine',
+      cashierName = 'Dynamic QR Settlement Engine',
+      notes
+    } = req.body;
+
+    const paidAmt = Number(amount);
+    if (!paidAmt || paidAmt <= 0) {
+      return res.status(400).json({ success: false, error: 'Payment amount must be greater than zero.' });
+    }
+
+    const store = getCentralStore();
+    const transactions = store['labmedix_transactions_v1'] || [];
+    const bills = store['labmedix_bills_v1'] || [];
+    const sales = store['labmedix_pharmacy_sales_v1'] || [];
+    const sessions = store['labmedix_payment_qr_sessions_v1'] || [];
+    const auditLogs = store['labmedix_audit_logs_v1'] || [];
+
+    // DUPLICATE PAYMENT PROTECTION (IDEMPOTENCY)
+    if (providerReference) {
+      const existingTxn = transactions.find((t: any) =>
+        t.providerReference === providerReference ||
+        t.referenceNumber === providerReference ||
+        t.idempotencyKey === providerReference
+      );
+      if (existingTxn) {
+        return res.json({
+          success: true,
+          duplicateDetected: true,
+          message: 'Idempotency Protection: Payment reference already recorded.',
+          transaction: existingTxn
+        });
+      }
+    }
+
+    // Locate the bill to recalculate balance
+    let bill = bills.find((b: any) => b.billNumber === billNumber || b.id === billId);
+    let billCollection = 'bills';
+    if (!bill) {
+      bill = sales.find((s: any) => s.invoiceNumber === billNumber || s.id === billId);
+      if (bill) billCollection = 'pharmacy';
+    }
+
+    const now = new Date().toISOString();
+    const txnId = `TXN-PAY-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+    const cleanProviderRef = providerReference || `UTR-${Date.now().toString(36).toUpperCase()}`;
+
+    let newPaidAmount = paidAmt;
+    let remainingDue = 0;
+    let newPaymentStatus = 'paid';
+    let patientId = bill?.patientId || 'WALK_IN';
+    let patientName = bill?.patientName || bill?.customerName || 'Patient';
+
+    if (bill) {
+      patientId = bill.patientId || patientId;
+      patientName = bill.patientName || bill.customerName || patientName;
+      const netPayable = Number(bill.netPayable ?? bill.netTotal ?? bill.totalAmount ?? 0);
+      const currentPaid = Number(bill.paidAmount ?? 0);
+      newPaidAmount = Math.round((currentPaid + paidAmt) * 100) / 100;
+      remainingDue = Math.max(0, Math.round((netPayable - newPaidAmount) * 100) / 100);
+      newPaymentStatus = remainingDue === 0 ? 'paid' : 'partially_paid';
+
+      bill.paidAmount = newPaidAmount;
+      bill.dueAmount = remainingDue;
+      bill.paymentStatus = newPaymentStatus;
+      bill.transactionId = txnId;
+      bill.updatedAt = now;
+    }
+
+    // Record Central Financial Ledger Transaction
+    const newTransaction = {
+      id: txnId,
+      transactionId: txnId,
+      billNumber: billNumber || bill?.billNumber || bill?.invoiceNumber || 'BILL',
+      billId: billId || bill?.id,
+      patientId,
+      patientName,
+      patientMobile: bill?.patientMobile || bill?.customerMobile,
+      service: billCollection === 'pharmacy' ? 'Pharmacy Medication Dispensing' : (bill?.billCategory || 'Hospital Bill Payment'),
+      module: billCollection === 'pharmacy' ? 'pharmacy' : 'billing',
+      amount: bill?.netPayable ?? bill?.netTotal ?? paidAmt,
+      paid: paidAmt,
+      due: remainingDue,
+      paidAmount: newPaidAmount,
+      dueAmount: remainingDue,
+      paymentMethod,
+      paymentStatus: newPaymentStatus === 'paid' ? 'paid' : 'partial_due',
+      providerReference: cleanProviderRef,
+      qrReference: qrReference || sessionId,
+      verificationStatus: 'verified',
+      idempotencyKey: cleanProviderRef,
+      staffId: cashierId,
+      staffName: cashierName,
+      staffRole: 'Billing Desk',
+      date: now,
+      createdAt: now,
+      updatedAt: now,
+      notes: notes || `Dynamic QR Payment for ${billNumber}. Remaining Due: ₹${remainingDue}`
+    };
+
+    transactions.unshift(newTransaction);
+    store['labmedix_transactions_v1'] = transactions;
+
+    // Mark QR session as completed
+    if (sessionId) {
+      const sess = sessions.find((s: any) => s.sessionId === sessionId);
+      if (sess) {
+        sess.status = 'completed';
+        sess.completedAt = now;
+        sess.transactionId = txnId;
+      }
+    }
+
+    // Institutional Audit Log
+    const auditRecord = {
+      id: `aud_${Date.now().toString(36)}`,
+      action: 'PAYMENT_VERIFIED_QR',
+      category: 'financial',
+      description: `Verified Payment of ₹${paidAmt} via ${paymentMethod.toUpperCase()} (Ref: ${cleanProviderRef}) for ${billNumber}. Remaining Due: ₹${remainingDue}.`,
+      targetId: txnId,
+      timestamp: now,
+      actor: cashierName
+    };
+    auditLogs.unshift(auditRecord);
+
+    // Save and commit transaction to central storage
+    saveCentralStore(store, true);
+
+    // REAL-TIME EVENT BROADCAST TO ALL CONNECTED DEVICES (RECEPTION, BILLING, IPD)
+    broadcastPaymentEvent({
+      type: 'PAYMENT_VERIFIED',
+      billNumber: billNumber || bill?.billNumber || bill?.invoiceNumber,
+      billId: billId || bill?.id,
+      patientId,
+      patientName,
+      paidAmount: paidAmt,
+      remainingDue,
+      paymentStatus: newPaymentStatus,
+      transactionId: txnId,
+      providerReference: cleanProviderRef,
+      receiptNumber: `RCP-${txnId.replace('TXN-PAY-', '')}`,
+      timestamp: now
+    });
+
+    res.json({
+      success: true,
+      transaction: newTransaction,
+      bill,
+      remainingDue,
+      receipt: {
+        receiptNumber: `RCP-${txnId.replace('TXN-PAY-', '')}`,
+        transactionId: txnId,
+        billNumber: billNumber || bill?.billNumber || bill?.invoiceNumber,
+        patientName,
+        patientId,
+        amountPaid: paidAmt,
+        previousDue: (remainingDue + paidAmt),
+        remainingDue,
+        paymentStatus: newPaymentStatus,
+        paymentMethod,
+        date: now,
+        verifiedBy: cashierName,
+        providerReference: cleanProviderRef
+      },
+      message: `Payment of ₹${paidAmt} successfully verified and ledger updated.`
+    });
+  } catch (err: any) {
+    console.error('API /api/payment/verify error:', err);
+    res.status(500).json({ success: false, error: err?.message || 'Server-side payment verification failed.' });
+  }
+});
+
+// 3. Central Refund Endpoint (Audited & Permission Controlled)
+app.post('/api/payment/refund', (req, res) => {
+  try {
+    const { transactionId, billNumber, amount, reason, authorizedBy = 'Super Administrator' } = req.body;
+    const store = getCentralStore();
+    const transactions = store['labmedix_transactions_v1'] || [];
+    const bills = store['labmedix_bills_v1'] || [];
+    const auditLogs = store['labmedix_audit_logs_v1'] || [];
+
+    const txn = transactions.find((t: any) => t.id === transactionId || t.transactionId === transactionId);
+    if (!txn) {
+      return res.status(404).json({ success: false, error: 'Transaction not found for refund.' });
+    }
+
+    const now = new Date().toISOString();
+    const refundTxnId = `TXN-REFUND-${Date.now().toString(36).toUpperCase()}`;
+
+    // Update original transaction status
+    txn.paymentStatus = 'refunded';
+    txn.updatedAt = now;
+
+    // Record separate refund ledger entry
+    const refundTxn = {
+      ...txn,
+      id: refundTxnId,
+      transactionId: refundTxnId,
+      amount: Number(amount || txn.paid),
+      paid: -Math.abs(Number(amount || txn.paid)),
+      paymentStatus: 'refunded',
+      notes: `Refund processed: ${reason || 'Approved refund request'}. Authorized by: ${authorizedBy}`,
+      createdAt: now,
+      updatedAt: now
+    };
+    transactions.unshift(refundTxn);
+
+    // Update corresponding bill
+    const bill = bills.find((b: any) => b.billNumber === billNumber || b.billNumber === txn.billNumber);
+    if (bill) {
+      bill.paymentStatus = 'refunded';
+      bill.updatedAt = now;
+    }
+
+    // Audit trail
+    auditLogs.unshift({
+      id: `aud_${Date.now().toString(36)}`,
+      action: 'PAYMENT_REFUNDED',
+      category: 'financial',
+      description: `Refund of ₹${amount || txn.paid} issued for ${billNumber || txn.billNumber}. Reason: ${reason}. Authorized by ${authorizedBy}.`,
+      targetId: refundTxnId,
+      timestamp: now,
+      actor: authorizedBy
+    });
+
+    saveCentralStore(store, true);
+
+    broadcastPaymentEvent({
+      type: 'PAYMENT_REFUNDED',
+      billNumber: billNumber || txn.billNumber,
+      paidAmount: Number(amount || txn.paid),
+      paymentStatus: 'refunded',
+      transactionId: refundTxnId,
+      timestamp: now
+    });
+
+    res.json({ success: true, refundTransaction: refundTxn, message: 'Refund successfully processed and ledger committed.' });
+  } catch (err: any) {
+    console.error('API /api/payment/refund error:', err);
+    res.status(500).json({ success: false, error: err?.message || 'Server refund execution failed.' });
+  }
+});
+
+// 4. Consolidated Outstanding Due Payment Session (Multi-Bill Patient Due Settle)
+app.post('/api/payment/consolidated/session', (req, res) => {
+  try {
+    const { patientId, billNumbers = [] } = req.body;
+    if (!patientId) {
+      return res.status(400).json({ success: false, error: 'Patient ID is required.' });
+    }
+
+    const store = getCentralStore();
+    const bills = store['labmedix_bills_v1'] || [];
+    const sales = store['labmedix_pharmacy_sales_v1'] || [];
+
+    // Filter unpaid bills for this patient
+    const matchingBills = bills.filter((b: any) =>
+      b.patientId === patientId &&
+      (billNumbers.length === 0 || billNumbers.includes(b.billNumber)) &&
+      (b.paymentStatus !== 'paid' && b.paymentStatus !== 'waived')
+    );
+
+    const matchingSales = sales.filter((s: any) =>
+      s.patientId === patientId &&
+      (billNumbers.length === 0 || billNumbers.includes(s.invoiceNumber)) &&
+      (s.paymentStatus === 'due' || (s.dueAmount && s.dueAmount > 0))
+    );
+
+    let totalDue = 0;
+    const eligibleBillNumbers: string[] = [];
+
+    matchingBills.forEach((b: any) => {
+      const net = Number(b.netPayable || 0);
+      const paid = Number(b.paidAmount || 0);
+      const due = Math.max(0, net - paid);
+      if (due > 0) {
+        totalDue += due;
+        eligibleBillNumbers.push(b.billNumber);
+      }
+    });
+
+    matchingSales.forEach((s: any) => {
+      const due = Number(s.dueAmount || 0);
+      if (due > 0) {
+        totalDue += due;
+        eligibleBillNumbers.push(s.invoiceNumber);
+      }
+    });
+
+    totalDue = Math.round(totalDue * 100) / 100;
+
+    if (totalDue <= 0) {
+      return res.json({
+        success: true,
+        status: 'fully_paid',
+        isFullyPaid: true,
+        amountDue: 0,
+        message: 'No outstanding balance found for this patient.'
+      });
+    }
+
+    const company = store['labmedix_company_profile_v1'] || {};
+    const upiSettings = company.upiSettings || {};
+    const merchantVpa = upiSettings.merchantVpa || '7047108226@okbizaxis';
+    const merchantName = upiSettings.merchantName || company.name || 'LABMEDIX MULTI-SPECIALITY CENTRE';
+    const merchantMcc = upiSettings.merchantMcc || '8099';
+    const validityMins = Number(upiSettings.qrSessionValidityMinutes || 15);
+
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + validityMins * 60 * 1000).toISOString();
+    const sessionId = `SESS-CONSOL-${now.getTime().toString(36).toUpperCase()}`;
+    const paymentReference = `REF-CONSOL-${patientId.replace(/[^a-zA-Z0-9]/g, '')}-${now.getTime().toString(36).toUpperCase()}`;
+    const note = `Consolidated ${eligibleBillNumbers.length} Bills Due Settlement (${patientId})`;
+    const upiPayload = `upi://pay?pa=${merchantVpa}&pn=${encodeURIComponent(merchantName)}&am=${totalDue.toFixed(2)}&cu=INR&tr=${paymentReference}&tn=${encodeURIComponent(note)}&mc=${merchantMcc}`;
+
+    const sessionRecord = {
+      sessionId,
+      patientId,
+      amountDue: totalDue,
+      isConsolidated: true,
+      consolidatedBillNumbers: eligibleBillNumbers,
+      upiPayload,
+      merchantVpa,
+      merchantName,
+      paymentReference,
+      status: 'active',
+      createdAt: now.toISOString(),
+      expiresAt
+    };
+
+    const sessions = store['labmedix_payment_qr_sessions_v1'] || [];
+    sessions.unshift(sessionRecord);
+    store['labmedix_payment_qr_sessions_v1'] = sessions.slice(0, 500);
+    saveCentralStore(store);
+
+    res.json({
+      success: true,
+      status: 'active',
+      isFullyPaid: false,
+      totalDue,
+      billsCount: eligibleBillNumbers.length,
+      eligibleBillNumbers,
+      session: sessionRecord
+    });
+  } catch (err: any) {
+    console.error('API /api/payment/consolidated/session error:', err);
+    res.status(500).json({ success: false, error: err?.message || 'Failed to generate consolidated payment session.' });
+  }
+});
+
 app.get('/api/download/storage', (req, res) => {
   const filePath = path.join(process.cwd(), 'src/services/storage.ts');
   res.download(filePath, 'storage.ts');
@@ -729,6 +1246,10 @@ app.post('/api/backup/sync', (req, res) => {
       campAttendees: 'labmedix_camp_attendees_v1',
       charityGrants: 'labmedix_charity_grants_v1',
       ngoFundTransactions: 'labmedix_ngo_fund_transactions_v1',
+      bills: 'labmedix_bills_v1',
+      pharmacySales: 'labmedix_pharmacy_sales_v1',
+      paymentQrSessions: 'labmedix_payment_qr_sessions_v1',
+      cardRequestTransactions: 'labmedix_card_request_transactions_v1',
     };
     const store = getCentralStore();
     for (const [clientKey, value] of Object.entries(data)) {

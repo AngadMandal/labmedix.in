@@ -14,6 +14,10 @@ import { StandardHalfPageBill } from '../../components/billing/StandardHalfPageB
 import { UniversalInvoiceModal } from '../../components/billing/UniversalInvoiceModal';
 import { UniversalInvoiceService } from '../../services/universalInvoiceService';
 import { InvoiceRenderService } from '../../services/invoiceRenderService';
+import { CentralPaymentQREngine, CentralPaymentReceipt } from '../../services/centralPaymentQREngine';
+import { PatientConsolidatedDueModal } from '../../components/payment/PatientConsolidatedDueModal';
+import { PaymentSettlementVerifyModal } from '../../components/payment/PaymentSettlementVerifyModal';
+import { CentralPaymentReceiptModal } from '../../components/payment/CentralPaymentReceiptModal';
 import {
   Receipt,
   Search,
@@ -35,7 +39,8 @@ import {
   ShieldCheck,
   Sparkles,
   Lock,
-  ShieldAlert
+  ShieldAlert,
+  Layers
 } from 'lucide-react';
 
 export const BillingPage: React.FC = () => {
@@ -57,6 +62,39 @@ export const BillingPage: React.FC = () => {
   // Modals
   const [printBill, setPrintBill] = useState<PatientBill | null>(null);
   const [isNewBillModalOpen, setIsNewBillModalOpen] = useState(false);
+  const [consolidatedModalPatient, setConsolidatedModalPatient] = useState<Patient | null>(null);
+  const [verifyModalBill, setVerifyModalBill] = useState<PatientBill | null>(null);
+  const [activeReceipt, setActiveReceipt] = useState<CentralPaymentReceipt | null>(null);
+  const [isPatientSelectOpen, setIsPatientSelectOpen] = useState(false);
+  const [patientConsolidatedSearch, setPatientConsolidatedSearch] = useState('');
+
+  // Pre-calculate patients with active dues for consolidated modal
+  const patientsWithDueSummary = useMemo(() => {
+    const map = new Map<string, { patient: Patient; dueCount: number; totalDue: number }>();
+    bills.forEach(b => {
+      const due = (b.balanceAmount !== undefined ? b.balanceAmount : (b.netPayable - (b.paidAmount || 0)));
+      if (b.paymentStatus !== 'paid' && due > 0) {
+        const p = patients.find(patient => patient.id === b.patientId);
+        if (p) {
+          const cur = map.get(p.id) || { patient: p, dueCount: 0, totalDue: 0 };
+          cur.dueCount += 1;
+          cur.totalDue += due;
+          map.set(p.id, cur);
+        }
+      }
+    });
+    return Array.from(map.values());
+  }, [bills, patients]);
+
+  const filteredPatientsWithDues = useMemo(() => {
+    const q = patientConsolidatedSearch.toLowerCase().trim();
+    if (!q) return patientsWithDueSummary;
+    return patientsWithDueSummary.filter(item =>
+      item.patient.fullName.toLowerCase().includes(q) ||
+      (item.patient.mobile && item.patient.mobile.includes(q)) ||
+      (item.patient.uhid && item.patient.uhid.toLowerCase().includes(q))
+    );
+  }, [patientsWithDueSummary, patientConsolidatedSearch]);
 
   // New Bill Form State
   const [selectedPatientId, setSelectedPatientId] = useState('');
@@ -84,11 +122,17 @@ export const BillingPage: React.FC = () => {
         setPatients(StorageService.getPatients());
       }
     };
-    window.addEventListener('labmedix_data_synced', handleSync as EventListener);
+    const handlePaymentUpdate = () => {
+      setBills(StorageService.getBills());
+    };
+    const unsubPayment = CentralPaymentQREngine.subscribe(handlePaymentUpdate);
+    window.addEventListener('labmedix_payment_updated', handlePaymentUpdate);
 
     return () => {
       unsub();
+      unsubPayment();
       window.removeEventListener('labmedix_data_synced', handleSync as EventListener);
+      window.removeEventListener('labmedix_payment_updated', handlePaymentUpdate);
     };
   }, []);
 
@@ -346,6 +390,14 @@ export const BillingPage: React.FC = () => {
 
         <div className="flex items-center gap-3 flex-wrap">
           <button
+            onClick={() => setIsPatientSelectOpen(true)}
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-indigo-900/60 hover:bg-indigo-800 text-indigo-200 text-xs font-bold border border-indigo-500/40 transition shadow-sm"
+          >
+            <Layers className="w-4 h-4 text-indigo-400" />
+            <span>Consolidated Dues QR</span>
+          </button>
+
+          <button
             onClick={handleRefresh}
             disabled={isRefreshing}
             className="inline-flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold border border-slate-700 transition shadow-sm disabled:opacity-50"
@@ -546,6 +598,16 @@ export const BillingPage: React.FC = () => {
 
                       <td className="px-4 py-3 text-right">
                         <div className="flex items-center justify-end gap-1.5">
+                          {bill.paymentStatus !== 'paid' && (
+                            <button
+                              onClick={() => setVerifyModalBill(bill)}
+                              className="p-1.5 rounded-lg bg-emerald-950 hover:bg-emerald-900 border border-emerald-500/40 text-emerald-300 hover:text-white transition flex items-center gap-1 text-xs font-bold"
+                              title="Verify Payment Settlement (UTR / Cash)"
+                            >
+                              <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+                              <span>Settle</span>
+                            </button>
+                          )}
                           <button
                             onClick={() => setPrintBill(bill)}
                             className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-300 hover:text-white transition flex items-center gap-1 text-xs font-bold"
@@ -781,6 +843,163 @@ export const BillingPage: React.FC = () => {
           )}
           company={company}
         />
+      )}
+
+      {/* Payment Settlement UTR / Cash Verification Modal */}
+      {verifyModalBill && (
+        <PaymentSettlementVerifyModal
+          isOpen={!!verifyModalBill}
+          onClose={() => setVerifyModalBill(null)}
+          billNumber={verifyModalBill.billNumber}
+          billId={verifyModalBill.id}
+          amountDue={verifyModalBill.balanceAmount !== undefined ? verifyModalBill.balanceAmount : Math.max(0, verifyModalBill.netPayable - (verifyModalBill.paidAmount || 0))}
+          patientName={verifyModalBill.patientName}
+          patientId={verifyModalBill.patientId}
+          onSettled={(receipt: CentralPaymentReceipt) => {
+            setBills(StorageService.getBills());
+            setActiveReceipt(receipt);
+            setVerifyModalBill(null);
+            showToast('success', 'Payment Settled', `Bill #${verifyModalBill.billNumber} has been marked paid.`);
+          }}
+        />
+      )}
+
+      {/* Patient Consolidated Multi-Bill Due Payment Modal */}
+      {consolidatedModalPatient && (
+        <PatientConsolidatedDueModal
+          isOpen={!!consolidatedModalPatient}
+          onClose={() => setConsolidatedModalPatient(null)}
+          patient={consolidatedModalPatient}
+          company={company}
+          unpaidBills={bills
+            .filter(b => b.patientId === consolidatedModalPatient.id && b.paymentStatus !== 'paid' && (b.balanceAmount !== undefined ? b.balanceAmount : (b.netPayable - (b.paidAmount || 0))) > 0)
+            .map(b => {
+              const due = b.balanceAmount !== undefined ? b.balanceAmount : Math.max(0, b.netPayable - (b.paidAmount || 0));
+              return {
+                billNumber: b.billNumber,
+                category: b.billCategory || 'general',
+                date: b.createdAt || b.date,
+                netPayable: b.netPayable,
+                paidAmount: b.paidAmount || 0,
+                dueAmount: due
+              };
+            })
+          }
+          onSettled={(receipt: CentralPaymentReceipt) => {
+            setBills(StorageService.getBills());
+            setActiveReceipt(receipt);
+            setConsolidatedModalPatient(null);
+            showToast('success', 'Consolidated Dues Settled', `All selected bills cleared for ${consolidatedModalPatient.fullName}.`);
+          }}
+        />
+      )}
+
+      {/* Official Central Payment Receipt Modal */}
+      {activeReceipt && (
+        <CentralPaymentReceiptModal
+          isOpen={!!activeReceipt}
+          onClose={() => setActiveReceipt(null)}
+          receipt={activeReceipt}
+        />
+      )}
+
+      {/* Select Patient Modal for Consolidated Dues */}
+      {isPatientSelectOpen && (
+        <Modal
+          isOpen={isPatientSelectOpen}
+          onClose={() => {
+            setIsPatientSelectOpen(false);
+            setPatientConsolidatedSearch('');
+          }}
+          title="Select Patient for Consolidated Due Payment"
+          maxWidth="lg"
+        >
+          <div className="space-y-4 text-xs">
+            <div className="p-3 rounded-xl bg-indigo-950/40 border border-indigo-500/20 text-indigo-300 space-y-1">
+              <div className="flex items-center gap-2 font-bold text-white">
+                <Layers className="w-4 h-4 text-indigo-400" />
+                <span>Consolidated Multi-Bill Settlement</span>
+              </div>
+              <p className="text-[11px] text-slate-300">
+                Select a patient with pending dues to generate a single unified Payment QR settling multiple hospital bills in one transaction.
+              </p>
+            </div>
+
+            <div className="relative">
+              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                type="text"
+                value={patientConsolidatedSearch}
+                onChange={(e) => setPatientConsolidatedSearch(e.target.value)}
+                placeholder="Search patient by name, mobile, or UHID..."
+                className="w-full pl-9 pr-3 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white placeholder-slate-500 focus:border-indigo-500 focus:outline-none"
+              />
+            </div>
+
+            <div className="max-h-80 overflow-y-auto space-y-2 rounded-xl bg-slate-950 p-2 border border-slate-800">
+              {filteredPatientsWithDues.length === 0 ? (
+                <div className="py-8 text-center text-slate-400 space-y-2">
+                  <CheckCircle2 className="w-8 h-8 text-emerald-400/50 mx-auto" />
+                  <p className="font-bold text-slate-300">No Patients with Pending Dues</p>
+                  <p className="text-[11px] text-slate-500">All registered patient bills are currently settled and paid in full.</p>
+                </div>
+              ) : (
+                filteredPatientsWithDues.map(({ patient, dueCount, totalDue }) => (
+                  <div
+                    key={patient.id}
+                    onClick={() => {
+                      setConsolidatedModalPatient(patient);
+                      setIsPatientSelectOpen(false);
+                      setPatientConsolidatedSearch('');
+                    }}
+                    className="p-3 rounded-xl bg-slate-900/80 hover:bg-indigo-950/60 border border-slate-800 hover:border-indigo-500/40 cursor-pointer transition flex items-center justify-between group"
+                  >
+                    <div className="space-y-0.5">
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-white text-sm group-hover:text-indigo-200 transition">
+                          {patient.fullName}
+                        </span>
+                        {patient.uhid && (
+                          <span className="px-1.5 py-0.5 rounded bg-slate-800 text-[10px] font-mono text-slate-400">
+                            {patient.uhid}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-3 text-slate-400 text-[11px]">
+                        <span>Ph: {patient.mobile || 'N/A'}</span>
+                        <span>•</span>
+                        <span className="text-amber-400 font-semibold">{dueCount} unpaid {dueCount === 1 ? 'bill' : 'bills'}</span>
+                      </div>
+                    </div>
+
+                    <div className="text-right">
+                      <div className="text-sm font-black text-rose-400 font-mono">
+                        {formatCurrency(totalDue)}
+                      </div>
+                      <span className="inline-flex items-center gap-1 text-[10px] font-bold text-indigo-400 group-hover:underline">
+                        <span>Open QR</span>
+                        <QrCode className="w-3 h-3" />
+                      </span>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <div className="flex justify-end pt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsPatientSelectOpen(false);
+                  setPatientConsolidatedSearch('');
+                }}
+                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </Modal>
       )}
     </div>
   );

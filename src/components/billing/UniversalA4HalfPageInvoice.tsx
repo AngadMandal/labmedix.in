@@ -3,6 +3,7 @@ import { CompanyProfile } from '../../types';
 import { UniversalInvoiceData, UniversalInvoiceItem } from '../../types/invoice';
 import { formatCurrency, formatDateTime, formatDate } from '../../utils/formatters';
 import { RealBarcode } from '../common/RealBarcode';
+import { CentralBillPaymentQR } from '../payment/CentralBillPaymentQR';
 import { ShieldCheck, Stethoscope, Pill, FlaskConical, Scissors } from 'lucide-react';
 
 interface UniversalA4HalfPageInvoiceProps {
@@ -12,6 +13,8 @@ interface UniversalA4HalfPageInvoiceProps {
   onDownloadPdf?: () => void;
   onClose?: () => void;
   isReprint?: boolean;
+  onPaymentSuccess?: (receiptData: any) => void;
+  onOpenVerifyModal?: () => void;
 }
 
 export const UniversalA4HalfPageInvoice: React.FC<UniversalA4HalfPageInvoiceProps> = ({
@@ -20,7 +23,9 @@ export const UniversalA4HalfPageInvoice: React.FC<UniversalA4HalfPageInvoiceProp
   onPrint,
   onDownloadPdf,
   onClose,
-  isReprint = false
+  isReprint = false,
+  onPaymentSuccess,
+  onOpenVerifyModal
 }) => {
   // Max items per half-page: 6 items for normal height bills, pagination fallback for long bills
   const ITEMS_PER_HALF_PAGE = 6;
@@ -305,10 +310,12 @@ export const UniversalA4HalfPageInvoice: React.FC<UniversalA4HalfPageInvoiceProp
               </div>
 
               {/* 4. FINANCIAL BREAKDOWN & SUMMARY (On Last Page) */}
+              {/* 4. FINANCIAL BREAKDOWN, PAYMENT QR & SUMMARY (On Last Page) */}
               {isLastPage ? (
-                <div className="border-t-2 border-slate-900 pt-1.5 grid grid-cols-2 gap-4 text-[9px] relative z-10">
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-1.5">
+                <div className="border-t-2 border-slate-900 pt-1.5 grid grid-cols-12 gap-2.5 text-[9px] relative z-10 items-start">
+                  {/* Left: Status, Terms & Notes */}
+                  <div className="col-span-5 space-y-1">
+                    <div className="flex items-center gap-1.5 flex-wrap">
                       <span className="text-slate-600">Status:</span>
                       <span className={`px-1.5 py-0.2 rounded text-[8px] font-black uppercase font-mono ${
                         invoice.paymentStatus === 'paid'
@@ -327,26 +334,44 @@ export const UniversalA4HalfPageInvoice: React.FC<UniversalA4HalfPageInvoiceProp
                     </div>
 
                     {invoice.terms && invoice.terms.length > 0 ? (
-                      <div className="text-[7.5px] text-slate-500 leading-tight">
+                      <div className="text-[7px] text-slate-500 leading-tight">
                         {invoice.terms.map((term, tIdx) => (
                           <p key={tIdx}>• {term}</p>
                         ))}
                       </div>
                     ) : (
-                      <div className="text-[7.5px] text-slate-400 italic">
+                      <div className="text-[7px] text-slate-400 italic">
                         * Computer generated tax invoice. Valid without physical rubber stamp.
                       </div>
                     )}
 
                     {invoice.notes && (
-                      <div className="text-[8px] text-slate-600 bg-slate-50 p-1 rounded border border-slate-200">
+                      <div className="text-[7.5px] text-slate-600 bg-slate-50 p-1 rounded border border-slate-200">
                         <strong>Note:</strong> {invoice.notes}
                       </div>
                     )}
                   </div>
 
-                  {/* Financial Breakdown / Discount Engine */}
-                  <div className="space-y-0.5 font-mono text-right text-[8.5px]">
+                  {/* Center: Central Bill Dynamic Payment QR Engine */}
+                  <div className="col-span-3 flex justify-center">
+                    <CentralBillPaymentQR
+                      billNumber={invoice.invoiceNumber}
+                      billId={invoice.transactionId}
+                      amountDue={invoice.dueAmount !== undefined ? invoice.dueAmount : Math.max(0, invoice.netPayable - invoice.paidAmount)}
+                      netPayable={invoice.netPayable}
+                      paidAmount={invoice.paidAmount}
+                      paymentStatus={invoice.paymentStatus}
+                      patientName={invoice.patientName}
+                      patientId={invoice.patientId}
+                      company={company}
+                      onPaymentSuccess={onPaymentSuccess}
+                      onOpenVerifyModal={onOpenVerifyModal}
+                      className="w-full max-w-[42mm]"
+                    />
+                  </div>
+
+                  {/* Right: Financial Breakdown / Discount Engine */}
+                  <div className="col-span-4 space-y-0.5 font-mono text-right text-[8.5px]">
                     <div className="flex justify-between text-slate-600">
                       <span className="font-sans">Gross Amount:</span>
                       <span>{formatCurrency(invoice.grossAmount)}</span>
@@ -354,14 +379,14 @@ export const UniversalA4HalfPageInvoice: React.FC<UniversalA4HalfPageInvoiceProp
 
                     {invoice.healthCardDiscount > 0 && (
                       <div className="flex justify-between text-emerald-700 font-bold">
-                        <span className="font-sans">Health Card Discount:</span>
+                        <span className="font-sans">Health Card Disc:</span>
                         <span>- {formatCurrency(invoice.healthCardDiscount)}</span>
                       </div>
                     )}
 
                     {invoice.otherDiscount > 0 && (
                       <div className="flex justify-between text-emerald-700">
-                        <span className="font-sans">Other Approved Discount:</span>
+                        <span className="font-sans">Other Disc:</span>
                         <span>- {formatCurrency(invoice.otherDiscount)}</span>
                       </div>
                     )}
@@ -380,7 +405,7 @@ export const UniversalA4HalfPageInvoice: React.FC<UniversalA4HalfPageInvoiceProp
                       </div>
                     )}
 
-                    <div className="flex justify-between text-[11px] font-black text-slate-950 border-t border-slate-400 pt-0.5">
+                    <div className="flex justify-between text-[10.5px] font-black text-slate-950 border-t border-slate-400 pt-0.5">
                       <span className="font-sans">NET PAYABLE:</span>
                       <span>{formatCurrency(invoice.netPayable)}</span>
                     </div>

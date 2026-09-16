@@ -274,6 +274,7 @@ export interface BloodGroupHistoryEntry {
 
 export interface Patient {
   id: string; // e.g. LMDX-2026-000001
+  uhid?: string; // Canonical alias for hospital patient ID
   fullName: string;
   dob: string;
   age: number;
@@ -822,7 +823,8 @@ export interface PatientBill {
   discountAmount: number;
   netPayable: number;
   paidAmount: number;
-  paymentStatus: 'paid' | 'pending' | 'waived';
+  balanceAmount?: number;
+  paymentStatus: 'paid' | 'pending' | 'waived' | 'partially_paid';
   paymentMethod: 'cash' | 'upi' | 'card' | 'netbanking' | 'wallet';
   transactionId?: string;
   authorizedStaff: {
@@ -853,8 +855,15 @@ export interface UpiMerchantSettings {
   merchantVpa: string;
   merchantName: string;
   merchantMcc?: string;
+  paymentProvider?: 'direct_upi' | 'icici_merchant' | 'razorpay' | 'phonepe' | 'paytm' | 'cashfree';
   googlePayMerchantId?: string;
   googlePayBusinessName?: string;
+  qrSessionValidityMinutes?: number;
+  allowedPaymentMethods?: string[];
+  webhookSecret?: string;
+  webhookUrl?: string;
+  receiptFooterNotice?: string;
+  enableConsolidatedQr?: boolean;
   enableDeepLinks?: boolean;
   autoVerifySimulation?: boolean;
 }
@@ -1832,7 +1841,7 @@ export interface CentralTransaction {
   patientName: string;
   patientMobile?: string;
   service: string;
-  module: 'consultation' | 'laboratory' | 'pharmacy' | 'cards' | 'family' | 'wallet' | 'opd' | 'lab' | 'other' | 'general';
+  module: 'consultation' | 'laboratory' | 'pharmacy' | 'cards' | 'family' | 'wallet' | 'opd' | 'lab' | 'other' | 'general' | 'billing';
   relatedModule?: string;
   amount: number;
   discount?: number;
@@ -1854,6 +1863,12 @@ export interface CentralTransaction {
   updatedAt?: string;
   notes?: string;
   referenceNo?: string;
+  qrReference?: string;
+  providerReference?: string; // Bank UTR / Gateway Txn ID
+  verifiedAt?: string;
+  verificationStatus?: 'pending' | 'verified' | 'rejected' | 'manual_override';
+  sessionId?: string;
+  receiptNumber?: string;
   lineItems?: Array<{ description: string; quantity: number; unitPrice: number; total: number }>;
 }
 

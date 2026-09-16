@@ -5,7 +5,7 @@ import { CardService } from '../../services/cardService';
 import { StorageService } from '../../services/storage';
 import { WalletService } from '../../services/walletService';
 import { EMRService } from '../../services/emrService';
-import { Patient, PatientAppointment, ClinicalEncounter, Membership } from '../../types';
+import { Patient, PatientAppointment, ClinicalEncounter, Membership, PatientBill } from '../../types';
 import { PortalService, BloodTestBooking, MedicineOrder, PatientReceiptData, BloodTestBookingItem } from '../../services/portalService';
 import { AuditService } from '../../services/auditService';
 import { CardholderAuthService, CARDHOLDER_SESSION_KEY } from '../../services/cardholderAuthService';
@@ -28,6 +28,9 @@ import { ApplicationStatusTrackModal } from '../../components/portal/Application
 import { Portal3DLoginScreen } from '../../components/portal/Portal3DLoginScreen';
 import { DirectLabAndPackageBookingModal } from '../../components/portal/DirectLabAndPackageBookingModal';
 import { DirectMedicineOrderModal } from '../../components/portal/DirectMedicineOrderModal';
+import { UniversalInvoiceModal } from '../../components/billing/UniversalInvoiceModal';
+import { UniversalInvoiceService } from '../../services/universalInvoiceService';
+import { PatientConsolidatedDueModal } from '../../components/payment/PatientConsolidatedDueModal';
 import { CatalogService } from '../../services/catalogService';
 import { FamilyService } from '../../services/familyService';
 import { PatientRecordPdfService } from '../../services/patientRecordPdfService';
@@ -105,7 +108,8 @@ import {
   Users2,
   UserPlus,
   Radio,
-  Wifi
+  Wifi,
+  Layers
 } from 'lucide-react';
 
 export const PatientPortalPage: React.FC = () => {
@@ -156,11 +160,12 @@ export const PatientPortalPage: React.FC = () => {
   const [showApplyCardModal, setShowApplyCardModal] = useState(false);
   const [showTrackStatusModal, setShowTrackStatusModal] = useState(false);
 
-  // Active Print / View Modals
   const [activePrescriptionToPrint, setActivePrescriptionToPrint] = useState<ClinicalEncounter | null>(null);
   const [activeLabReportToPrint, setActiveLabReportToPrint] = useState<BloodTestBooking | null>(null);
   const [activeTelemedRoom, setActiveTelemedRoom] = useState<PatientAppointment | null>(null);
   const [activeReceiptToPrint, setActiveReceiptToPrint] = useState<PatientReceiptData | null>(null);
+  const [selectedBillForInvoice, setSelectedBillForInvoice] = useState<PatientBill | null>(null);
+  const [isConsolidatedModalOpen, setIsConsolidatedModalOpen] = useState(false);
 
   // Search & Filter in History Tab
   const [historySearchTerm, setHistorySearchTerm] = useState('');
@@ -276,6 +281,25 @@ export const PatientPortalPage: React.FC = () => {
     if (!authenticatedPatient) return [];
     return WalletService.getTransactions(authenticatedPatient.id);
   }, [authenticatedPatient, wallet, showTopUpModal, dataSyncTick]);
+
+  const patientBills = useMemo(() => {
+    if (!authenticatedPatient) return [];
+    return StorageService.getBills().filter(b => b.patientId === authenticatedPatient.id);
+  }, [authenticatedPatient, dataSyncTick]);
+
+  const patientPendingBills = useMemo(() => {
+    return patientBills.filter(b => {
+      const due = b.balanceAmount !== undefined ? b.balanceAmount : (b.netPayable - (b.paidAmount || 0));
+      return b.paymentStatus !== 'paid' && due > 0;
+    });
+  }, [patientBills]);
+
+  const totalPatientDue = useMemo(() => {
+    return patientPendingBills.reduce((acc, b) => {
+      const due = b.balanceAmount !== undefined ? b.balanceAmount : (b.netPayable - (b.paidAmount || 0));
+      return acc + due;
+    }, 0);
+  }, [patientPendingBills]);
 
   const filteredWalletTransactions = useMemo(() => {
     return walletTransactions.filter((t) => {
@@ -2918,6 +2942,81 @@ export const PatientPortalPage: React.FC = () => {
             </div>
           </div>
 
+          {/* Outstanding Hospital Bills Due & Payment QR */}
+          {patientPendingBills.length > 0 && (
+            <div className="p-5 rounded-3xl bg-gradient-to-r from-amber-950/60 via-slate-900 to-rose-950/40 border border-amber-500/40 shadow-xl space-y-4">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-400 font-bold flex items-center justify-center border border-amber-400/30">
+                    <QrCode className="w-5 h-5 text-amber-400" />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-black text-white flex items-center gap-2">
+                      Outstanding Hospital Bills ({patientPendingBills.length})
+                      <span className="px-2 py-0.5 rounded-full text-[10px] bg-rose-500/20 text-rose-300 border border-rose-500/30">
+                        Immediate Action
+                      </span>
+                    </h4>
+                    <p className="text-xs text-slate-300">
+                      Total Outstanding Balance: <strong className="text-rose-400 font-mono text-sm">{formatCurrency(totalPatientDue)}</strong>. Scan payment QR code to settle dues instantly.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsConsolidatedModalOpen(true)}
+                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-black text-xs transition shadow-lg shadow-amber-500/20"
+                  >
+                    <Layers className="w-4 h-4 text-slate-950" />
+                    <span>Pay All Dues ({formatCurrency(totalPatientDue)})</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Pending Bills Quick Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                {patientPendingBills.map((bill) => {
+                  const due = bill.balanceAmount !== undefined ? bill.balanceAmount : (bill.netPayable - (bill.paidAmount || 0));
+                  return (
+                    <div
+                      key={bill.id}
+                      className="p-3.5 rounded-2xl bg-slate-900/90 border border-amber-500/30 flex flex-col justify-between space-y-3"
+                    >
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between">
+                          <span className="font-mono font-bold text-white text-xs">{bill.billNumber}</span>
+                          <span className="px-2 py-0.5 rounded text-[10px] uppercase font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                            {bill.paymentStatus}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-400 capitalize">{bill.billCategory?.replace('_', ' ') || 'Hospital Bill'}</p>
+                        <div className="text-[11px] text-slate-400 font-mono">{formatDate(bill.createdAt)}</div>
+                      </div>
+
+                      <div className="pt-2 border-t border-slate-800 flex items-center justify-between">
+                        <div>
+                          <div className="text-[10px] text-slate-400">Due Amount:</div>
+                          <div className="text-sm font-black text-rose-400 font-mono">{formatCurrency(due)}</div>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => setSelectedBillForInvoice(bill)}
+                          className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition flex items-center gap-1.5 shadow"
+                        >
+                          <QrCode className="w-3.5 h-3.5" />
+                          <span>Scan QR</span>
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           <div className="bg-slate-900 rounded-3xl border border-slate-800 overflow-hidden shadow-xl">
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs text-slate-300">
@@ -3321,6 +3420,49 @@ export const PatientPortalPage: React.FC = () => {
             </div>
           </form>
         </Modal>
+      )}
+
+      {/* 10. UNIVERSAL INVOICE WITH CENTRAL DYNAMIC PAYMENT QR MODAL */}
+      {selectedBillForInvoice && (
+        <UniversalInvoiceModal
+          isOpen={!!selectedBillForInvoice}
+          onClose={() => setSelectedBillForInvoice(null)}
+          invoice={UniversalInvoiceService.fromPatientBill(
+            selectedBillForInvoice,
+            company,
+            {
+              patient: authenticatedPatient,
+              card: patientCard || undefined
+            }
+          )}
+          company={company}
+        />
+      )}
+
+      {/* 11. PATIENT CONSOLIDATED DUE PAYMENT MODAL */}
+      {isConsolidatedModalOpen && authenticatedPatient && (
+        <PatientConsolidatedDueModal
+          isOpen={isConsolidatedModalOpen}
+          onClose={() => setIsConsolidatedModalOpen(false)}
+          patient={authenticatedPatient}
+          company={company}
+          unpaidBills={patientPendingBills.map(b => {
+            const due = b.balanceAmount !== undefined ? b.balanceAmount : Math.max(0, b.netPayable - (b.paidAmount || 0));
+            return {
+              billNumber: b.billNumber,
+              category: b.billCategory || 'general',
+              date: b.createdAt || b.date,
+              netPayable: b.netPayable,
+              paidAmount: b.paidAmount || 0,
+              dueAmount: due
+            };
+          })}
+          onSettled={() => {
+            setIsConsolidatedModalOpen(false);
+            setDataSyncTick(t => t + 1);
+            showToast('success', 'Dues Cleared!', 'All selected hospital bills have been successfully settled.');
+          }}
+        />
       )}
 
       {/* Hidden Export Elements for CR80 PDF capture */}

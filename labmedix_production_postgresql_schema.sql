@@ -598,15 +598,64 @@ CREATE TABLE IF NOT EXISTS financial_transactions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     transaction_no VARCHAR(50) NOT NULL UNIQUE,
     bill_id UUID REFERENCES bills(id) ON DELETE SET NULL,
+    bill_number VARCHAR(50),
     patient_id UUID NOT NULL REFERENCES patients(id) ON DELETE RESTRICT,
+    patient_name VARCHAR(255),
     transaction_type VARCHAR(30) NOT NULL CHECK (transaction_type IN ('payment', 'refund', 'deposit', 'withdrawal', 'adjustment')),
     payment_mode VARCHAR(30) NOT NULL CHECK (payment_mode IN ('cash', 'upi', 'card', 'net_banking', 'wallet', 'cheque')),
     amount NUMERIC(10,2) NOT NULL CHECK (amount > 0),
+    discount_amount NUMERIC(10,2) DEFAULT 0.00,
+    paid_amount NUMERIC(10,2) NOT NULL DEFAULT 0.00,
+    due_amount NUMERIC(10,2) NOT NULL DEFAULT 0.00,
     reference_number VARCHAR(100), -- UPI Ref, Card Auth Code, Cheque No
+    qr_reference VARCHAR(100),     -- Unique QR Session Reference ID
+    provider_reference VARCHAR(100), -- Bank UTR / Gateway Transaction Reference ID
+    payment_status VARCHAR(30) NOT NULL DEFAULT 'successful' CHECK (payment_status IN ('pending', 'initiated', 'successful', 'failed', 'cancelled', 'expired', 'refunded', 'partially_paid', 'fully_paid')),
+    verification_status VARCHAR(30) NOT NULL DEFAULT 'verified' CHECK (verification_status IN ('pending', 'verified', 'rejected', 'manual_override')),
+    idempotency_key VARCHAR(100) UNIQUE,
     cashier_user_id UUID REFERENCES users(id),
+    cashier_name VARCHAR(150),
+    initiated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    completed_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    verified_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     remarks TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE INDEX IF NOT EXISTS idx_financial_txns_bill_no ON financial_transactions(bill_number);
+CREATE INDEX IF NOT EXISTS idx_financial_txns_provider_ref ON financial_transactions(provider_reference);
+CREATE INDEX IF NOT EXISTS idx_financial_txns_idempotency ON financial_transactions(idempotency_key);
+
+-- CENTRAL PAYMENT DYNAMIC QR SESSIONS (UNIVERSAL LABMEDIX ENGINE)
+CREATE TABLE IF NOT EXISTS payment_qr_sessions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    session_id VARCHAR(100) NOT NULL UNIQUE,
+    bill_id UUID REFERENCES bills(id) ON DELETE CASCADE,
+    bill_number VARCHAR(50) NOT NULL,
+    patient_id UUID REFERENCES patients(id) ON DELETE SET NULL,
+    patient_name VARCHAR(255),
+    gross_amount NUMERIC(10,2) NOT NULL,
+    discount_amount NUMERIC(10,2) NOT NULL DEFAULT 0.00,
+    net_payable NUMERIC(10,2) NOT NULL,
+    paid_amount NUMERIC(10,2) NOT NULL DEFAULT 0.00,
+    amount_due NUMERIC(10,2) NOT NULL,
+    upi_payload TEXT NOT NULL,
+    merchant_vpa VARCHAR(100) NOT NULL,
+    merchant_name VARCHAR(255) NOT NULL,
+    is_consolidated BOOLEAN NOT NULL DEFAULT FALSE,
+    consolidated_bill_numbers TEXT[] DEFAULT '{}',
+    status VARCHAR(30) NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'completed', 'expired', 'cancelled', 'superseded')),
+    expires_at TIMESTAMPTZ NOT NULL,
+    completed_at TIMESTAMPTZ,
+    transaction_id VARCHAR(100),
+    created_by VARCHAR(100) NOT NULL DEFAULT 'system',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_payment_qr_bill_no ON payment_qr_sessions(bill_number);
+CREATE INDEX IF NOT EXISTS idx_payment_qr_session_status ON payment_qr_sessions(status);
+CREATE INDEX IF NOT EXISTS idx_payment_qr_expires_at ON payment_qr_sessions(expires_at);
 
 -- ============================================================================
 -- 9. INPATIENT (IPD), WARDS, BEDS & SURGERY

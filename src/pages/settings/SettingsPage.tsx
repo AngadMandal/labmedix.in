@@ -63,10 +63,12 @@ import {
   Crown,
   Printer,
   ShieldCheck,
+  QrCode,
   Image as ImageIcon
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { GooglePayMerchantQR } from '../../components/payment/GooglePayMerchantQR';
+import { CentralBillPaymentQR } from '../../components/payment/CentralBillPaymentQR';
 import { AddressAutoPopupModal } from '../../components/common/AddressAutoPopupModal';
 import { TierConfigManager } from '../../components/settings/TierConfigManager';
 
@@ -176,8 +178,15 @@ export const SettingsPage: React.FC = () => {
     merchantVpa: '7047108226@okbizaxis',
     merchantName: companyProfile.name || 'LABMEDIX MULTI-SPECIALITY CENTRE',
     merchantMcc: '8099',
+    paymentProvider: 'direct_upi',
     googlePayMerchantId: 'GPAY-LMDX-8829-LIVE',
     googlePayBusinessName: 'LABMEDIX HEALTHCARE',
+    qrSessionValidityMinutes: 15,
+    allowedPaymentMethods: ['upi', 'card', 'cash', 'netbanking', 'wallet'],
+    webhookSecret: 'whsec_lmdx_live_99218',
+    webhookUrl: 'https://api.labmedix.in/api/payment/webhook',
+    receiptFooterNotice: 'Thank you for choosing LABMEDIX Healthcare.',
+    enableConsolidatedQr: true,
     enableDeepLinks: true,
     autoVerifySimulation: true
   };
@@ -185,9 +194,18 @@ export const SettingsPage: React.FC = () => {
   const [upiVpa, setUpiVpa] = useState<string>(defaultUpi.merchantVpa);
   const [upiMerchantName, setUpiMerchantName] = useState<string>(defaultUpi.merchantName);
   const [upiMcc, setUpiMcc] = useState<string>(defaultUpi.merchantMcc || '8099');
+  const [upiProvider, setUpiProvider] = useState<'direct_upi' | 'icici_merchant' | 'razorpay' | 'phonepe' | 'paytm' | 'cashfree'>(defaultUpi.paymentProvider || 'direct_upi');
   const [gpayMerchantId, setGpayMerchantId] = useState<string>(defaultUpi.googlePayMerchantId || 'GPAY-LMDX-8829-LIVE');
   const [gpayBusinessName, setGpayBusinessName] = useState<string>(defaultUpi.googlePayBusinessName || 'LABMEDIX HEALTHCARE');
+  const [qrSessionValidity, setQrSessionValidity] = useState<number>(defaultUpi.qrSessionValidityMinutes || 15);
+  const [allowedPaymentMethods, setAllowedPaymentMethods] = useState<string[]>(defaultUpi.allowedPaymentMethods || ['upi', 'card', 'cash', 'netbanking', 'wallet']);
+  const [webhookSecret, setWebhookSecret] = useState<string>(defaultUpi.webhookSecret || 'whsec_lmdx_live_99218');
+  const [webhookUrl, setWebhookUrl] = useState<string>(defaultUpi.webhookUrl || 'https://api.labmedix.in/api/payment/webhook');
+  const [receiptFooterNotice, setReceiptFooterNotice] = useState<string>(defaultUpi.receiptFooterNotice || 'Thank you for choosing LABMEDIX Healthcare.');
+  const [enableConsolidatedQr, setEnableConsolidatedQr] = useState<boolean>(defaultUpi.enableConsolidatedQr ?? true);
   const [upiDeepLinks, setUpiDeepLinks] = useState<boolean>(defaultUpi.enableDeepLinks ?? true);
+  const [testDueAmount, setTestDueAmount] = useState<number>(500);
+  const [simulatePaidToggle, setSimulatePaidToggle] = useState<boolean>(false);
 
   // Registration Policies
   const defaultRegSettings = companyProfile.registrationSettings || {
@@ -287,13 +305,39 @@ export const SettingsPage: React.FC = () => {
     cardSecurityWatermark,
     currencySymbol,
     documentBranding: docBranding,
-    systemConfig: sysConfig
+    systemConfig: sysConfig,
+    upiSettings: {
+      enabled: upiEnabled,
+      paymentProvider: upiProvider,
+      merchantVpa: upiVpa,
+      merchantName: upiMerchantName,
+      merchantMcc: upiMcc,
+      googlePayMerchantId: gpayMerchantId,
+      googlePayBusinessName: gpayBusinessName,
+      qrSessionValidityMinutes: qrSessionValidity,
+      allowedPaymentMethods,
+      webhookSecret,
+      webhookUrl,
+      receiptFooterNotice,
+      enableConsolidatedQr,
+      enableDeepLinks: upiDeepLinks,
+      autoVerifySimulation: true
+    },
+    registrationSettings: {
+      enableClinicalTriageDefault: regTriageDefault,
+      maxIncludedFamilyMembers: regMaxFamily,
+      additionalMemberFee: regExtraMemberFee,
+      cardIssuanceDefault: regCardIssuanceDefault
+    }
   }), [
     companyProfile, name, legalName, tagline, estdYear, subtitle, logoUrl, logoMetadata,
     address, postOffice, policeStation, district, stateVal, pinCode, phone, helpline,
     ambulanceHelpline, bloodBankHelpline, whatsapp, email, website, registrationNo,
     isoCertification, clinicalLicenseNo, gstin, cardValidityMonths, cardFooterNotice,
-    cardSecurityWatermark, currencySymbol, docBranding, sysConfig
+    cardSecurityWatermark, currencySymbol, docBranding, sysConfig,
+    upiEnabled, upiProvider, upiVpa, upiMerchantName, upiMcc, gpayMerchantId, gpayBusinessName,
+    qrSessionValidity, allowedPaymentMethods, webhookSecret, webhookUrl, receiptFooterNotice,
+    enableConsolidatedQr, upiDeepLinks, regTriageDefault, regMaxFamily, regExtraMemberFee, regCardIssuanceDefault
   ]);
 
   // Validation Report
@@ -1325,30 +1369,194 @@ export const SettingsPage: React.FC = () => {
                 </div>
               )}
 
-              {/* TAB 7: CONTACTLESS SMART CHIP & UPI */}
+              {/* TAB 7: CENTRAL PAYMENT CONFIGURATION & DYNAMIC QR ENGINE */}
               {activeTab === 'nfc_upi' && (
                 <div className="space-y-6">
                   <div>
                     <h3 className="text-sm font-black text-white uppercase tracking-wider flex items-center gap-2 border-b border-slate-800 pb-2">
-                      <Radio className="w-4 h-4 text-cyan-400" />
-                      7. Contactless Smart Card (NFC) & Payment Gateway
+                      <CreditCard className="w-4 h-4 text-emerald-400" />
+                      7. Central Payment Configuration & Universal Dynamic QR Engine
                     </h3>
                     <p className="text-xs text-slate-400 mt-1">
-                      Configure 13.56 MHz RFID/NFC smart cards and Google Pay / UPI merchant integration.
+                      Centralized Single Source of Truth for hospital-wide payment gateway, UPI Bharat QR, dynamic amount due calculation, and automated payment receipts.
                     </p>
                   </div>
 
-                  {/* Google Pay & UPI Merchant */}
-                  <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-3">
-                    <span className="text-xs font-bold text-white block">Google Pay & UPI Merchant QR</span>
+                  {/* 1. Payment Provider & Merchant Identity */}
+                  <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-4">
+                    <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                      <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                        <Zap className="w-3.5 h-3.5 text-amber-400" />
+                        <span>Payment Provider & Merchant Credentials</span>
+                      </span>
+                      <span className="text-[10px] font-mono text-emerald-400 bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-500/30">
+                        Central System-Wide
+                      </span>
+                    </div>
+
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                        <label className="text-xs font-bold text-slate-300">Payment Gateway / UPI Provider</label>
+                        <select
+                          value={upiProvider}
+                          onChange={e => setUpiProvider(e.target.value as any)}
+                          disabled={isLocked}
+                          className="w-full p-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white text-xs font-bold focus:border-emerald-500"
+                        >
+                          <option value="direct_upi">Direct UPI (NPCI Bharat QR Standard)</option>
+                          <option value="icici_merchant">ICICI Bank Smart Merchant Gateway</option>
+                          <option value="razorpay">Razorpay Healthcare POS & Dynamic QR</option>
+                          <option value="phonepe">PhonePe for Business (Static & Dynamic)</option>
+                          <option value="paytm">Paytm Merchant Dynamic Soundbox & QR</option>
+                          <option value="cashfree">Cashfree Payments Auto-Collect</option>
+                        </select>
+                      </div>
+
                       <Input label="Merchant VPA (UPI ID)" value={upiVpa} onChange={e => setUpiVpa(e.target.value)} disabled={isLocked} />
                       <Input label="Merchant Business Name" value={upiMerchantName} onChange={e => setUpiMerchantName(e.target.value)} disabled={isLocked} />
-                      <Input label="Google Pay Merchant ID" value={gpayMerchantId} onChange={e => setGpayMerchantId(e.target.value)} disabled={isLocked} />
                       <Input label="Merchant Category Code (MCC)" value={upiMcc} onChange={e => setUpiMcc(e.target.value)} disabled={isLocked} />
+                      <Input label="Google Pay Merchant ID" value={gpayMerchantId} onChange={e => setGpayMerchantId(e.target.value)} disabled={isLocked} />
+                      <Input label="Google Pay Business Name" value={gpayBusinessName} onChange={e => setGpayBusinessName(e.target.value)} disabled={isLocked} />
                     </div>
-                    <div className="mt-4 flex justify-center">
-                      <GooglePayMerchantQR amount={500} referenceNo="LMDX-SAMPLE-001" merchantVpa={upiVpa} merchantName={upiMerchantName} />
+                  </div>
+
+                  {/* 2. QR Session Security & Policy Controls */}
+                  <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-4">
+                    <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                      <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                        <ShieldCheck className="w-3.5 h-3.5 text-blue-400" />
+                        <span>Dynamic QR Session Validity & Security Settings</span>
+                      </span>
+                      <span className="text-[10px] font-mono text-blue-300">Anti-Stale Protection</span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <Input
+                        label="Payment QR Validity Window (Minutes)"
+                        type="number"
+                        value={qrSessionValidity}
+                        onChange={e => setQrSessionValidity(Number(e.target.value))}
+                        disabled={isLocked}
+                      />
+                      <Input
+                        label="Server Webhook URL for Callbacks"
+                        value={webhookUrl}
+                        onChange={e => setWebhookUrl(e.target.value)}
+                        disabled={isLocked}
+                      />
+                      <Input
+                        label="Webhook Signing Secret (Encrypted)"
+                        type="password"
+                        value={webhookSecret}
+                        onChange={e => setWebhookSecret(e.target.value)}
+                        disabled={isLocked}
+                      />
+                      <Input
+                        label="Payment Receipt Footer Notice"
+                        value={receiptFooterNotice}
+                        onChange={e => setReceiptFooterNotice(e.target.value)}
+                        disabled={isLocked}
+                      />
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-4 pt-2 border-t border-slate-900 text-xs">
+                      <label className="flex items-center gap-2 cursor-pointer text-slate-300">
+                        <input
+                          type="checkbox"
+                          checked={enableConsolidatedQr}
+                          onChange={e => setEnableConsolidatedQr(e.target.checked)}
+                          disabled={isLocked}
+                          className="rounded text-emerald-500 focus:ring-0"
+                        />
+                        <span>Enable Patient Consolidated Multi-Bill Due QR</span>
+                      </label>
+
+                      <label className="flex items-center gap-2 cursor-pointer text-slate-300">
+                        <input
+                          type="checkbox"
+                          checked={upiDeepLinks}
+                          onChange={e => setUpiDeepLinks(e.target.checked)}
+                          disabled={isLocked}
+                          className="rounded text-emerald-500 focus:ring-0"
+                        />
+                        <span>Enable 1-Tap Mobile App Launch (GPay, PhonePe, Paytm)</span>
+                      </label>
+                    </div>
+                  </div>
+
+                  {/* 3. Live Dynamic Bill Payment QR Simulator */}
+                  <div className="p-4 rounded-2xl bg-slate-950 border-2 border-emerald-500/40 space-y-3">
+                    <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                      <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                        <QrCode className="w-4 h-4 text-emerald-400" />
+                        <span>Live Central Bill Payment QR Engine Simulator</span>
+                      </span>
+                      <span className="text-[10px] font-mono text-emerald-300 bg-emerald-950 px-2 py-0.5 rounded border border-emerald-500/30">
+                        Real-Time Server Validation
+                      </span>
+                    </div>
+
+                    <p className="text-xs text-slate-400">
+                      Test the exact payment QR component that renders on every official hospital bill invoice (A4 Half-Page). Toggle between active dues and ₹0 fully paid balance.
+                    </p>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-center">
+                      <div className="space-y-3 p-3 rounded-xl bg-slate-900 border border-slate-800">
+                        <div className="space-y-1">
+                          <label className="text-xs font-bold text-slate-300">Simulate Test Bill Amount Due (₹):</label>
+                          <input
+                            type="number"
+                            value={testDueAmount}
+                            onChange={e => setTestDueAmount(Math.max(0, Number(e.target.value)))}
+                            disabled={simulatePaidToggle}
+                            className="w-full p-2 rounded-xl bg-slate-800 border border-slate-700 text-white font-mono font-bold"
+                          />
+                        </div>
+
+                        <div className="flex items-center gap-3 pt-2">
+                          <button
+                            type="button"
+                            onClick={() => setSimulatePaidToggle(false)}
+                            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition ${
+                              !simulatePaidToggle
+                                ? 'bg-rose-600 text-white shadow-sm'
+                                : 'bg-slate-800 text-slate-400 hover:text-white'
+                            }`}
+                          >
+                            Simulate Unpaid Due (₹{testDueAmount})
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setSimulatePaidToggle(true)}
+                            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition ${
+                              simulatePaidToggle
+                                ? 'bg-emerald-600 text-white shadow-sm'
+                                : 'bg-slate-800 text-slate-400 hover:text-white'
+                            }`}
+                          >
+                            Simulate ₹0 Paid (PAID Seal)
+                          </button>
+                        </div>
+
+                        <div className="text-[11px] text-slate-400 space-y-1 border-t border-slate-800 pt-2 font-mono">
+                          <div>VPA: <span className="text-teal-300">{upiVpa}</span></div>
+                          <div>Merchant: <span className="text-teal-300">{upiMerchantName}</span></div>
+                          <div>MCC: <span className="text-teal-300">{upiMcc}</span></div>
+                        </div>
+                      </div>
+
+                      <div className="flex justify-center">
+                        <CentralBillPaymentQR
+                          billNumber="BILL-TEST-2026-0001"
+                          amountDue={simulatePaidToggle ? 0 : testDueAmount}
+                          netPayable={1000}
+                          paidAmount={simulatePaidToggle ? 1000 : (1000 - testDueAmount)}
+                          paymentStatus={simulatePaidToggle ? 'paid' : 'partially_paid'}
+                          patientName="Sneha Roy (Test Patient)"
+                          company={liveCompany}
+                          className="w-48 shadow-xl"
+                        />
+                      </div>
                     </div>
                   </div>
                 </div>

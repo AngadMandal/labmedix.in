@@ -96,4 +96,16 @@ export interface UniversalInvoiceData {
   verificationCode?: string;
   verificationQrUrl?: string;
   barcodeValue?: string;
+
+  // Central Dynamic Payment QR Engine Integration
+  paymentQrPayload?: string;
+  paymentQrDataUrl?: string;
+  paymentSessionId?: string;
+  paymentSessionExpiresAt?: string;
+  merchantVpa?: string;
+  merchantName?: string;
+  providerReference?: string;
+  paymentReceiptId?: string;
+  isConsolidated?: boolean;
+  settledInvoiceNumbers?: string[];
 }

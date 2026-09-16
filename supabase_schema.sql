@@ -127,4 +127,41 @@ SELECT
 FROM public.labmedix_store
 WHERE collection_name = 'vouchers';
 
+-- View: Financial Transactions Ledger
+CREATE OR REPLACE VIEW public.v_financial_transactions AS
+SELECT 
+    id AS transaction_id,
+    data->>'transactionId' AS transaction_no,
+    data->>'billNumber' AS bill_number,
+    data->>'patientId' AS patient_id,
+    data->>'patientName' AS patient_name,
+    (data->>'amount')::numeric AS amount,
+    (data->>'paid')::numeric AS paid_amount,
+    (data->>'due')::numeric AS due_amount,
+    data->>'paymentMethod' AS payment_mode,
+    data->>'paymentStatus' AS payment_status,
+    data->>'providerReference' AS provider_reference,
+    data->>'qrReference' AS qr_reference,
+    data->>'verificationStatus' AS verification_status,
+    data->>'staffName' AS cashier_name,
+    created_at
+FROM public.labmedix_store
+WHERE collection_name = 'transactions';
+
+-- View: Dynamic Payment QR Sessions
+CREATE OR REPLACE VIEW public.v_payment_qr_sessions AS
+SELECT 
+    id AS session_id,
+    data->>'billNumber' AS bill_number,
+    data->>'patientId' AS patient_id,
+    (data->>'netPayable')::numeric AS net_payable,
+    (data->>'paidAmount')::numeric AS paid_amount,
+    (data->>'amountDue')::numeric AS amount_due,
+    data->>'upiPayload' AS upi_payload,
+    data->>'status' AS status,
+    data->>'expiresAt' AS expires_at,
+    created_at
+FROM public.labmedix_store
+WHERE collection_name = 'payment_qr_sessions';
+
 -- End of schema
