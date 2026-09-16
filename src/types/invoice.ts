@@ -97,6 +97,27 @@ export interface UniversalInvoiceData {
   verificationQrUrl?: string;
   barcodeValue?: string;
 
+  // Institutional Tax & Copy Standard
+  amountInWords?: string;
+  copyLabel?: string; // e.g. "ORIGINAL FOR RECIPIENT", "PATIENT COPY / DUPLICATE", "OFFICE COPY"
+  hsnSacCode?: string;
+  taxRate?: number;
+
+  // Module Specific Metadata
+  modality?: string; // Radiology (e.g. "Digital X-Ray", "USG", "CT")
+  triageCategory?: string; // Emergency (e.g. "Red / Immediate", "Yellow", "Green")
+  specimenType?: string; // Lab (e.g. "Whole Blood EDTA", "Serum", "Urine")
+  sampleCollectionTime?: string;
+
+  // Cancellation & Refund Audits
+  cancellationReason?: string;
+  cancelledAt?: string;
+  cancelledBy?: string;
+  refundReference?: string;
+  refundAmount?: number;
+  refundDate?: string;
+  refundMethod?: string;
+
   // Central Dynamic Payment QR Engine Integration
   paymentQrPayload?: string;
   paymentQrDataUrl?: string;

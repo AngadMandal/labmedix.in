@@ -678,6 +678,20 @@ export interface DocumentBrandingConfig {
     showQrCode: boolean;
     showBarcode: boolean;
     maxItemsPerPage?: number;
+    copyFormat?: 'single' | 'duplicate'; // Single Half-Page vs 2 copies (Original + Duplicate) on A4
+    topCopyTitle?: string; // default: "ORIGINAL FOR RECIPIENT"
+    bottomCopyTitle?: string; // default: "PATIENT COPY / DUPLICATE"
+    showAmountInWords?: boolean;
+    showTaxBreakdown?: boolean;
+    taxRegistrationNumber?: string;
+    hsnSacCode?: string;
+    taxRatePercent?: number;
+    printMargins?: {
+      top: number;
+      bottom: number;
+      left: number;
+      right: number;
+    };
   };
   diagnosticReport: {
     headerTitle?: string;

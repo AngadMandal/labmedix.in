@@ -3,6 +3,8 @@ import { CompanyProfile, HealthCard, Patient, Membership, DiagnosticReportRecord
 import { CR80CardFront } from '../card/CR80CardFront';
 import { CR80CardBack } from '../card/CR80CardBack';
 import { StandardHalfPageBill, StandardBillData } from '../billing/StandardHalfPageBill';
+import { UniversalA4HalfPageInvoice } from '../billing/UniversalA4HalfPageInvoice';
+import { UniversalInvoiceService } from '../../services/universalInvoiceService';
 import { PharmacyA4HalfPageInvoice } from '../pharmacy/PharmacyA4HalfPageInvoice';
 import { OfficialDiagnosticReportDocument } from '../laboratory/OfficialDiagnosticReportDocument';
 import { LabMedixLogo } from '../common/LabMedixLogo';
@@ -419,8 +421,8 @@ export const DocumentBrandPreview: React.FC<DocumentBrandPreviewProps> = ({ comp
         {/* 2. A4 HALF-PAGE HOSPITAL BILL */}
         {activePreview === 'bill' && (
           <div className="w-full max-w-2xl bg-white text-slate-900 p-2 rounded-2xl shadow-2xl overflow-hidden border border-slate-200">
-            <StandardHalfPageBill
-              bill={sampleBillData}
+            <UniversalA4HalfPageInvoice
+              invoice={UniversalInvoiceService.fromPatientBill(sampleBillData, company)}
               company={company}
               onPrint={() => window.print()}
               onDownloadPdf={() => {}}

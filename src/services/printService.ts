@@ -377,22 +377,35 @@ export class PrintService {
               size: A4 portrait;
               margin: 4mm 6mm;
             }
-            body {
-              margin: 0;
-              padding: 0;
+            html, body {
+              margin: 0 !important;
+              padding: 0 !important;
               background: #ffffff !important;
               color: #000000 !important;
               font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
               -webkit-print-color-adjust: exact !important;
               print-color-adjust: exact !important;
+              overflow: hidden !important;
+            }
+            .a4-sheet-container {
+              width: 100% !important;
+              max-width: 200mm !important;
+              margin: 0 auto !important;
+              padding: 0 !important;
+              box-sizing: border-box !important;
+              page-break-inside: avoid !important;
+              page-break-after: avoid !important;
+              page-break-before: avoid !important;
             }
             .universal-half-page-bill {
               border: none !important;
               box-shadow: none !important;
               margin: 0 auto !important;
-              padding: 8px 12px !important;
+              padding: 6px 10px !important;
               width: 100% !important;
               max-width: 200mm !important;
+              page-break-inside: avoid !important;
+              box-sizing: border-box !important;
             }
             @media print {
               .no-print, .print\\:hidden {
@@ -405,7 +418,7 @@ export class PrintService {
           </style>
         </head>
         <body>
-          <div style="width: 100%; max-width: 200mm; margin: 0 auto;">
+          <div style="width: 100%; max-width: 200mm; margin: 0 auto; box-sizing: border-box;">
             ${invoiceHtml}
           </div>
           <script>
@@ -428,6 +441,120 @@ export class PrintService {
       AuditService.log('BILL_PRINTED', 'billing', `Printed Universal Half-Page Invoice: ${title}`);
     } catch (err) {
       console.error('Error in printUniversalA4HalfPage:', err);
+      window.print();
+    }
+  }
+
+  /**
+   * Prints an Official Hospital OPD Appointment Token Slip in an isolated, high-contrast window.
+   * Supports standard Hospital Thermal POS (80mm) and A4 Slip formats with zero dark theme artifacts.
+   */
+  public static printOpdTokenSlip(
+    tokenElement: HTMLElement,
+    title = 'LABMEDIX OPD Appointment Token',
+    format: 'thermal_80mm' | 'slip_a4' = 'thermal_80mm'
+  ): void {
+    try {
+      const printWindow = window.open('', '_blank', 'width=520,height=750');
+      if (!printWindow) {
+        window.print();
+        return;
+      }
+
+      const styleElements = Array.from(document.querySelectorAll('style, link[rel="stylesheet"]'))
+        .map(el => el.outerHTML)
+        .join('\n');
+
+      const tokenHtml = tokenElement.outerHTML;
+
+      const pageStyle = format === 'thermal_80mm'
+        ? `
+          @page {
+            size: 80mm auto;
+            margin: 2mm 3mm;
+          }
+          body {
+            width: 74mm !important;
+            max-width: 74mm !important;
+            margin: 0 auto !important;
+            padding: 2mm !important;
+            font-size: 11px !important;
+          }
+          .token-container {
+            width: 100% !important;
+            box-shadow: none !important;
+            border: none !important;
+          }
+        `
+        : `
+          @page {
+            size: A4 portrait;
+            margin: 8mm;
+          }
+          body {
+            width: 100% !important;
+            max-width: 130mm !important;
+            margin: 0 auto !important;
+            padding: 6mm !important;
+            font-size: 12px !important;
+          }
+          .token-container {
+            width: 100% !important;
+            box-shadow: none !important;
+            border: 1px solid #cbd5e1 !important;
+            border-radius: 8px !important;
+          }
+        `;
+
+      const htmlContent = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <title>${title}</title>
+          ${styleElements}
+          <style>
+            ${pageStyle}
+            html, body {
+              background: #ffffff !important;
+              color: #000000 !important;
+              font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, monospace;
+              -webkit-print-color-adjust: exact !important;
+              print-color-adjust: exact !important;
+            }
+            @media print {
+              .no-print, .print\\:hidden {
+                display: none !important;
+              }
+              body * {
+                visibility: visible !important;
+              }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="token-container">
+            ${tokenHtml}
+          </div>
+          <script>
+            window.onload = function() {
+              setTimeout(function() {
+                window.focus();
+                window.print();
+                window.close();
+              }, 300);
+            };
+          </script>
+        </body>
+        </html>
+      `;
+
+      printWindow.document.open();
+      printWindow.document.write(htmlContent);
+      printWindow.document.close();
+
+      AuditService.log('TOKEN_PRINTED', 'clinical', `Printed OPD Appointment Token: ${title}`);
+    } catch (err) {
+      console.error('Error in printOpdTokenSlip:', err);
       window.print();
     }
   }

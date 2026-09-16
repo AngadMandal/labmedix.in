@@ -8,13 +8,14 @@ import {
   CompanyProfile 
 } from '../types';
 import { UniversalInvoiceData, UniversalInvoiceItem } from '../types/invoice';
+import { numberToWordsINR } from '../utils/formatters';
 
 export class UniversalInvoiceService {
   /**
    * Transforms a standard PatientBill (OPD, IPD, Emergency, Registration, General) into UniversalInvoiceData
    */
   public static fromPatientBill(
-    bill: PatientBill,
+    bill: PatientBill | any,
     company: CompanyProfile,
     options?: {
       patient?: Patient | null;
@@ -24,13 +25,16 @@ export class UniversalInvoiceService {
       reprintCount?: number;
     }
   ): UniversalInvoiceData {
-    const rawCategory = (bill.billCategory || 'general').toLowerCase();
+    const rawCategory = (bill.billCategory || bill.category || 'general').toLowerCase();
     let category: UniversalInvoiceData['category'] = 'general';
     let categoryLabel = 'Hospital Service';
 
     if (rawCategory.includes('opd') || rawCategory.includes('consult')) {
       category = 'opd';
       categoryLabel = 'OPD Consultation Bill';
+    } else if (rawCategory.includes('radio') || rawCategory.includes('xray') || rawCategory.includes('scan') || rawCategory.includes('imaging') || rawCategory.includes('ultrasound') || rawCategory.includes('mri') || rawCategory.includes('ct')) {
+      category = 'diagnostic';
+      categoryLabel = 'Radiology & Imaging Bill';
     } else if (rawCategory.includes('lab') || rawCategory.includes('patholog') || rawCategory.includes('diagnost')) {
       category = 'laboratory';
       categoryLabel = 'Diagnostic & Laboratory Bill';
@@ -40,22 +44,22 @@ export class UniversalInvoiceService {
     } else if (rawCategory.includes('card') || rawCategory.includes('enroll') || bill.isCardIssued) {
       category = 'health_card';
       categoryLabel = 'Health Card Registration Bill';
-    } else if (rawCategory.includes('ipd') || rawCategory.includes('admit')) {
+    } else if (rawCategory.includes('ipd') || rawCategory.includes('admit') || rawCategory.includes('ward')) {
       category = 'ipd';
       categoryLabel = 'IPD Admission & Care Bill';
-    } else if (rawCategory.includes('emerg')) {
+    } else if (rawCategory.includes('emerg') || rawCategory.includes('triage') || rawCategory.includes('casualty')) {
       category = 'emergency';
       categoryLabel = 'Emergency & Triage Care Bill';
     }
 
     // Process item rows
     const items: UniversalInvoiceItem[] = (bill.items && bill.items.length > 0)
-      ? bill.items.map((item, idx) => ({
+      ? bill.items.map((item: any, idx: number) => ({
           sl: idx + 1,
           description: item.description,
           quantity: item.quantity || 1,
           unitPrice: item.unitPrice,
-          discountAmount: 0,
+          discountAmount: item.discount || 0,
           total: item.total || (item.quantity * item.unitPrice)
         }))
       : [{
@@ -100,14 +104,14 @@ export class UniversalInvoiceService {
       categoryLabel,
       titleBadge: 'TAX INVOICE',
       templateVersion: 'v1.0',
-      date: bill.createdAt || bill.date || new Date().toISOString(),
+      date: bill.createdAt || bill.date || bill.billDate || new Date().toISOString(),
       isReprint: options?.isReprint || false,
       reprintCount: options?.reprintCount || 0,
 
       patientName: bill.patientName || options?.patient?.fullName || 'Walk-in Patient',
       patientId: bill.patientId || options?.patient?.id,
       patientMobile: bill.patientMobile || options?.patient?.mobile,
-      patientAgeGender: options?.patient ? `${options.patient.age} Yrs / ${(options.patient.gender || '').toUpperCase()}` : undefined,
+      patientAgeGender: bill.patientAgeGender || (options?.patient ? `${options.patient.age} Yrs / ${(options.patient.gender || '').toUpperCase()}` : undefined),
       patientAddress: bill.patientAddress || options?.patient?.address?.fullAddress,
       referringDoctor: (bill as any).referringDoctor || (bill as any).doctorName,
 
@@ -129,10 +133,20 @@ export class UniversalInvoiceService {
       paymentStatus,
       transactionId: bill.transactionId,
 
-      authorizedStaffName: bill.authorizedStaff?.name || options?.staffName || 'Authorized Cashier',
+      authorizedStaffName: bill.authorizedStaff?.name || (bill as any).authorizedStaffName || options?.staffName || 'Authorized Cashier',
       authorizedStaffRole: bill.authorizedStaff?.role || 'Billing Desk',
       notes: bill.notes,
-      barcodeValue: bill.billNumber
+      terms: company.documentBranding?.bill?.termsAndConditions,
+      barcodeValue: bill.billNumber,
+
+      // Institutional standard fields
+      amountInWords: numberToWordsINR(bill.netPayable),
+      hsnSacCode: company.documentBranding?.bill?.hsnSacCode || '999312',
+      taxRate: company.documentBranding?.bill?.taxRatePercent || 0,
+      modality: (bill as any).modality || (category === 'diagnostic' ? 'Radiology & Imaging' : undefined),
+      roomBedNo: (bill as any).roomBedNo || (bill as any).bedNo,
+      triageCategory: (bill as any).triageCategory,
+      cancellationReason: (bill as any).cancellationReason
     };
   }
 
@@ -221,7 +235,11 @@ export class UniversalInvoiceService {
         'Medicines returnable within 48h with original invoice in unsealed, intact condition.',
         'Refrigerated & Schedule H/X medications cannot be returned under drug control laws.'
       ],
-      barcodeValue: sale.invoiceNumber
+      barcodeValue: sale.invoiceNumber,
+
+      // Institutional standard fields
+      amountInWords: numberToWordsINR(sale.netTotal),
+      hsnSacCode: '3004'
     };
   }
 
@@ -313,7 +331,11 @@ export class UniversalInvoiceService {
       authorizedStaffName: app.submittedByStaffName || options?.staffName || 'Reception Staff',
       authorizedStaffRole: app.submittedByStaffRole || 'Enrollment Desk',
       notes: `Dispatch Preference: ${(app.dispatchPreference || 'clinic').toUpperCase()}`,
-      barcodeValue: app.applicationNo || app.trackingId
+      barcodeValue: app.applicationNo || app.trackingId,
+
+      // Institutional standard fields
+      amountInWords: numberToWordsINR(totalAmount),
+      hsnSacCode: '999312'
     };
   }
 
@@ -380,7 +402,13 @@ export class UniversalInvoiceService {
 
       authorizedStaffName: order.createdByStaffName || options?.staffName || 'Lab Reception',
       authorizedStaffRole: 'Phlebotomy / Billing Desk',
-      barcodeValue: order.orderNumber || order.sampleBarcode
+      barcodeValue: order.orderNumber || order.sampleBarcode,
+
+      // Institutional standard fields
+      amountInWords: numberToWordsINR(netAmount),
+      hsnSacCode: '999316',
+      specimenType: (order as any).specimenType || (order as any).sampleType,
+      sampleCollectionTime: (order as any).sampleCollectedAt || (order as any).collectedAt
     };
   }
 }

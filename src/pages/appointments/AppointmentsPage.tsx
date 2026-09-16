@@ -6,9 +6,14 @@ import { EMRService } from '../../services/emrService';
 import { DoctorMasterService, DoctorMasterItem } from '../../services/doctorMasterService';
 import { StorageService } from '../../services/storage';
 import { ApiSyncService } from '../../services/apiSyncService';
-import { PatientAppointment, Patient, HealthCard } from '../../types';
+import { PatientAppointment, Patient, HealthCard, CompanyProfile } from '../../types';
 import { formatCurrency, formatDate, formatDateTime } from '../../utils/formatters';
 import { Modal } from '../../components/common/Modal';
+import { HospitalOpdTokenSlip } from '../../components/appointments/HospitalOpdTokenSlip';
+import { DoctorConsultationCalendarView } from '../../components/appointments/DoctorConsultationCalendarView';
+import { WaitingRoomTokenBoard } from '../../components/appointments/WaitingRoomTokenBoard';
+import { DirectConsultationHandoffModal } from '../../components/appointments/DirectConsultationHandoffModal';
+import { playHospitalChime, announceTokenSpeech } from '../../utils/audioChime';
 import {
   Calendar,
   Clock,
@@ -29,7 +34,9 @@ import {
   FileText,
   CreditCard,
   Building,
-  AlertCircle
+  AlertCircle,
+  Tv,
+  Bell
 } from 'lucide-react';
 
 export const AppointmentsPage: React.FC = () => {
@@ -40,11 +47,15 @@ export const AppointmentsPage: React.FC = () => {
   const isDoctor = currentUser?.role === 'doctor';
   const isAdmin = currentUser?.role === 'admin' || currentUser?.role === 'super_admin';
 
-  // State
+  // Master Data State
+  const [companyProfile] = useState<CompanyProfile>(() => StorageService.getCompanyProfile());
   const [appointments, setAppointments] = useState<PatientAppointment[]>(() => EMRService.getAllAppointments());
   const [doctors, setDoctors] = useState<DoctorMasterItem[]>(() => DoctorMasterService.getAll());
   const [patients, setPatients] = useState<Patient[]>(() => StorageService.getPatients());
   const [cards, setCards] = useState<HealthCard[]>(() => StorageService.getCards());
+
+  // Navigation View State: Queue Table, Live Calendar, or Waiting Room TV Board
+  const [activeView, setActiveView] = useState<'queue' | 'calendar' | 'waiting_room'>('queue');
 
   // Filters
   const [searchQuery, setSearchQuery] = useState('');
@@ -56,6 +67,7 @@ export const AppointmentsPage: React.FC = () => {
   // Modals state
   const [isNewModalOpen, setIsNewModalOpen] = useState(false);
   const [activeTokenAppointment, setActiveTokenAppointment] = useState<PatientAppointment | null>(null);
+  const [handoffAppointment, setHandoffAppointment] = useState<PatientAppointment | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // New Appointment Form State
@@ -245,6 +257,13 @@ export const AppointmentsPage: React.FC = () => {
     return { total, todayCount, waiting, inConsult, completed };
   }, [appointments]);
 
+  const handleBookFromCalendar = (doctorId?: string, slot?: string, date?: string) => {
+    if (doctorId) setSelectedDoctorId(doctorId);
+    if (slot) setWishTime(slot);
+    if (date) setWishDate(date);
+    setIsNewModalOpen(true);
+  };
+
   return (
     <div className="space-y-6 pb-12">
       {/* Top Banner & Header */}
@@ -286,8 +305,83 @@ export const AppointmentsPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Metric Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+      {/* View Switcher Tabs */}
+      <div className="flex items-center gap-2 p-1.5 rounded-2xl bg-slate-900 border border-slate-800 text-xs font-bold print:hidden">
+        <button
+          type="button"
+          onClick={() => setActiveView('queue')}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl transition ${
+            activeView === 'queue'
+              ? 'bg-teal-600 text-white shadow-md shadow-teal-600/30'
+              : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+          }`}
+        >
+          <User className="w-4 h-4" />
+          <span>OPD Queue List</span>
+          <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-teal-900/60 text-teal-200 border border-teal-500/30">
+            {filteredAppointments.length}
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveView('calendar')}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl transition ${
+            activeView === 'calendar'
+              ? 'bg-teal-600 text-white shadow-md shadow-teal-600/30'
+              : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+          }`}
+        >
+          <Calendar className="w-4 h-4" />
+          <span>Live Doctor Calendar</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveView('waiting_room')}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl transition ${
+            activeView === 'waiting_room'
+              ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
+              : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+          }`}
+        >
+          <Tv className="w-4 h-4" />
+          <span>Waiting Room TV Board</span>
+          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+        </button>
+      </div>
+
+      {/* Render Active View: Live Calendar */}
+      {activeView === 'calendar' && (
+        <DoctorConsultationCalendarView
+          appointments={appointments}
+          doctors={doctors}
+          onBookAppointment={handleBookFromCalendar}
+          onSelectAppointment={(apt) => setActiveTokenAppointment(apt)}
+          onCallPatient={(apt) => {
+            playHospitalChime();
+            announceTokenSpeech(apt.queueToken || apt.appointmentNo, apt.doctorName);
+          }}
+          onDirectHandoff={(apt) => setHandoffAppointment(apt)}
+        />
+      )}
+
+      {/* Render Active View: Waiting Room Live Board */}
+      {activeView === 'waiting_room' && (
+        <WaitingRoomTokenBoard
+          appointments={appointments}
+          doctors={doctors}
+          onPrintToken={(apt) => setActiveTokenAppointment(apt)}
+          onDirectHandoff={(apt) => setHandoffAppointment(apt)}
+          onUpdateStatus={handleUpdateStatus}
+        />
+      )}
+
+      {/* Render Active View: Queue List Table */}
+      {activeView === 'queue' && (
+        <>
+          {/* Metric Cards */}
+          <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
         <div className="p-4 rounded-2xl bg-slate-900/80 border border-slate-800 backdrop-blur-sm space-y-1">
           <div className="flex items-center justify-between text-slate-400 text-xs font-bold">
             <span>Total Bookings</span>
@@ -556,13 +650,14 @@ export const AppointmentsPage: React.FC = () => {
                               </button>
                               <button
                                 onClick={() => {
-                                  handleUpdateStatus(apt.id, 'in_consultation');
-                                  navigate(`/emr?patientId=${apt.patientId}`);
+                                  playHospitalChime();
+                                  setHandoffAppointment(apt);
                                 }}
-                                className="px-2.5 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-[10px] transition"
-                                title="Begin doctor consultation in EMR"
+                                className="px-2.5 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-[10px] transition flex items-center gap-1"
+                                title="Begin doctor consultation in EMR with triage vitals"
                               >
-                                Call In
+                                <Stethoscope className="w-3 h-3" />
+                                <span>Call In</span>
                               </button>
                               <button
                                 onClick={() => handleUpdateStatus(apt.id, 'no_show')}
@@ -578,13 +673,22 @@ export const AppointmentsPage: React.FC = () => {
                             <>
                               <button
                                 onClick={() => {
-                                  handleUpdateStatus(apt.id, 'in_consultation');
-                                  navigate(`/emr?patientId=${apt.patientId}`);
+                                  playHospitalChime();
+                                  announceTokenSpeech(apt.queueToken || apt.appointmentNo, apt.doctorName);
                                 }}
-                                className="px-2.5 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-[10px] transition"
-                                title="Begin doctor consultation in EMR"
+                                className="px-2.5 py-1 rounded-lg bg-amber-600 hover:bg-amber-500 text-white font-bold text-[10px] transition flex items-center gap-1 shadow-sm"
+                                title="Sound hospital announcement chime"
                               >
-                                Call In
+                                <Bell className="w-3 h-3" />
+                                <span>Call</span>
+                              </button>
+                              <button
+                                onClick={() => setHandoffAppointment(apt)}
+                                className="px-2.5 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-black text-[10px] transition flex items-center gap-1 shadow-sm"
+                                title="Enter triage vitals and hand off to doctor cabin"
+                              >
+                                <Stethoscope className="w-3 h-3" />
+                                <span>Handoff</span>
                               </button>
                               <button
                                 onClick={() => handleUpdateStatus(apt.id, 'no_show')}
@@ -621,6 +725,8 @@ export const AppointmentsPage: React.FC = () => {
           </div>
         )}
       </div>
+      </>
+      )}
 
       {/* New Appointment Modal */}
       {isNewModalOpen && (
@@ -778,71 +884,68 @@ export const AppointmentsPage: React.FC = () => {
         </Modal>
       )}
 
-      {/* Printable Appointment Token Modal */}
+      {/* Official Hospital OPD Appointment Token Modal */}
       {activeTokenAppointment && (
         <Modal
           isOpen={!!activeTokenAppointment}
           onClose={() => setActiveTokenAppointment(null)}
-          title="Hospital OPD Appointment Token"
-          maxWidth="md"
+          title={`Hospital OPD Appointment Token #${activeTokenAppointment.queueToken || activeTokenAppointment.appointmentNo}`}
+          maxWidth="2xl"
         >
-          <div className="p-4 space-y-4 text-center bg-white text-slate-900 rounded-2xl shadow-inner font-sans">
-            <div className="border-b border-slate-200 pb-3">
-              <h3 className="text-lg font-black tracking-tight text-slate-900">LABMEDIX HEALTHCARE</h3>
-              <p className="text-[11px] text-slate-500">OPD Consultation & Clinical Routing Token</p>
-            </div>
-
-            <div className="py-2 bg-slate-100 rounded-xl border border-slate-200">
-              <div className="text-xs font-bold text-slate-500 uppercase">Token Number</div>
-              <div className="text-3xl font-black font-mono tracking-wider text-teal-700">
-                {activeTokenAppointment.appointmentNo}
-              </div>
-              <div className="text-[10px] text-slate-500 mt-1 font-mono">
-                Security Seal: {activeTokenAppointment.securitySeal || 'SEC-VERIFIED'}
-              </div>
-            </div>
-
-            <div className="text-left text-xs space-y-2 border border-slate-200 p-3 rounded-xl">
-              <div className="flex justify-between">
-                <span className="text-slate-500">Patient:</span>
-                <strong className="text-slate-900">{activeTokenAppointment.patientName}</strong>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-500">Doctor:</span>
-                <strong className="text-slate-900">{activeTokenAppointment.doctorName}</strong>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-500">Department:</span>
-                <span className="text-slate-700">{activeTokenAppointment.department}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-500">Date & Slot:</span>
-                <span className="text-slate-900 font-medium">
-                  {formatDate(activeTokenAppointment.patientWishDate)} • {activeTokenAppointment.patientWishSlot}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-500">Fee Paid:</span>
-                <strong className="text-emerald-700">{formatCurrency(activeTokenAppointment.consultationFee || 0)}</strong>
-              </div>
-            </div>
-
-            <div className="pt-2 flex items-center justify-center gap-2">
-              <button
-                onClick={() => window.print()}
-                className="px-5 py-2 rounded-xl bg-teal-600 hover:bg-teal-500 text-white font-bold text-xs shadow-md"
-              >
-                Print Slip
-              </button>
-              <button
-                onClick={() => setActiveTokenAppointment(null)}
-                className="px-4 py-2 rounded-xl bg-slate-200 text-slate-700 font-bold text-xs"
-              >
-                Close
-              </button>
-            </div>
-          </div>
+          <HospitalOpdTokenSlip
+            appointment={activeTokenAppointment}
+            company={companyProfile}
+            patient={patients.find((p) => p.id === activeTokenAppointment.patientId)}
+            doctor={doctors.find(
+              (d) => d.id === activeTokenAppointment.doctorId || d.name === activeTokenAppointment.doctorName
+            )}
+            queuePosition={
+              Math.max(
+                1,
+                appointments.filter(
+                  (a) =>
+                    (a.doctorConfirmedDate || a.patientWishDate) ===
+                      (activeTokenAppointment.doctorConfirmedDate || activeTokenAppointment.patientWishDate) &&
+                    (a.doctorId === activeTokenAppointment.doctorId ||
+                      a.doctorName === activeTokenAppointment.doctorName) &&
+                    (a.status === 'waiting' || a.status === 'doctor_confirmed') &&
+                    new Date(a.createdAt).getTime() <= new Date(activeTokenAppointment.createdAt).getTime()
+                ).length
+              )
+            }
+            estimatedWaitMinutes={
+              Math.max(
+                5,
+                appointments.filter(
+                  (a) =>
+                    (a.doctorConfirmedDate || a.patientWishDate) ===
+                      (activeTokenAppointment.doctorConfirmedDate || activeTokenAppointment.patientWishDate) &&
+                    (a.doctorId === activeTokenAppointment.doctorId ||
+                      a.doctorName === activeTokenAppointment.doctorName) &&
+                    (a.status === 'waiting' || a.status === 'doctor_confirmed') &&
+                    new Date(a.createdAt).getTime() < new Date(activeTokenAppointment.createdAt).getTime()
+                ).length * 12
+              )
+            }
+            onClose={() => setActiveTokenAppointment(null)}
+          />
         </Modal>
+      )}
+
+      {/* Direct Consultation Handoff & OPD Triage Modal */}
+      {handoffAppointment && (
+        <DirectConsultationHandoffModal
+          isOpen={!!handoffAppointment}
+          onClose={() => setHandoffAppointment(null)}
+          appointment={handoffAppointment}
+          doctor={doctors.find(
+            (d) => d.id === handoffAppointment.doctorId || d.name === handoffAppointment.doctorName
+          )}
+          onHandoffComplete={(updated) => {
+            setAppointments(EMRService.getAllAppointments());
+            setHandoffAppointment(null);
+          }}
+        />
       )}
     </div>
   );

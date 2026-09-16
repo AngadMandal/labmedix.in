@@ -1118,37 +1118,220 @@ export const SettingsPage: React.FC = () => {
                 </div>
               )}
 
-              {/* TAB 4: A4 HALF-PAGE BILL SETTINGS */}
+              {/* TAB 4: OFFICIAL A4 HALF-PAGE TAX INVOICE SETTINGS */}
               {activeTab === 'billing_standards' && (
                 <div className="space-y-6">
                   <div>
                     <h3 className="text-sm font-black text-white uppercase tracking-wider flex items-center gap-2 border-b border-slate-800 pb-2">
                       <Receipt className="w-4 h-4 text-emerald-400" />
-                      4. A4 Half-Page Billing Standard Configuration
+                      4. Official A4 Half-Page Tax Invoice Standard
                     </h3>
                     <p className="text-xs text-slate-400 mt-1">
-                      Institutional standard: Exactly 210mm × 145mm portrait format for preview, PDF, print, and reprint.
+                      Central institutional standard for all hospital modules (OPD, Laboratory, Pharmacy, Radiology, Emergency, IPD, Health Card, Services). Exactly 210mm × 145mm half-page zones with zero second blank page.
                     </p>
                   </div>
 
-                  <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-3">
-                    <span className="text-xs font-bold text-white block">Paper & Slip Parameters</span>
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
-                      <div>
-                        <span className="text-slate-400 block text-[11px]">Paper Dimension</span>
-                        <strong className="text-white font-mono">A4 (210 × 297 mm)</strong>
+                  {/* 1. Paper & Copy Format Mode */}
+                  <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-4">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-white block">Default Invoice Copy Mode</span>
+                      <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-bold">
+                        {docBranding.bill?.copyFormat === 'duplicate' ? 'Duplicate Copies (2 on 1 A4)' : 'Single Copy (Upper Half)'}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div
+                        onClick={() => !isLocked && setDocBranding({
+                          ...docBranding,
+                          bill: { ...docBranding.bill, copyFormat: 'single' }
+                        })}
+                        className={`p-3.5 rounded-xl border cursor-pointer transition ${
+                          (docBranding.bill?.copyFormat || 'single') === 'single'
+                            ? 'bg-blue-950/40 border-blue-500 ring-1 ring-blue-500'
+                            : 'bg-slate-900 border-slate-800 hover:border-slate-700'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between mb-1.5">
+                          <span className="text-xs font-bold text-white">Single Copy (Upper Half-Page)</span>
+                          {(docBranding.bill?.copyFormat || 'single') === 'single' && (
+                            <CheckCircle2 className="w-4 h-4 text-blue-400" />
+                          )}
+                        </div>
+                        <p className="text-[11px] text-slate-400 leading-relaxed">
+                          Prints 1 slip (140–145mm height) on the upper half of an A4 sheet. Avoids paper waste and allows standard physical cutting.
+                        </p>
                       </div>
-                      <div>
-                        <span className="text-slate-400 block text-[11px]">Bill Slip Height</span>
-                        <strong className="text-emerald-400 font-mono">145 mm (Half-Page)</strong>
+
+                      <div
+                        onClick={() => !isLocked && setDocBranding({
+                          ...docBranding,
+                          bill: { ...docBranding.bill, copyFormat: 'duplicate' }
+                        })}
+                        className={`p-3.5 rounded-xl border cursor-pointer transition ${
+                          docBranding.bill?.copyFormat === 'duplicate'
+                            ? 'bg-emerald-950/40 border-emerald-500 ring-1 ring-emerald-500'
+                            : 'bg-slate-900 border-slate-800 hover:border-slate-700'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between mb-1.5">
+                          <span className="text-xs font-bold text-white">Duplicate Copies (2 on 1 A4 Sheet)</span>
+                          {docBranding.bill?.copyFormat === 'duplicate' && (
+                            <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                          )}
+                        </div>
+                        <p className="text-[11px] text-slate-400 leading-relaxed">
+                          Prints Top Copy (Original) + Perforation Divider + Bottom Copy (Duplicate) on a single A4 sheet with strict zero 2nd blank page.
+                        </p>
                       </div>
-                      <div>
-                        <span className="text-slate-400 block text-[11px]">Max Items / Slip</span>
-                        <strong className="text-white font-mono">6 Items (Overflow Protected)</strong>
+                    </div>
+
+                    {/* Copy Titles */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+                      <Input
+                        label="Top Copy Header Label"
+                        value={docBranding.bill?.topCopyTitle || ''}
+                        placeholder="ORIGINAL FOR RECIPIENT"
+                        onChange={e => setDocBranding({
+                          ...docBranding,
+                          bill: { ...docBranding.bill, topCopyTitle: e.target.value }
+                        })}
+                        disabled={isLocked}
+                      />
+                      <Input
+                        label="Bottom Copy Header Label"
+                        value={docBranding.bill?.bottomCopyTitle || ''}
+                        placeholder="PATIENT COPY / DUPLICATE"
+                        onChange={e => setDocBranding({
+                          ...docBranding,
+                          bill: { ...docBranding.bill, bottomCopyTitle: e.target.value }
+                        })}
+                        disabled={isLocked}
+                      />
+                    </div>
+                  </div>
+
+                  {/* 2. Tax & Legal Compliance Configuration */}
+                  <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-4">
+                    <span className="text-xs font-bold text-white block">Tax Compliance & Codes (GST / SAC / HSN)</span>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <Input
+                        label="GSTIN / Tax Reg No."
+                        value={docBranding.bill?.taxRegistrationNumber || companyProfile.gstin || ''}
+                        placeholder="19AAACL8840M1ZX"
+                        onChange={e => setDocBranding({
+                          ...docBranding,
+                          bill: { ...docBranding.bill, taxRegistrationNumber: e.target.value }
+                        })}
+                        disabled={isLocked}
+                      />
+                      <Input
+                        label="Default SAC / HSN Code"
+                        value={docBranding.bill?.hsnSacCode || '999312'}
+                        placeholder="999312"
+                        onChange={e => setDocBranding({
+                          ...docBranding,
+                          bill: { ...docBranding.bill, hsnSacCode: e.target.value }
+                        })}
+                        disabled={isLocked}
+                      />
+                      <Input
+                        label="Default Tax Rate (%)"
+                        type="number"
+                        value={docBranding.bill?.taxRatePercent ?? 0}
+                        onChange={e => setDocBranding({
+                          ...docBranding,
+                          bill: { ...docBranding.bill, taxRatePercent: Number(e.target.value) }
+                        })}
+                        disabled={isLocked}
+                      />
+                    </div>
+                    <p className="text-[10px] text-slate-500 font-mono">
+                      SAC Codes: 999312 (Clinical/Medical), 999316 (Pathology/Lab), 3004 (Pharmacy Drugs). Healthcare consultations are exempt or rated per GST law.
+                    </p>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
+                      <div className="p-3 rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-between">
+                        <div>
+                          <span className="text-xs font-bold text-white block">Amount in Words</span>
+                          <span className="text-[10px] text-slate-400">Rupees X Only</span>
+                        </div>
+                        <input
+                          type="checkbox"
+                          checked={docBranding.bill?.showAmountInWords ?? true}
+                          onChange={e => setDocBranding({
+                            ...docBranding,
+                            bill: { ...docBranding.bill, showAmountInWords: e.target.checked }
+                          })}
+                          disabled={isLocked}
+                          className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500"
+                        />
+                      </div>
+
+                      <div className="p-3 rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-between">
+                        <div>
+                          <span className="text-xs font-bold text-white block">Show Tax Breakdown</span>
+                          <span className="text-[10px] text-slate-400">CGST/SGST/Taxable</span>
+                        </div>
+                        <input
+                          type="checkbox"
+                          checked={docBranding.bill?.showTaxBreakdown ?? false}
+                          onChange={e => setDocBranding({
+                            ...docBranding,
+                            bill: { ...docBranding.bill, showTaxBreakdown: e.target.checked }
+                          })}
+                          disabled={isLocked}
+                          className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500"
+                        />
+                      </div>
+
+                      <div className="p-3 rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-between">
+                        <div>
+                          <span className="text-xs font-bold text-white block">Payment QR Code</span>
+                          <span className="text-[10px] text-slate-400">Dynamic UPI / Paid Stamp</span>
+                        </div>
+                        <input
+                          type="checkbox"
+                          checked={docBranding.bill?.showQrCode ?? true}
+                          onChange={e => setDocBranding({
+                            ...docBranding,
+                            bill: { ...docBranding.bill, showQrCode: e.target.checked }
+                          })}
+                          disabled={isLocked}
+                          className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500"
+                        />
                       </div>
                     </div>
                   </div>
 
+                  {/* 3. Header, Terms & Disclaimers */}
+                  <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-3">
+                    <span className="text-xs font-bold text-white block">Invoice Title & Official Notice</span>
+                    <div className="space-y-3">
+                      <Input
+                        label="Bill Header Title"
+                        value={docBranding.bill?.headerTitle || ''}
+                        placeholder="HOSPITAL TAX INVOICE & CASH RECEIPT"
+                        onChange={e => setDocBranding({
+                          ...docBranding,
+                          bill: { ...docBranding.bill, headerTitle: e.target.value }
+                        })}
+                        disabled={isLocked}
+                      />
+                      <Input
+                        label="Official Footer Notice / Terms"
+                        value={docBranding.bill?.footerNotice || ''}
+                        placeholder="Computer-generated official invoice. No physical signature required."
+                        onChange={e => setDocBranding({
+                          ...docBranding,
+                          bill: { ...docBranding.bill, footerNotice: e.target.value }
+                        })}
+                        disabled={isLocked}
+                      />
+                    </div>
+                  </div>
+
+                  {/* 4. Print Execution & Calibration */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 flex items-center justify-between">
                       <div>
@@ -1185,18 +1368,29 @@ export const SettingsPage: React.FC = () => {
                     </div>
                   </div>
 
+                  {/* 5. Margins Calibration */}
                   <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-3">
-                    <span className="text-xs font-bold text-white block">Margins Calibration (mm)</span>
+                    <span className="text-xs font-bold text-white block">Print Margins Calibration (mm)</span>
                     <div className="grid grid-cols-4 gap-2 text-xs">
                       <div>
                         <label className="text-[10px] text-slate-400 block mb-1">Top</label>
                         <input
                           type="number"
-                          value={sysConfig.printing.margins.top}
-                          onChange={e => setSysConfig({
-                            ...sysConfig,
-                            printing: { ...sysConfig.printing, margins: { ...sysConfig.printing.margins, top: Number(e.target.value) } }
-                          })}
+                          value={docBranding.bill?.printMargins?.top ?? sysConfig.printing.margins.top}
+                          onChange={e => {
+                            const val = Number(e.target.value);
+                            setSysConfig({
+                              ...sysConfig,
+                              printing: { ...sysConfig.printing, margins: { ...sysConfig.printing.margins, top: val } }
+                            });
+                            setDocBranding({
+                              ...docBranding,
+                              bill: {
+                                ...docBranding.bill,
+                                printMargins: { ...(docBranding.bill?.printMargins || { top: 6, bottom: 6, left: 8, right: 8 }), top: val }
+                              }
+                            });
+                          }}
                           disabled={isLocked}
                           className="w-full px-2 py-1 rounded bg-slate-900 border border-slate-800 text-white font-mono"
                         />
@@ -1205,11 +1399,21 @@ export const SettingsPage: React.FC = () => {
                         <label className="text-[10px] text-slate-400 block mb-1">Bottom</label>
                         <input
                           type="number"
-                          value={sysConfig.printing.margins.bottom}
-                          onChange={e => setSysConfig({
-                            ...sysConfig,
-                            printing: { ...sysConfig.printing, margins: { ...sysConfig.printing.margins, bottom: Number(e.target.value) } }
-                          })}
+                          value={docBranding.bill?.printMargins?.bottom ?? sysConfig.printing.margins.bottom}
+                          onChange={e => {
+                            const val = Number(e.target.value);
+                            setSysConfig({
+                              ...sysConfig,
+                              printing: { ...sysConfig.printing, margins: { ...sysConfig.printing.margins, bottom: val } }
+                            });
+                            setDocBranding({
+                              ...docBranding,
+                              bill: {
+                                ...docBranding.bill,
+                                printMargins: { ...(docBranding.bill?.printMargins || { top: 6, bottom: 6, left: 8, right: 8 }), bottom: val }
+                              }
+                            });
+                          }}
                           disabled={isLocked}
                           className="w-full px-2 py-1 rounded bg-slate-900 border border-slate-800 text-white font-mono"
                         />
@@ -1218,11 +1422,21 @@ export const SettingsPage: React.FC = () => {
                         <label className="text-[10px] text-slate-400 block mb-1">Left</label>
                         <input
                           type="number"
-                          value={sysConfig.printing.margins.left}
-                          onChange={e => setSysConfig({
-                            ...sysConfig,
-                            printing: { ...sysConfig.printing, margins: { ...sysConfig.printing.margins, left: Number(e.target.value) } }
-                          })}
+                          value={docBranding.bill?.printMargins?.left ?? sysConfig.printing.margins.left}
+                          onChange={e => {
+                            const val = Number(e.target.value);
+                            setSysConfig({
+                              ...sysConfig,
+                              printing: { ...sysConfig.printing, margins: { ...sysConfig.printing.margins, left: val } }
+                            });
+                            setDocBranding({
+                              ...docBranding,
+                              bill: {
+                                ...docBranding.bill,
+                                printMargins: { ...(docBranding.bill?.printMargins || { top: 6, bottom: 6, left: 8, right: 8 }), left: val }
+                              }
+                            });
+                          }}
                           disabled={isLocked}
                           className="w-full px-2 py-1 rounded bg-slate-900 border border-slate-800 text-white font-mono"
                         />
@@ -1231,11 +1445,21 @@ export const SettingsPage: React.FC = () => {
                         <label className="text-[10px] text-slate-400 block mb-1">Right</label>
                         <input
                           type="number"
-                          value={sysConfig.printing.margins.right}
-                          onChange={e => setSysConfig({
-                            ...sysConfig,
-                            printing: { ...sysConfig.printing, margins: { ...sysConfig.printing.margins, right: Number(e.target.value) } }
-                          })}
+                          value={docBranding.bill?.printMargins?.right ?? sysConfig.printing.margins.right}
+                          onChange={e => {
+                            const val = Number(e.target.value);
+                            setSysConfig({
+                              ...sysConfig,
+                              printing: { ...sysConfig.printing, margins: { ...sysConfig.printing.margins, right: val } }
+                            });
+                            setDocBranding({
+                              ...docBranding,
+                              bill: {
+                                ...docBranding.bill,
+                                printMargins: { ...(docBranding.bill?.printMargins || { top: 6, bottom: 6, left: 8, right: 8 }), right: val }
+                              }
+                            });
+                          }}
                           disabled={isLocked}
                           className="w-full px-2 py-1 rounded bg-slate-900 border border-slate-800 text-white font-mono"
                         />

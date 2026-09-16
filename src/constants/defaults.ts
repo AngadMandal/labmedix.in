@@ -14,7 +14,21 @@ export const DEFAULT_DOCUMENT_BRANDING: DocumentBrandingConfig = {
     ],
     showQrCode: true,
     showBarcode: true,
-    maxItemsPerPage: 6
+    maxItemsPerPage: 6,
+    copyFormat: 'single',
+    topCopyTitle: 'ORIGINAL FOR RECIPIENT',
+    bottomCopyTitle: 'PATIENT COPY / DUPLICATE',
+    showAmountInWords: true,
+    showTaxBreakdown: false,
+    taxRegistrationNumber: '19AAACL8840M1ZX',
+    hsnSacCode: '999312',
+    taxRatePercent: 0,
+    printMargins: {
+      top: 6,
+      bottom: 6,
+      left: 8,
+      right: 8
+    }
   },
   diagnosticReport: {
     headerTitle: 'CLINICAL LABORATORY & DIAGNOSTIC REPORT',
