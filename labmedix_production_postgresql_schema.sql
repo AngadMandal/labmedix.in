@@ -144,12 +144,21 @@ CREATE TABLE IF NOT EXISTS company_settings (
 
 
 -- ============================================================================
--- 3. PATIENTS MASTER RELATIONSHIP
+-- 3. PATIENTS MASTER RELATIONSHIP & CENTRAL UHID ENGINE
 -- ============================================================================
+CREATE SEQUENCE IF NOT EXISTS uhid_seq START WITH 1 INCREMENT BY 1;
+
+CREATE OR REPLACE FUNCTION generate_next_uhid()
+RETURNS VARCHAR(50) AS $$
+BEGIN
+    RETURN 'LMX-' || LPAD(nextval('uhid_seq')::TEXT, 8, '0');
+END;
+$$ LANGUAGE plpgsql;
+
 CREATE TABLE IF NOT EXISTS patients (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    patient_id VARCHAR(50) NOT NULL UNIQUE, -- e.g. LMDX-2026-000001
-    uhid VARCHAR(50) UNIQUE,
+    patient_id VARCHAR(50) NOT NULL UNIQUE, -- Canonical patient ID alias
+    uhid VARCHAR(50) NOT NULL UNIQUE DEFAULT generate_next_uhid(),
     full_name VARCHAR(255) NOT NULL,
     dob DATE,
     age INT NOT NULL CHECK (age >= 0 AND age <= 150),
@@ -186,12 +195,39 @@ CREATE TABLE IF NOT EXISTS patients (
     health_card_id VARCHAR(50),
     membership_id VARCHAR(50),
 
+    -- Permanent Identity & Merge Tracking
+    is_merged BOOLEAN NOT NULL DEFAULT FALSE,
+    merged_into_uhid VARCHAR(50),
+    merged_at TIMESTAMPTZ,
+    merged_by VARCHAR(100),
+    merge_reason TEXT,
+    historical_uhids JSONB DEFAULT '[]'::jsonb,
+
     is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
     version INT NOT NULL DEFAULT 1,
     created_by VARCHAR(100) NOT NULL DEFAULT 'system',
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT chk_patients_uhid_format CHECK (uhid ~ '^LMX-[0-9]{8}$')
 );
+
+-- Protect UHID Immutability: Permanent Patient Identity Standard
+CREATE OR REPLACE FUNCTION protect_uhid_immutability()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF OLD.uhid IS NOT NULL AND NEW.uhid != OLD.uhid THEN
+        RAISE EXCEPTION 'UHID is permanent and cannot be modified once assigned (OLD: %, NEW: %)', OLD.uhid, NEW.uhid;
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_protect_uhid_immutability ON patients;
+CREATE TRIGGER trg_protect_uhid_immutability
+    BEFORE UPDATE ON patients
+    FOR EACH ROW
+    EXECUTE FUNCTION protect_uhid_immutability();
 
 CREATE INDEX IF NOT EXISTS idx_patients_mobile ON patients(mobile);
 CREATE INDEX IF NOT EXISTS idx_patients_name ON patients(full_name);

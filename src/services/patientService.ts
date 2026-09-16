@@ -5,6 +5,7 @@ import { ApiSyncService } from './apiSyncService';
 import { BillService } from './billService';
 import { generatePatientId, generateCardNumber, generateVerificationCode, generateCardCvv, generateUuid, generateFamilyId } from '../utils/idGenerator';
 import { DEFAULT_CARD_DESIGN } from '../constants/defaults';
+import { CentralUhidService } from './centralUhidService';
 
 export interface CreateFamilyMemberInput {
   fullName: string;
@@ -112,7 +113,20 @@ export class PatientService {
   }
 
   public static getById(id: string): Patient | undefined {
-    return StorageService.getPatients().find(p => p.id === id);
+    return StorageService.getPatients().find(p => p.id === id || p.uhid === id);
+  }
+
+  public static getByUhid(uhid: string): Patient | undefined {
+    const clean = uhid.trim().toUpperCase();
+    return StorageService.getPatients().find(p => 
+      (p.uhid && p.uhid.toUpperCase() === clean) || 
+      p.id.toUpperCase() === clean ||
+      (p.historicalUhids && p.historicalUhids.some(h => h.toUpperCase() === clean))
+    );
+  }
+
+  public static search(query: string): Patient[] {
+    return CentralUhidService.searchPatients(query, StorageService.getPatients());
   }
 
   public static getByCardNumber(cardNumber: string): Patient | undefined {
@@ -309,6 +323,7 @@ export class PatientService {
     // 5. Create Primary Patient Record
     const newPatient: Patient = {
       id: patientId,
+      uhid: patientId,
       fullName: input.fullName.trim(),
       dob: input.dob,
       age: input.age,
@@ -336,11 +351,20 @@ export class PatientService {
       walletId,
       isDemo: false,
       isDeleted: false,
+      isMerged: false,
       createdAt: now.toISOString(),
       updatedAt: now.toISOString(),
       createdBy: currentUser?.fullName || 'Front Desk'
     };
     patients.unshift(newPatient);
+
+    // Broadcast Real-Time Patient Registration Event
+    CentralUhidService.broadcastEvent({
+      type: 'PATIENT_REGISTERED',
+      uhid: patientId,
+      patient: newPatient,
+      timestamp: now.toISOString()
+    });
 
     // 6. Process & Register Family Members (with Optional Card Issuance)
     if (hasFamily && familyGroup && input.familyMembers) {
@@ -383,6 +407,7 @@ export class PatientService {
 
         const memberPatient: Patient = {
           id: memberPatientId,
+          uhid: memberPatientId,
           fullName: member.fullName.trim(),
           dob: memberDob,
           age: member.age || 20,
@@ -420,12 +445,20 @@ export class PatientService {
           healthCardId: undefined,
           walletId: memberWalletId,
           isDeleted: false,
+          isMerged: false,
           createdAt: now.toISOString(),
           updatedAt: now.toISOString(),
           createdBy: currentUser?.fullName || 'Front Desk'
         };
 
         patients.unshift(memberPatient);
+
+        CentralUhidService.broadcastEvent({
+          type: 'PATIENT_REGISTERED',
+          uhid: memberPatientId,
+          patient: memberPatient,
+          timestamp: now.toISOString()
+        });
 
         // Add to family group members list with active_under_primary status
         familyGroup?.members.push({

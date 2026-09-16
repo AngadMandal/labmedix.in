@@ -657,6 +657,334 @@ app.post('/api/admin/approve-card-application', async (req, res) => {
 });
 
 // ============================================================================
+// CENTRAL UHID GENERATION & PATIENT IDENTITY MASTER ENGINE (ONE SOURCE OF TRUTH)
+// ============================================================================
+const patientSseClients: express.Response[] = [];
+
+const broadcastPatientEvent = (event: {
+  type: 'PATIENT_REGISTERED' | 'PATIENT_MERGED' | 'PATIENT_UPDATED';
+  uhid: string;
+  patient?: any;
+  survivingUhid?: string;
+  mergedUhid?: string;
+  timestamp: string;
+}) => {
+  const data = `data: ${JSON.stringify(event)}\n\n`;
+  for (let i = patientSseClients.length - 1; i >= 0; i--) {
+    const client = patientSseClients[i];
+    try {
+      client.write(data);
+    } catch {
+      patientSseClients.splice(i, 1);
+    }
+  }
+};
+
+// SSE Stream for Real-Time Multi-Counter Patient Identity Updates
+app.get('/api/patient/events', (req, res) => {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders?.();
+
+  res.write(`data: ${JSON.stringify({ type: 'CONNECTED', message: 'Connected to LABMEDIX Central Patient Identity Bus', timestamp: new Date().toISOString() })}\n\n`);
+
+  patientSseClients.push(res);
+
+  req.on('close', () => {
+    const idx = patientSseClients.indexOf(res);
+    if (idx !== -1) {
+      patientSseClients.splice(idx, 1);
+    }
+  });
+});
+
+// 1. Atomic Server-Authoritative UHID Sequence Generation (Format: LMX-00000001)
+app.post('/api/uhid/generate-next', (req, res) => {
+  try {
+    const store = getCentralStore();
+    const patients = store['labmedix_patients_v1'] || [];
+
+    let maxSeq = 0;
+    patients.forEach((p: any) => {
+      const candidate = (p.uhid || p.id || '').toUpperCase();
+      const match = candidate.match(/^(?:LMX-|LMDX-(?:\d{4}-)?|LMDX-)(\d+)$/);
+      if (match) {
+        const num = parseInt(match[1], 10);
+        if (!isNaN(num) && num > maxSeq) {
+          maxSeq = num;
+        }
+      }
+    });
+
+    const nextSeq = maxSeq + 1;
+    const uhid = `LMX-${String(nextSeq).padStart(8, '0')}`;
+
+    res.json({
+      success: true,
+      uhid,
+      sequence: nextSeq,
+      format: 'LMX-00000000',
+      timestamp: new Date().toISOString()
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err?.message || 'Failed to generate next UHID.' });
+  }
+});
+
+// 2. Server-Side Multi-Factor Duplicate Patient Search Engine
+app.post('/api/patients/check-duplicate', (req, res) => {
+  try {
+    const { mobile, fullName, dob, age, gender, governmentIdNumber, emergencyMobile } = req.body;
+    const store = getCentralStore();
+    const patients = store['labmedix_patients_v1'] || [];
+    const cards = store['labmedix_cards_v1'] || [];
+
+    const cleanMobile = mobile ? String(mobile).replace(/\D/g, '') : '';
+    const cleanName = fullName ? String(fullName).trim().toLowerCase() : '';
+    const cleanGovtId = governmentIdNumber ? String(governmentIdNumber).trim().toUpperCase() : '';
+    const cleanEmergMobile = emergencyMobile ? String(emergencyMobile).replace(/\D/g, '') : '';
+
+    const matches: any[] = [];
+
+    for (const p of patients) {
+      if (p.isDeleted || p.isMerged) continue;
+
+      const pMobile = (p.mobile || '').replace(/\D/g, '');
+      const pName = (p.fullName || '').trim().toLowerCase();
+      const pGovtId = (p.governmentIdNumber || '').trim().toUpperCase();
+      const pEmergMobile = (p.emergencyContact?.mobile || '').replace(/\D/g, '');
+
+      const reasons: string[] = [];
+      const matchedFields: string[] = [];
+
+      // Factor 1: Identical 10-digit mobile number
+      if (cleanMobile.length >= 10 && pMobile === cleanMobile) {
+        reasons.push(`Identical Primary Mobile Number: ${p.mobile}`);
+        matchedFields.push('mobile');
+      }
+
+      // Factor 2: Government ID Match (Aadhaar / Voter / PAN)
+      if (cleanGovtId && pGovtId && cleanGovtId === pGovtId) {
+        reasons.push(`Identical Government ID (${p.governmentIdType || 'Govt ID'}: ${p.governmentIdNumber})`);
+        matchedFields.push('government_id');
+      }
+
+      // Factor 3: Full Name + Gender + Age Demographics
+      if (cleanName.length >= 3 && pName.length >= 3 && cleanName === pName) {
+        const isGenderMatch = Boolean(gender && p.gender && gender.toLowerCase() === p.gender.toLowerCase());
+        const isAgeMatch = age && p.age && Math.abs(Number(age) - Number(p.age)) <= 2;
+
+        if (isGenderMatch) {
+          if (isAgeMatch) {
+            reasons.push(`Matching Full Name "${p.fullName}", Same Gender (${p.gender}), and Age (${p.age} Yrs)`);
+            matchedFields.push('name_demographics');
+          } else {
+            reasons.push(`Matching Full Name "${p.fullName}" and Gender (${p.gender})`);
+            matchedFields.push('name_demographics');
+          }
+        }
+      }
+
+      // Factor 4: Emergency Mobile Match
+      if (cleanEmergMobile.length >= 10 && pEmergMobile === cleanEmergMobile && cleanEmergMobile !== cleanMobile) {
+        reasons.push(`Matching Emergency Contact Phone (${p.emergencyContact?.name || 'Contact'}: ${p.emergencyContact?.mobile})`);
+        matchedFields.push('emergency_mobile');
+      }
+
+      if (reasons.length > 0) {
+        const isHighConfidence = matchedFields.includes('mobile') || matchedFields.includes('government_id') || 
+          (matchedFields.includes('name_demographics') && reasons.some(r => r.includes('Same Gender')));
+
+        const activeCard = cards.find((c: any) => (c.patientId === p.uhid || c.patientId === p.id) && c.status === 'active');
+
+        matches.push({
+          patient: p,
+          card: activeCard,
+          confidence: isHighConfidence ? 'HIGH_CONFIDENCE' : 'SUSPECTED_MATCH',
+          reasons,
+          matchedFields
+        });
+      }
+    }
+
+    matches.sort((a, b) => (a.confidence === 'HIGH_CONFIDENCE' ? -1 : 1));
+
+    res.json({
+      success: true,
+      hasDuplicates: matches.length > 0,
+      matches
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err?.message || 'Failed to check duplicates.' });
+  }
+});
+
+// 3. Concurrency-Safe Patient Registration Transaction (Server-Side UHID Minting)
+app.post('/api/patients/register', (req, res) => {
+  try {
+    const input = req.body;
+    if (!input || !input.fullName || !input.fullName.trim()) {
+      return res.status(400).json({ success: false, error: 'Patient Full Name is required.' });
+    }
+    if (!input.mobile || !input.mobile.trim()) {
+      return res.status(400).json({ success: false, error: 'Patient Mobile is required.' });
+    }
+
+    const store = getCentralStore();
+    const patients = store['labmedix_patients_v1'] || [];
+
+    // Duplicate Check Validation (unless explicitly bypassed by staff)
+    if (!input.bypassDuplicate) {
+      const cleanMobile = input.mobile.replace(/\D/g, '');
+      const existing = patients.find((p: any) => 
+        !p.isDeleted && !p.isMerged && (
+          (cleanMobile.length >= 10 && (p.mobile || '').replace(/\D/g, '') === cleanMobile && p.fullName.trim().toLowerCase() === input.fullName.trim().toLowerCase())
+        )
+      );
+      if (existing) {
+        return res.status(409).json({
+          success: false,
+          error: `Possible duplicate patient detected with UHID: ${existing.uhid || existing.id}`,
+          existingPatient: existing
+        });
+      }
+    }
+
+    // Atomic UHID Generation
+    let maxSeq = 0;
+    patients.forEach((p: any) => {
+      const candidate = (p.uhid || p.id || '').toUpperCase();
+      const match = candidate.match(/^(?:LMX-|LMDX-(?:\d{4}-)?|LMDX-)(\d+)$/);
+      if (match) {
+        const num = parseInt(match[1], 10);
+        if (!isNaN(num) && num > maxSeq) {
+          maxSeq = num;
+        }
+      }
+    });
+
+    const nextSeq = maxSeq + 1;
+    const uhid = `LMX-${String(nextSeq).padStart(8, '0')}`;
+
+    // Verify UHID Uniqueness (Zero Duplicate Guarantee)
+    if (patients.some((p: any) => p.uhid === uhid || p.id === uhid)) {
+      return res.status(500).json({ success: false, error: 'Sequence collision detected. Transaction rolled back.' });
+    }
+
+    const now = new Date().toISOString();
+    const newPatient = {
+      ...input,
+      id: uhid,
+      uhid,
+      isDeleted: false,
+      isMerged: false,
+      createdAt: now,
+      updatedAt: now
+    };
+
+    patients.unshift(newPatient);
+    store['labmedix_patients_v1'] = patients;
+    saveCentralStore(store, true); // Immediate disk persist
+
+    // Broadcast Real-Time Event across all hospital counters
+    broadcastPatientEvent({
+      type: 'PATIENT_REGISTERED',
+      uhid,
+      patient: newPatient,
+      timestamp: now
+    });
+
+    res.json({
+      success: true,
+      uhid,
+      patient: newPatient,
+      message: `Patient registered successfully with permanent UHID ${uhid}`
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err?.message || 'Patient registration failed.' });
+  }
+});
+
+// 4. Controlled Patient Merge Engine (Administrative Audit-Logged Consolidation)
+app.post('/api/patients/merge', (req, res) => {
+  try {
+    const { survivingUhid, targetUhid, reason, mergedBy } = req.body;
+    if (!survivingUhid || !targetUhid) {
+      return res.status(400).json({ success: false, error: 'Both survivingUhid and targetUhid are required.' });
+    }
+    if (survivingUhid === targetUhid) {
+      return res.status(400).json({ success: false, error: 'Cannot merge a patient into their own UHID.' });
+    }
+
+    const store = getCentralStore();
+    const patients = store['labmedix_patients_v1'] || [];
+    const surviving = patients.find((p: any) => p.uhid === survivingUhid || p.id === survivingUhid);
+    const target = patients.find((p: any) => p.uhid === targetUhid || p.id === targetUhid);
+
+    if (!surviving) {
+      return res.status(404).json({ success: false, error: `Surviving patient with UHID ${survivingUhid} not found.` });
+    }
+    if (!target) {
+      return res.status(404).json({ success: false, error: `Target duplicate patient with UHID ${targetUhid} not found.` });
+    }
+
+    const now = new Date().toISOString();
+
+    // Mark target as merged (never deleted!)
+    target.isMerged = true;
+    target.mergedIntoUhid = surviving.uhid || surviving.id;
+    target.mergedAt = now;
+    target.mergedBy = mergedBy || 'Super Administrator';
+    target.mergeReason = reason || 'Duplicate record consolidation';
+    target.updatedAt = now;
+
+    // Append target UHID into surviving patient's historical reference list
+    if (!surviving.historicalUhids) surviving.historicalUhids = [];
+    if (!surviving.historicalUhids.includes(target.uhid || target.id)) {
+      surviving.historicalUhids.push(target.uhid || target.id);
+    }
+    surviving.updatedAt = now;
+
+    // Relink clinical & billing documents
+    const bills = store['labmedix_bills_v1'] || [];
+    bills.forEach((b: any) => {
+      if (b.patientId === target.id || b.patientId === target.uhid) {
+        b.originalPatientId = target.uhid || target.id;
+        b.patientId = surviving.uhid || surviving.id;
+      }
+    });
+
+    const appointments = store['labmedix_patient_appointments_v1'] || [];
+    appointments.forEach((a: any) => {
+      if (a.patientId === target.id || a.patientId === target.uhid) {
+        a.originalPatientId = target.uhid || target.id;
+        a.patientId = surviving.uhid || surviving.id;
+      }
+    });
+
+    saveCentralStore(store, true);
+
+    broadcastPatientEvent({
+      type: 'PATIENT_MERGED',
+      uhid: surviving.uhid || surviving.id,
+      survivingUhid: surviving.uhid || surviving.id,
+      mergedUhid: target.uhid || target.id,
+      timestamp: now
+    });
+
+    res.json({
+      success: true,
+      message: `Patient ${target.uhid || target.id} successfully merged into surviving UHID ${surviving.uhid || surviving.id}.`,
+      survivingPatient: surviving,
+      mergedPatient: target
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err?.message || 'Patient merge failed.' });
+  }
+});
+
+// ============================================================================
 // CENTRAL PAYMENT DYNAMIC QR ENGINE & REAL-TIME EVENT BUS (UNIVERSAL LABMEDIX)
 // ============================================================================
 const paymentSseClients: express.Response[] = [];

@@ -323,6 +323,12 @@ export interface Patient {
   isDeleted: boolean;
   deletedAt?: string;
   deletedBy?: string;
+  isMerged?: boolean;
+  mergedIntoUhid?: string;
+  mergedAt?: string;
+  mergedBy?: string;
+  mergeReason?: string;
+  historicalUhids?: string[];
   createdAt: string;
   updatedAt: string;
   createdBy: string;

@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { PatientService, CreateFamilyMemberInput, CreatePatientResult } from '../../services/patientService';
+import { CentralUhidService } from '../../services/centralUhidService';
 import { StorageService } from '../../services/storage';
 import { MembershipTierService } from '../../services/membershipTierService';
 import { DoctorMasterService, DoctorMasterItem } from '../../services/doctorMasterService';
@@ -229,6 +230,8 @@ export const PatientCreatePage: React.FC = () => {
   const [duplicateWarningOpen, setDuplicateWarningOpen] = useState(false);
   const [matchedDuplicatePatient, setMatchedDuplicatePatient] = useState<Patient | null>(null);
   const [matchedDuplicateCard, setMatchedDuplicateCard] = useState<HealthCard | undefined>(undefined);
+  const [duplicateReasons, setDuplicateReasons] = useState<string[]>([]);
+  const [duplicateConfidence, setDuplicateConfidence] = useState<'HIGH_CONFIDENCE' | 'SUSPECTED_MATCH' | 'PARTIAL_MATCH'>('HIGH_CONFIDENCE');
   const [duplicateBypassConfirmed, setDuplicateBypassConfirmed] = useState(false);
 
   // Auto-sync fallback if membershipId was deactivated
@@ -255,18 +258,36 @@ export const PatientCreatePage: React.FC = () => {
     });
   }, [issueHealthCard, selectedMembership, familyMembers.length, maxIncludedMembers, additionalMemberFee, discountAmount]);
 
-  // Check for duplicate mobile number in real time
+  // Check for multi-factor duplicate patient in real time (Mobile, Name+Age+Gender, Govt ID)
   const detectedDuplicate = useMemo(() => {
+    if (duplicateBypassConfirmed) return null;
     const cleanMobile = mobile.trim();
-    if (cleanMobile.length >= 10 && !duplicateBypassConfirmed) {
-      const match = existingPatients.find(p => p.mobile === cleanMobile && !p.isDeleted);
-      if (match) {
-        const cardMatch = existingCards.find(c => c.patientId === match.id && c.status === 'active');
-        return { patient: match, card: cardMatch };
+    const cleanName = fullName.trim();
+    if (cleanMobile.length >= 10 || cleanName.length >= 3) {
+      const res = CentralUhidService.checkPossibleDuplicates(
+        {
+          fullName,
+          mobile,
+          dob,
+          age,
+          gender,
+          governmentIdNumber,
+          emergencyMobile
+        },
+        existingPatients
+      );
+      if (res.hasDuplicates && res.matches.length > 0) {
+        const top = res.matches[0];
+        return {
+          patient: top.patient,
+          card: top.card,
+          reasons: top.reasons,
+          confidence: top.confidence
+        };
       }
     }
     return null;
-  }, [mobile, existingPatients, existingCards, duplicateBypassConfirmed]);
+  }, [mobile, fullName, dob, age, gender, governmentIdNumber, emergencyMobile, existingPatients, duplicateBypassConfirmed]);
 
   const handleMembershipChange = (newMemId: string) => {
     setMembershipId(newMemId);
@@ -432,6 +453,8 @@ export const PatientCreatePage: React.FC = () => {
     if (detectedDuplicate && !duplicateBypassConfirmed) {
       setMatchedDuplicatePatient(detectedDuplicate.patient);
       setMatchedDuplicateCard(detectedDuplicate.card);
+      setDuplicateReasons(detectedDuplicate.reasons || []);
+      setDuplicateConfidence(detectedDuplicate.confidence || 'HIGH_CONFIDENCE');
       setDuplicateWarningOpen(true);
       return;
     }
@@ -620,6 +643,8 @@ export const PatientCreatePage: React.FC = () => {
               onClick={() => {
                 setMatchedDuplicatePatient(detectedDuplicate.patient);
                 setMatchedDuplicateCard(detectedDuplicate.card);
+                setDuplicateReasons(detectedDuplicate.reasons || []);
+                setDuplicateConfidence(detectedDuplicate.confidence || 'HIGH_CONFIDENCE');
                 setDuplicateWarningOpen(true);
               }}
               className="px-3 py-1.5 rounded-xl bg-amber-200/70 hover:bg-amber-200 dark:bg-amber-900/60 dark:hover:bg-amber-900 text-amber-900 dark:text-amber-200 text-xs font-bold transition-all border border-amber-300 dark:border-amber-700"
@@ -749,12 +774,21 @@ export const PatientCreatePage: React.FC = () => {
 
           {/* 1. PRIMARY PATIENT IDENTITY */}
           <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 sm:p-8 border border-slate-200 dark:border-slate-800 shadow-sm space-y-6">
-            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
-              <h3 className="text-sm font-black uppercase tracking-wider text-slate-800 dark:text-white flex items-center gap-2">
-                <span className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/50 text-blue-600 dark:text-blue-400 text-xs font-black flex items-center justify-center">1</span>
-                <span>Primary Patient Registration</span>
-              </h3>
-              <Badge variant="blue">Primary Holder</Badge>
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 dark:border-slate-800 pb-3">
+              <div className="flex items-center gap-3 flex-wrap">
+                <h3 className="text-sm font-black uppercase tracking-wider text-slate-800 dark:text-white flex items-center gap-2">
+                  <span className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/50 text-blue-600 dark:text-blue-400 text-xs font-black flex items-center justify-center">1</span>
+                  <span>Primary Patient Registration</span>
+                </h3>
+                <div className="flex items-center gap-1.5 px-2.5 py-1 bg-blue-50 dark:bg-blue-950/50 border border-blue-200 dark:border-blue-800/80 rounded-lg text-xs font-mono">
+                  <span className="text-[10px] uppercase font-black tracking-wider text-blue-600 dark:text-blue-400">ASSIGNED UHID:</span>
+                  <span className="font-black text-slate-900 dark:text-white">{previewNextPatientId}</span>
+                  <span className="text-[9px] text-blue-500 font-semibold">(Auto Concurrency-Safe)</span>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <Badge variant="blue">Central Patient Master</Badge>
+              </div>
             </div>
 
             <div className="flex flex-col md:flex-row gap-6 items-center md:items-start">
@@ -1755,7 +1789,9 @@ export const PatientCreatePage: React.FC = () => {
           }}
           matchedPatient={matchedDuplicatePatient}
           matchedCard={matchedDuplicateCard}
-          duplicateField="mobile"
+          duplicateField="demographics"
+          reasons={duplicateReasons}
+          confidence={duplicateConfidence}
         />
       )}
 

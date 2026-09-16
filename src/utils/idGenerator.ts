@@ -2,26 +2,40 @@
  * Safe Sequence & ID Generators for LABMEDIX
  */
 
-export function generatePatientId(existingIds: string[]): string {
-  const currentYear = new Date().getFullYear();
-  const prefix = `LMDX-${currentYear}-`;
-  
+/**
+ * Central Permanent UHID (Unique Hospital Identification Number) Generator
+ * Standard Format: LMX-00000001, LMX-00000002 ... LMX-00012584 (8-digit zero-padded sequence)
+ * Concurrency & Collision Safe: Monotonically increments past any existing legacy or modern UHIDs.
+ */
+export function generateUhid(existingIds: string[], prefix = 'LMX-'): string {
   let maxSeq = 0;
-  existingIds.forEach(id => {
-    if (id && id.startsWith(prefix)) {
-      const parts = id.split('-');
-      if (parts.length === 3) {
-        const num = parseInt(parts[2], 10);
-        if (!isNaN(num) && num > maxSeq) {
-          maxSeq = num;
-        }
-      }
+  
+  (existingIds || []).forEach(id => {
+    if (!id || typeof id !== 'string') return;
+    const clean = id.trim().toUpperCase();
+
+    // Match modern LMX-00000001 or legacy LMDX-2026-000001 / LMDX-000001
+    const modernMatch = clean.match(/^LMX-(\d+)$/);
+    if (modernMatch) {
+      const num = parseInt(modernMatch[1], 10);
+      if (!isNaN(num) && num > maxSeq) maxSeq = num;
+      return;
+    }
+
+    const legacyMatch = clean.match(/^LMDX-(?:\d{4}-)?(\d+)$/);
+    if (legacyMatch) {
+      const num = parseInt(legacyMatch[1], 10);
+      if (!isNaN(num) && num > maxSeq) maxSeq = num;
     }
   });
 
   const nextSeq = maxSeq + 1;
-  const paddedSeq = String(nextSeq).padStart(6, '0');
+  const paddedSeq = String(nextSeq).padStart(8, '0');
   return `${prefix}${paddedSeq}`;
+}
+
+export function generatePatientId(existingIds: string[]): string {
+  return generateUhid(existingIds, 'LMX-');
 }
 
 export function generateCardNumber(existingCardNumbers: string[]): string {

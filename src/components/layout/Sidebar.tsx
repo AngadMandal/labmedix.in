@@ -75,60 +75,49 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onCloseMobile }) => {
     adminOnly?: boolean;
   }
 
-  const doctorNav: NavigationItem[] = isDoctorRole
-    ? [
-        { name: 'Doctor EMR & Rx Suite', href: '/clinical', icon: Stethoscope, moduleKey: 'emr', permission: 'emr_read', doctorOnly: true },
-        { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard, moduleKey: 'dashboard', permission: 'all' },
-      ]
-    : [
-        { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard, moduleKey: 'dashboard', permission: 'all' },
-      ];
-
   const baseNavigation: NavigationItem[] = [
-    ...doctorNav,
-    // Front Office & Reception
-    { name: 'Patient Directory', href: '/patients', icon: Users, moduleKey: 'patients', permission: 'patient_read' },
-    { name: 'Health Cards', href: '/cards', icon: CreditCard, moduleKey: 'cards', permission: ['card_read', 'card_request_view', 'card_request_create'] },
-    { name: 'Card Requests & Issuance', href: '/card-requests', icon: ShieldCheck, moduleKey: 'card_requests', permission: ['card_request_view', 'card_request_view_own', 'card_request_create'] },
-    { name: 'Family Health Shield', href: '/families', icon: Users2, moduleKey: 'families', permission: 'family_manage' },
-    { name: 'Appointments & Queue', href: '/appointments', icon: Calendar, moduleKey: 'appointments', permission: ['appointment_view', 'emr_read', 'patient_read'] },
-    { name: 'Doctor Management', href: '/doctors', icon: Crown, moduleKey: 'doctors', permission: ['doctor_view', 'doctor_manage', 'emr_read'] },
-    { name: 'Clinical / OPD', href: '/clinical', icon: Stethoscope, moduleKey: 'emr', permission: ['emr_read', 'clinical_view', 'patient_read'] },
+    // Top: Doctor Suite (if doctor) or Dashboard
+    ...(isDoctorRole
+      ? [
+          { name: 'Doctor Consultation & Rx Suite', href: '/clinical', icon: Stethoscope, moduleKey: 'emr' as SystemModuleKey, permission: 'emr_read' as Permission, doctorOnly: true },
+          { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard, moduleKey: 'dashboard' as SystemModuleKey, permission: 'all' as Permission },
+        ]
+      : [
+          { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard, moduleKey: 'dashboard' as SystemModuleKey, permission: 'all' as Permission },
+        ]),
 
-    // Hospital Clinical Departments
-    { name: 'Emergency & Casualty', href: '/emergency', icon: Ambulance, moduleKey: 'emergency', permission: ['emergency_view', 'emergency_manage', 'all'] },
-    { name: 'Inpatient (IPD)', href: '/ipd', icon: BedDouble, moduleKey: 'ipd', permission: ['ipd_view', 'ipd_manage', 'all'] },
-    { name: 'Ward & Bed Matrix', href: '/wards', icon: Building, moduleKey: 'wards', permission: ['ward_view', 'ward_manage', 'all'] },
-    { name: 'Nursing Station', href: '/nursing', icon: HeartPulse, moduleKey: 'nursing', permission: ['nursing_view', 'nursing_manage', 'all'] },
-    { name: 'Operation Theatre (OT)', href: '/ot', icon: Scissors, moduleKey: 'ot', permission: ['ot_view', 'ot_manage', 'all'] },
-    { name: 'Anaesthesia & PAC', href: '/anaesthesia', icon: Activity, moduleKey: 'anaesthesia', permission: ['anaesthesia_view', 'anaesthesia_manage', 'all'] },
-    { name: 'Radiology & Imaging', href: '/radiology', icon: Scan, moduleKey: 'radiology', permission: ['radiology_view', 'radiology_manage', 'all'] },
-    { name: 'Blood Bank & Transfusion', href: '/blood-bank', icon: Droplet, moduleKey: 'blood_bank', permission: ['blood_bank_view', 'blood_bank_manage', 'all'] },
+    // 01. FRONT DESK (Main patient entry point: search, register, UHID, health card verify, service dispatch)
+    { name: '01. FRONT DESK', href: '/front-desk', icon: Users, moduleKey: 'patients', permission: 'patient_read' },
 
-    // Diagnostics & Pharmacy
-    { name: 'Laboratory & Diagnostics', href: '/laboratory', icon: TestTube, moduleKey: 'laboratory', permission: ['test_view', 'catalog_manage', 'patient_read'] },
-    { name: 'Pharmacy Management', href: '/pharmacy', icon: Pill, moduleKey: 'pharmacy', permission: ['patient_read', 'catalog_manage'] },
+    // 02. OPD (OPD appointment, token, consultation and doctor prescription)
+    { name: '02. OPD', href: '/appointments', icon: Calendar, moduleKey: 'appointments', permission: ['appointment_view', 'emr_read', 'patient_read'] },
 
-    // Central Hospital Inventory & Procurement (Modules 29 & 30)
-    { name: 'Inventory & Store', href: '/inventory', icon: Boxes, moduleKey: 'inventory', permission: ['inventory_view', 'inventory_manage', 'all'] },
-    { name: 'Procurement & Suppliers', href: '/procurement', icon: Truck, moduleKey: 'procurement', permission: ['procurement_view', 'procurement_manage', 'all'] },
+    // 03. LABORATORY (Laboratory billing, sample collection, testing, reporting and diagnostic reports)
+    { name: '03. LABORATORY', href: '/laboratory', icon: TestTube, moduleKey: 'laboratory', permission: ['test_view', 'catalog_manage', 'patient_read'] },
 
-    // Central Billing & Financial Ledger
-    { name: 'Billing & Invoicing', href: '/billing', icon: Receipt, moduleKey: 'billing', permission: ['bill_view', 'bill_view_own', 'bill_create'] },
-    { name: 'Standard Bill & Print Center', href: '/print-center', icon: Printer, moduleKey: 'print_center', permission: ['print_center_view', 'bill_print', 'all'] },
-    { name: 'Payments & Transactions', href: '/transactions', icon: DollarSign, moduleKey: 'transactions', permission: ['card_transactions_view', 'card_transactions_view_own', 'wallet_read'] },
+    // 04. IPD (Admission, bed, inpatient treatment and IPD billing)
+    { name: '04. IPD', href: '/ipd', icon: BedDouble, moduleKey: 'ipd', permission: ['ipd_view', 'ipd_manage', 'all'] },
 
-    // Reports & Notifications
-    { name: 'Reports & Analytics', href: '/reports', icon: BarChart3, moduleKey: 'reports', permission: 'reports_view' },
-    { name: 'Notifications & Alerts', href: '/notifications', icon: Bell, moduleKey: 'notifications', permission: ['notifications_view', 'all'] },
+    // 05. PHARMACY (Prescription dispensing, medicine sales and pharmacy billing)
+    { name: '05. PHARMACY', href: '/pharmacy', icon: Pill, moduleKey: 'pharmacy', permission: ['patient_read', 'catalog_manage'] },
 
-    // Staff & System Governance
-    { name: 'Staff & Users', href: '/users', icon: UserCheck, moduleKey: 'users', permission: 'users_manage' },
-    { name: 'Role-Based Permissions', href: '/permissions', icon: KeyRound, moduleKey: 'permissions', permission: ['users_manage', 'all'] },
-    { name: 'Audit Logs', href: '/activity', icon: History, moduleKey: 'activity', permission: 'audit_view' },
-    { name: 'Super Admin Sovereign', href: '/super-admin', icon: ShieldAlert, moduleKey: 'settings', permission: 'all' },
-    { name: 'Company Settings & System', href: '/super-admin/company-settings', icon: Building, moduleKey: 'settings', permission: 'all' },
-    { name: 'Backup & Recovery', href: '/super-admin/backup-recovery', icon: HardDrive, moduleKey: 'settings', permission: 'all' }
+    // 06. HEALTH CARD (Completely separate Health Card membership system)
+    { name: '06. HEALTH CARD', href: '/cards', icon: CreditCard, moduleKey: 'cards', permission: ['card_read', 'card_request_view', 'card_request_create'] },
+
+    // 07. REPORTS (Central authorized reports and analytics)
+    { name: '07. REPORTS', href: '/reports', icon: BarChart3, moduleKey: 'reports', permission: 'reports_view' },
+
+    // 08. STAFF & PERMISSIONS (Staff accounts, roles and permissions)
+    { name: '08. STAFF & PERMISSIONS', href: '/users', icon: UserCheck, moduleKey: 'users', permission: 'users_manage' },
+
+    // 09. SETTINGS & SYSTEM (One central company/system configuration)
+    { name: '09. SETTINGS & SYSTEM', href: '/super-admin/company-settings', icon: Settings, moduleKey: 'settings', permission: 'all' },
+
+    // 10. AUDIT LOGS (Central audit trail)
+    { name: '10. AUDIT LOGS', href: '/activity', icon: History, moduleKey: 'activity', permission: 'audit_view' },
+
+    // 11. BACKUP & RECOVERY (Separate Super Admin-only backup/recovery system)
+    { name: '11. BACKUP & RECOVERY', href: '/super-admin/backup-recovery', icon: HardDrive, moduleKey: 'settings', permission: 'all' }
   ];
 
   const navigation = baseNavigation.filter(item => {

@@ -12,6 +12,7 @@ const LoginPage = React.lazy(() => import('./pages/auth/LoginPage').then(m => ({
 const DoctorLoginPage = React.lazy(() => import('./pages/doctors/DoctorLoginPage').then(m => ({ default: m.DoctorLoginPage })));
 const DashboardPage = React.lazy(() => import('./pages/dashboard/DashboardPage').then(m => ({ default: m.DashboardPage })));
 const PatientListPage = React.lazy(() => import('./pages/patients/PatientListPage').then(m => ({ default: m.PatientListPage })));
+const FrontDeskPage = React.lazy(() => import('./pages/frontdesk/FrontDeskPage').then(m => ({ default: m.FrontDeskPage })));
 const PatientCreatePage = React.lazy(() => import('./pages/patients/PatientCreatePage').then(m => ({ default: m.PatientCreatePage })));
 const PatientDetailPage = React.lazy(() => import('./pages/patients/PatientDetailPage').then(m => ({ default: m.PatientDetailPage })));
 const PatientEditPage = React.lazy(() => import('./pages/patients/PatientEditPage').then(m => ({ default: m.PatientEditPage })));
@@ -277,8 +278,10 @@ export const App: React.FC = () => {
                   >
                     <Route path="/dashboard" element={<DashboardPage />} />
 
-                    {/* Patient Routes */}
-                    <Route path="/patients" element={<ModuleGuard moduleKey="patients"><PatientListPage /></ModuleGuard>} />
+                    {/* 01. FRONT DESK — Single Patient Entry Point */}
+                    <Route path="/front-desk" element={<ModuleGuard moduleKey="patients"><FrontDeskPage /></ModuleGuard>} />
+                    <Route path="/patients" element={<ModuleGuard moduleKey="patients"><FrontDeskPage /></ModuleGuard>} />
+                    <Route path="/patients/directory" element={<ModuleGuard moduleKey="patients"><PatientListPage /></ModuleGuard>} />
                     <Route path="/patients/new" element={<ModuleGuard moduleKey="patients"><PatientCreatePage /></ModuleGuard>} />
                     <Route path="/patients/offline" element={<Navigate to="/patients/new" replace />} />
                     <Route path="/offline-form" element={<Navigate to="/patients/new" replace />} />

@@ -661,8 +661,8 @@ export const DoctorEMRPage: React.FC = () => {
       return;
     }
 
-    if (!canCreateEncounter) {
-      showToast('error', 'Permission Denied', 'You do not have permission to generate EMR records.');
+    if (!canCreateEncounter || (currentUser?.role !== 'doctor' && currentUser?.role !== 'super_admin')) {
+      showToast('error', 'Doctor Authentication Required', 'Prescriptions can only be created and finalized by verified Medical Doctors. Front desk, cashiers, and other staff cannot issue prescriptions.');
       return;
     }
 
