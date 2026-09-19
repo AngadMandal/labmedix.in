@@ -6,13 +6,12 @@ export class PrintService {
    */
   public static printCR80Card(frontElement: HTMLElement, backElement?: HTMLElement | null, title = 'LABMEDIX CR80 PVC Card'): void {
     try {
-      const printWindow = window.open('', '_blank', 'width=900,height=700');
+      const printWindow = window.open('', '_blank', 'width=1000,height=800');
       if (!printWindow) {
         window.print();
         return;
       }
 
-      // Collect styles from main document
       const styleElements = Array.from(document.querySelectorAll('style, link[rel="stylesheet"]'))
         .map(el => el.outerHTML)
         .join('\n');
@@ -20,61 +19,93 @@ export class PrintService {
       const frontHtml = frontElement.outerHTML;
       const backHtml = backElement ? backElement.outerHTML : '';
 
+      const safeTitle = title.replace(/[<>]/g, '');
+
       const htmlContent = `
-        <!DOCTYPE html>
+        <!doctype html>
         <html>
         <head>
-          <title>${title}</title>
+          <meta charset="utf-8" />
+          <meta name="viewport" content="width=device-width, initial-scale=1" />
+          <title>${safeTitle}</title>
           ${styleElements}
           <style>
             @page {
-              size: 85.60mm 53.98mm landscape;
+              size: 85.60mm 53.98mm;
               margin: 0;
             }
-            body {
-              margin: 0;
-              padding: 0;
-              background: #ffffff !important;
-              display: flex;
-              flex-direction: column;
-              align-items: center;
-              justify-content: center;
-            }
-            .card-page {
-              width: 500px;
-              height: 315px;
-              page-break-after: always;
-              display: flex;
-              align-items: center;
-              justify-content: center;
-              margin: auto;
+            html, body {
+              width: 85.60mm;
+              height: 53.98mm;
+              margin: 0 !important;
+              padding: 0 !important;
+              background: #fff !important;
+              overflow: hidden !important;
               -webkit-print-color-adjust: exact !important;
               print-color-adjust: exact !important;
             }
-            .card-page:last-child {
-              page-break-after: avoid;
-            }
-            /* Remove shadows or scale on print */
-            #cr80-front, #cr80-back, #card-export-front, #card-export-back {
-              transform: none !important;
-              box-shadow: none !important;
+            body { display: block !important; }
+            .cr80-print-page {
+              width: 85.60mm !important;
+              height: 53.98mm !important;
               margin: 0 !important;
+              padding: 0 !important;
+              overflow: hidden !important;
+              page-break-after: always !important;
+              break-after: page !important;
+              box-sizing: border-box !important;
             }
+            .cr80-print-page:last-child {
+              page-break-after: auto !important;
+              break-after: auto !important;
+            }
+            #cr80-front, #cr80-back, #card-export-front, #card-export-back {
+              width: 85.60mm !important;
+              height: 53.98mm !important;
+              max-width: none !important;
+              max-height: none !important;
+              min-width: 0 !important;
+              min-height: 0 !important;
+              transform: none !important;
+              transform-origin: top left !important;
+              margin: 0 !important;
+              box-shadow: none !important;
+              border-radius: 0 !important;
+              box-sizing: border-box !important;
+              overflow: hidden !important;
+            }
+            img { max-width: 100%; }
           </style>
         </head>
         <body>
-          <div class="card-page">
-            ${frontHtml}
-          </div>
-          ${backHtml ? `<div class="card-page">${backHtml}</div>` : ''}
+          <div class="cr80-print-page">${frontHtml}</div>
+          ${backHtml ? `<div class="cr80-print-page">${backHtml}</div>` : ''}
           <script>
-            window.onload = function() {
-              setTimeout(function() {
-                window.focus();
-                window.print();
-                window.close();
-              }, 400);
-            };
+            (async function () {
+              try {
+                if (document.fonts && document.fonts.ready) await document.fonts.ready;
+                const images = Array.from(document.images);
+                await Promise.all(images.map(function (img) {
+                  if (img.complete) return img.decode ? img.decode().catch(function () {}) : Promise.resolve();
+                  return new Promise(function (resolve) {
+                    img.addEventListener('load', resolve, { once: true });
+                    img.addEventListener('error', resolve, { once: true });
+                  });
+                }));
+                await new Promise(function (resolve) {
+                  requestAnimationFrame(function () {
+                    requestAnimationFrame(resolve);
+                  });
+                });
+              } catch (e) {
+                console.error('CR80 print preparation failed', e);
+              }
+              window.focus();
+              window.print();
+              setTimeout(function () {
+                try { window.close(); } catch (_) {}
+              }, 1500);
+            })();
           </script>
         </body>
         </html>
@@ -84,7 +115,7 @@ export class PrintService {
       printWindow.document.write(htmlContent);
       printWindow.document.close();
 
-      AuditService.log('CARD_PRINTED', 'card', `Printed CR80 Card: ${title}`);
+      AuditService.log('CARD_PRINTED', 'card', `Opened CR80 print dialog: ${title}`);
     } catch (err) {
       console.error('Error in printCR80Card:', err);
       window.print();
